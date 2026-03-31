@@ -1,6 +1,6 @@
 {
   "name": "birdtv",
-  "version": "3.3.0",
+  "version": "3.4.0",
   "private": true,
   "description": "BirdTV IPTV player with M3U support and admin management system",
   "author": {

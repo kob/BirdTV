@@ -24,7 +24,20 @@ class ExportController {
         return res.status(400).json({ ok: false, message: 'No channels found' });
       }
 
-      // Generate M3U content (完整格式，包含DRM信息和原始URL)
+      // 生成长期有效的导出 Token（1 年有效期）
+      const exportToken = tokenService.generateToken({
+        type: 'export',
+        userId: req.user?.username || 'admin',
+        ttl: 365 * 24 * 3600 * 1000 // 365 days
+      });
+      const encodedToken = tokenService.encodeToken(exportToken);
+      
+      // 获取当前服务器地址
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers['x-forwarded-host'] || req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      // Generate M3U content (完整格式，包含 DRM 信息和原始 URL)
       let m3uContent = '#EXTM3U\n';
       channels.forEach(channel => {
         const tvgId = channel.tvgId || '';
@@ -39,11 +52,11 @@ class ExportController {
         extinfLine += ` group-title="${groupTitle}",${tvgName}`;
         m3uContent += extinfLine + '\n';
 
-        // 添加KODIPROP信息（如果有DRM）
+        // 添加 KODIPROP 信息（如果有 DRM）
         if (channel.drm && channel.drm.clearKeys) {
           m3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
           m3uContent += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n';
-          // 提取第一个clearKey
+          // 提取第一个 clearKey
           const firstKey = Object.entries(channel.drm.clearKeys)[0];
           if (firstKey) {
             const [kid, key] = firstKey;
@@ -51,10 +64,13 @@ class ExportController {
           }
         }
 
-        // 保留原始URL中的鉴权信息，不添加新的鉴权参数
-        // 只使用原始URL，不做任何参数清理
-        const cleanUrl = channel.url;
-        m3uContent += `${cleanUrl}\n`;
+        // 如果是代理 URL，添加 auth_token 参数
+        let finalUrl = channel.url;
+        if (finalUrl.includes('/m3u-proxy') || finalUrl.includes('/stream/proxy')) {
+          const separator = finalUrl.includes('?') ? '&' : '?';
+          finalUrl = `${finalUrl}${separator}auth_token=${encodedToken}`;
+        }
+        m3uContent += `${finalUrl}\n`;
       });
 
       // Generate export ID and filename
@@ -75,7 +91,9 @@ class ExportController {
         filename,
         userId: req.user?.username || 'admin',
         description: description,
-        fileSize
+        fileSize,
+        exportToken: encodedToken, // 保存 Token 以便后续查询
+        tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() // 1 year
       });
 
       res.json({
@@ -84,7 +102,10 @@ class ExportController {
           exportId,
           filename,
           fileSize,
-          description
+          description,
+          downloadUrl: `${baseUrl}/api/exports/download?file=${filename}&token=${encodedToken}`,
+          token: encodedToken, // 返回 Token，方便前端显示
+          tokenExpiresIn: '365 days'
         }
       });
     } catch (error) {
