@@ -1319,16 +1319,18 @@ async function authMiddleware(req, res, config, next) {
   const isProxyRequest = req.url && req.url.includes('/m3u-proxy');
   if (isProxyRequest) {
     try {
-      const StorageService = require('./backend/services/storageService.js');
-      const storage = new StorageService();
-      await storage.initialize();
-      const settings = await storage.getSettings();
-      
-      // 如果 m3uProxyAuth 为 false，则不需要认证
-      if (settings.m3uProxyAuth === false) {
-        console.log('[Auth Middleware] /m3u-proxy 请求，m3uProxyAuth=false，跳过认证');
-        await next();
-        return;
+      // 使用已有的 storage 实例，而不是重新创建
+      if (serverState.storage) {
+        const settings = await serverState.storage.getSettings();
+        
+        // 如果 m3uProxyAuth 为 false，则不需要认证
+        if (settings.m3uProxyAuth === false) {
+          console.log('[Auth Middleware] /m3u-proxy 请求，m3uProxyAuth=false，跳过认证');
+          await next();
+          return;
+        }
+      } else {
+        console.warn('[Auth Middleware] storage 未初始化，继续认证流程');
       }
     } catch (error) {
       console.error('[Auth Middleware] 读取设置失败:', error);
