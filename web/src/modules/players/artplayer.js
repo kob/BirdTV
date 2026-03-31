@@ -32,16 +32,28 @@ export function canUseNativeHlsPlayback() {
 export async function initArtPlayer(url = '', source = null, elements = {}) {
     if (!window.Artplayer) { console.error('ArtPlayer not loaded'); return null; }
 
-    if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
-    if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }
-
+    const startTime = performance.now();
     const container = document.getElementById('artplayer-container');
     if (!container) { console.error('artplayer-container not found'); return null; }
 
     const videoEl = document.getElementById("video");
+    
+    // 快速清理旧播放器
+    if (state.artPlayer) {
+        try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ }
+        state.artPlayer = null;
+    }
+    if (state.hlsPlayer) {
+        try { state.hlsPlayer.destroy(); } catch (e) { /* ignore */ }
+        state.hlsPlayer = null;
+    }
+
+    // 复用容器，不清空 innerHTML，避免重复创建 DOM
     if (videoEl) videoEl.style.display = 'none';
     container.style.display = 'block';
-    container.innerHTML = '';
+    if (!container.querySelector('video')) {
+        container.innerHTML = '';
+    }
 
     const effectiveUserAgent = getEffectiveUserAgent();
     const unwrappedSourceUrl = unwrapProxySourceUrl(url);
@@ -50,16 +62,46 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     const tvIillSameOriginUrl = toTvIillSameOriginUrl(unwrappedSourceUrl, effectiveUserAgent);
     const corsRestricted = isCorsRestricted(unwrappedSourceUrl);
     const useProxy = shouldUseProxy(unwrappedSourceUrl, false, source);
+    
+    // 直连模式优化：跳过不必要的 proxy URL 生成
+    const isDirectMode = !useProxy;
 
-    // 自动将token写入cookie，便于HLS.js/TS流代理请求后端时带上token
+    // 自动将 token 写入 cookie
     try {
         const token = localStorage.getItem('authToken');
         if (token) {
             const isHttps = window.location.protocol === 'https:';
-                const secureFlag = isHttps ? '; Secure' : '';
-                document.cookie = `authToken=${token}; path=/; SameSite=Strict${secureFlag}`;
+            const secureFlag = isHttps ? '; Secure' : '';
+            document.cookie = `authToken=${token}; path=/; SameSite=Strict${secureFlag}`;
         }
     } catch (e) { /* ignore */ }
+
+    // 优化 HLS.js 配置：针对直播场景优化首屏速度
+    const hlsConfig = {
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 60, // 减少内存占用
+        maxBufferLength: 15, // 减少首屏等待时间（从 30 降到 15）
+        maxMaxBufferLength: 30, // 减少最大缓冲区
+        maxBufferSize: 30 * 1000 * 1000, // 30MB 足够
+        maxBufferHole: 0.3, // 更严格的 buffer hole 检测
+        startFnsPrefetch: true, // 预加载片段
+        liveSyncDurationCount: 2, // 减少直播同步延迟（从 3 降到 2）
+        liveMaxLatencyDurationCount: 6, // 减少最大延迟（从 10 降到 6）
+        manifestLoadingTimeOut: 15000, // 减少超时时间（从 30s 降到 15s）
+        manifestLoadingMaxRetry: 2,
+        manifestLoadingRetryDelay: 500, // 减少重试延迟
+        fragLoadingTimeOut: 15000, // 减少片段加载超时（从 20s 降到 15s）
+        fragLoadingMaxRetry: 4, // 减少重试次数（从 6 降到 4）
+        fragLoadingRetryDelay: 500,
+        xhrSetup: (xhr) => { xhr.withCredentials = true; }
+    };
+
+    // 直连模式进一步优化
+    if (isDirectMode) {
+        hlsConfig.maxBufferLength = 10; // 直连模式缓冲区更小，更快出画面
+        hlsConfig.liveSyncDurationCount = 1; // 直连延迟更低
+    }
 
     state.artPlayer = new Artplayer({
         container,
@@ -96,28 +138,58 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
                 }
 
                 if (Hls && Hls.isSupported()) {
-                    const hls = new Hls({
-                        enableWorker: true, lowLatencyMode: true,
-                        backBufferLength: 90, maxBufferLength: 30, maxMaxBufferLength: 60,
-                        maxBufferSize: 60 * 1000 * 1000, maxBufferHole: 0.5,
-                        liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 10,
-                        manifestLoadingTimeOut: 30000, manifestLoadingMaxRetry: 2,
-                        fragLoadingTimeOut: 20000, fragLoadingMaxRetry: 6,
-                        xhrSetup: (xhr) => { xhr.withCredentials = true; }
-                    });
-                    hls.loadSource(finalUrl);
-                    hls.attachMedia(video);
-                    art.hls = hls;
-
-                    hls.on(Hls.Events.ERROR, function(event, data) {
-                        if (data.fatal) {
-                            switch(data.type) {
-                                case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-                                case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
-                                default: hls.destroy(); break;
-                            }
+                    // 复用 HLS.js 实例（如果已存在且配置相同）
+                    if (state.hlsPlayer && state.hlsPlayer.currentUrl === finalUrl) {
+                        state.hlsPlayer.startLoad();
+                        art.hls = state.hlsPlayer;
+                        console.log('[ArtPlayer] 复用 HLS.js 实例');
+                    } else {
+                        // 销毁旧实例
+                        if (state.hlsPlayer) {
+                            try { state.hlsPlayer.destroy(); } catch (e) { /* ignore */ }
                         }
-                    });
+                        
+                        const hls = new Hls(hlsConfig);
+                        state.hlsPlayer = hls;
+                        state.hlsPlayer.currentUrl = finalUrl;
+                        
+                        hls.loadSource(finalUrl);
+                        hls.attachMedia(video);
+                        art.hls = hls;
+
+                        // 优化错误恢复策略
+                        let networkRetryCount = 0;
+                        const MAX_NETWORK_RETRY = 3;
+                        
+                        hls.on(Hls.Events.ERROR, function(event, data) {
+                            if (data.fatal) {
+                                switch(data.type) {
+                                    case Hls.ErrorTypes.NETWORK_ERROR:
+                                        networkRetryCount++;
+                                        if (networkRetryCount <= MAX_NETWORK_RETRY) {
+                                            console.log(`[HLS] 网络错误，重试 ${networkRetryCount}/${MAX_NETWORK_RETRY}`);
+                                            hls.startLoad();
+                                        } else {
+                                            console.error('[HLS] 网络错误，放弃重试');
+                                            hls.destroy();
+                                        }
+                                        break;
+                                    case Hls.ErrorTypes.MEDIA_ERROR:
+                                        hls.recoverMediaError();
+                                        break;
+                                    default:
+                                        hls.destroy();
+                                        break;
+                                }
+                            }
+                        });
+                        
+                        // 监听 FRAG_LOADED 以优化首屏
+                        hls.on(Hls.Events.FRAG_LOADED, function() {
+                            const loadTime = performance.now() - startTime;
+                            console.log(`[ArtPlayer] 首个片段加载完成，耗时：${loadTime.toFixed(0)}ms`);
+                        });
+                    }
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     video.src = finalUrl;
                 }
@@ -126,7 +198,16 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
         moreVideoAttr: { crossOrigin: 'anonymous', playsInline: true, webkitPlaysInline: true }
     });
 
-    state.artPlayer.on('play', () => { if (elements.statusText) { elements.statusText.textContent = '正在播放'; } });
-    state.artPlayer.on('error', (err) => { console.error('ArtPlayer错误:', err); });
+    state.artPlayer.on('play', () => { 
+        const loadTime = performance.now() - startTime;
+        console.log(`[ArtPlayer] 播放启动，总耗时：${loadTime.toFixed(0)}ms`);
+        if (elements.statusText) { elements.statusText.textContent = '正在播放'; } 
+    });
+    
+    state.artPlayer.on('error', (err) => { 
+        const loadTime = performance.now() - startTime;
+        console.error(`[ArtPlayer] 错误 (耗时：${loadTime.toFixed(0)}ms):`, err); 
+    });
+    
     return state.artPlayer;
 }

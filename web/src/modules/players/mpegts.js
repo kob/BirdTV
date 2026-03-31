@@ -9,33 +9,71 @@ import { getEffectiveUserAgent } from '../ua.js';
 export async function initMpegtsPlayer(url = '', source = null, elements = {}) {
     if (!window.mpegts) { console.error('mpegts.js not loaded'); return null; }
 
-        // 自动将token写入cookie，便于mpegts.js代理请求后端时带上token
-        try {
-            const token = localStorage.getItem('authToken');
-            if (token) {
-                document.cookie = `authToken=${token}; path=/; SameSite=Strict`;
-            }
-        } catch (e) { /* ignore */ }
+    const startTime = performance.now();
+    
+    // 自动将 token 写入 cookie
+    try {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+            document.cookie = `authToken=${token}; path=/; SameSite=Strict`;
+        }
+    } catch (e) { /* ignore */ }
+    
     const videoEl = document.getElementById("video");
-    if (state.mpegtsPlayer) { try { state.mpegtsPlayer.destroy(); } catch (e) { /* ignore */ } state.mpegtsPlayer = null; }
+    
+    // 快速清理旧播放器
+    if (state.mpegtsPlayer) {
+        try { 
+            state.mpegtsPlayer.pause();
+            state.mpegtsPlayer.unload();
+            state.mpegtsPlayer.detachMediaElement();
+            state.mpegtsPlayer.destroy(); 
+        } catch (e) { /* ignore */ }
+        state.mpegtsPlayer = null;
+    }
 
     const _artCon = document.getElementById('artplayer-container');
     if (_artCon) _artCon.style.display = 'none';
-    if (videoEl) { videoEl.style.display = ''; videoEl.src = ''; videoEl.load(); }
+    
+    // 复用 video 元素
+    if (videoEl) { 
+        videoEl.style.display = ''; 
+        // 不清空 src，让 mpegts.js 直接 attach
+    }
 
     const useProxy = shouldUseProxy(url, true, source);
     const finalUrl = useProxy ? getProxyUrl(url, getEffectiveUserAgent()) : url;
-
-    state.mpegtsPlayer = mpegts.createPlayer({
+    
+    // 优化配置：针对直播优化
+    const mpegtsConfig = {
         type: 'mpegts',
         url: finalUrl,
         isLive: true,
         hasAudio: true,
-        hasVideo: true
-    });
+        hasVideo: true,
+        // 优化参数
+        enableWorker: true, // 使用 Web Worker
+        liveSync: true, // 启用直播同步
+        stashInitialSize: 128, // 减少初始缓冲区（默认 128KB）
+        lazyLoad: false, // 直播不需要懒加载
+        lazyLoadMaxBuffer: 0,
+        speed: 1.0
+    };
+
+    state.mpegtsPlayer = mpegts.createPlayer(mpegtsConfig);
     state.mpegtsPlayer.attachMediaElement(videoEl);
-    state.mpegtsPlayer.load();
-    state.mpegtsPlayer.play();
+    
+    // 优化：先 load 再 play，减少等待
+    try {
+        await state.mpegtsPlayer.load();
+        await state.mpegtsPlayer.play();
+        
+        const loadTime = performance.now() - startTime;
+        console.log(`[MpegtsPlayer] 播放启动，耗时：${loadTime.toFixed(0)}ms`);
+    } catch (e) {
+        console.error('[MpegtsPlayer] 启动失败:', e);
+        throw e;
+    }
 
     return state.mpegtsPlayer;
 }
