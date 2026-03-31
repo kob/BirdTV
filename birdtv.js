@@ -1315,6 +1315,27 @@ async function authMiddleware(req, res, config, next) {
     return;
   }
 
+  // 特殊处理：检查是否是 /m3u-proxy 请求，并且 m3uProxyAuth 设置为 false
+  const isProxyRequest = req.url && req.url.includes('/m3u-proxy');
+  if (isProxyRequest) {
+    try {
+      const StorageService = require('./backend/services/storageService.js');
+      const storage = new StorageService();
+      await storage.initialize();
+      const settings = await storage.getSettings();
+      
+      // 如果 m3uProxyAuth 为 false，则不需要认证
+      if (settings.m3uProxyAuth === false) {
+        console.log('[Auth Middleware] /m3u-proxy 请求，m3uProxyAuth=false，跳过认证');
+        await next();
+        return;
+      }
+    } catch (error) {
+      console.error('[Auth Middleware] 读取设置失败:', error);
+      // 如果读取设置失败，继续认证流程以保证安全
+    }
+  }
+
   // 从多个位置获取 token：Authorization header > cookie > query 参数
   let token = '';
 
@@ -1341,7 +1362,7 @@ async function authMiddleware(req, res, config, next) {
   }
 
   // 调试日志
-  if (req.url && req.url.includes('/m3u-proxy')) {
+  if (isProxyRequest) {
     console.log('[Auth Middleware] Path:', req.url);
     console.log('[Auth Middleware] Has Auth Header:', !!authHeader);
     console.log('[Auth Middleware] Has Cookie:', !!req.headers.cookie);
