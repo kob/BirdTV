@@ -572,7 +572,8 @@
           <div class="stat-card"><div class="stat-icon blue">📺</div><div class="stat-info"><h4 id="statChannels">-</h4><p>频道总数</p></div></div>
           <div class="stat-card"><div class="stat-icon green">📡</div><div class="stat-info"><h4 id="statSources">-</h4><p>数据源</p></div></div>
           <div class="stat-card"><div class="stat-icon orange">👥</div><div class="stat-info"><h4 id="statUsers">-</h4><p>用户数</p></div></div>
-          <div class="stat-card"><div class="stat-icon purple">🔒</div><div class="stat-info"><h4 id="statAuth">-</h4><p>鉴权状态</p></div></div>
+          <div class="stat-card"><div class="stat-icon purple">🔐</div><div class="stat-info"><h4 id="statSystemAuth">-</h4><p>系统鉴权</p></div></div>
+          <div class="stat-card"><div class="stat-icon purple">🔑</div><div class="stat-info"><h4 id="statProxyAuth">-</h4><p>代理鉴权</p></div></div>
         </div>
         <div class="card">
           <h3 style="margin-bottom:12px;">系统信息</h3>
@@ -764,16 +765,25 @@
           <div class="form-row">
             <div class="form-group"><label>播放模式</label>
               <select id="settingPlaybackMode">
-                <option value="auto">自动（4K失败时自动降级）</option>
+                <option value="auto">自动（4K 失败时自动降级）</option>
                 <option value="original">强制原画（不自动降级）</option>
-                <option value="stable">稳定模式（限制到1080p）</option>
+                <option value="stable">稳定模式（限制到 1080p）</option>
               </select>
             </div>
-            <div class="form-group"><label>M3U Proxy 鉴权</label>
-              <select id="settingM3uProxyAuth">
-                <option value="false">关闭（无需登录即可访问代理）</option>
-                <option value="true">开启（需要登录后才能访问代理）</option>
-              </select>
+          </div>
+          <div style="margin-top:16px;padding:12px;background:rgba(122,193,255,0.1);border-radius:6px;font-size:13px;color:#e8f2ff;margin-bottom:16px;">
+            <strong>💡 鉴权说明：</strong><br>
+            • <strong>系统鉴权</strong>：控制后台管理系统是否需要登录（通过环境变量 AUTH_ENABLED 配置）<br>
+            • <strong>M3U Proxy 鉴权</strong>：控制播放代理链接是否需要 Token（下方开关控制）
+          </div>
+          <div class="form-group">
+            <label>M3U Proxy 鉴权</label>
+            <select id="settingM3uProxyAuth">
+              <option value="false">❌ 关闭（无需登录即可访问代理，适合内网）</option>
+              <option value="true">✅ 开启（需要 Token 才能访问代理，适合公网）</option>
+            </select>
+            <div style="margin-top:8px;font-size:12px;color:var(--muted);">
+              注意：修改后需要重启服务才能生效
             </div>
           </div>
           <div style="margin-top:16px;"><button class="btn btn-primary" onclick="saveSettings()">保存设置</button></div>
@@ -1294,15 +1304,24 @@
     // ========== 仪表盘 ==========
     async function loadDashboard() {
       try {
-        const [channelsRes, sourcesRes, healthRes] = await Promise.all([
+        const [channelsRes, sourcesRes, healthRes, settingsRes] = await Promise.all([
           api('/channels').catch(() => ({ ok: false })),
           api('/sources/m3u').catch(() => ({ ok: false })),
-          fetch('/health').then(r => r.json()).catch(() => null)
+          fetch('/health').then(r => r.json()).catch(() => null),
+          api('/settings').catch(() => ({ ok: false }))
         ]);
         document.getElementById('statChannels').textContent = channelsRes.ok ? channelsRes.data.length : '-';
         document.getElementById('statSources').textContent = sourcesRes.ok ? sourcesRes.data.length : '-';
         document.getElementById('statUsers').textContent = '-';
-        document.getElementById('statAuth').textContent = healthRes ? (healthRes.authEnabled ? '已启用' : '已禁用') : '-';
+        
+        // 系统鉴权状态
+        document.getElementById('statSystemAuth').textContent = healthRes ? 
+          (healthRes.authEnabled ? '✅ 已启用' : '❌ 已禁用') : '-';
+        
+        // 代理鉴权状态
+        document.getElementById('statProxyAuth').textContent = settingsRes.ok ? 
+          (settingsRes.data.m3uProxyAuth ? '✅ 已启用' : '❌ 已禁用') : '-';
+        
         if (healthRes) {
           document.getElementById('infoUrl').textContent = location.origin;
         document.getElementById('infoDataDir').textContent = healthRes.dataDir || '-';
