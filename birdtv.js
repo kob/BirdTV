@@ -1358,14 +1358,10 @@ async function authMiddleware(req, res, config, next) {
     }
   }
 
-  // 3. 从 query 参数获取（兼容旧版）
-  if (!token && req.query && req.query.token) {
-    token = req.query.token;
-  }
-
-  // 4. 从 auth_token 参数获取（兼容导出的 M3U 链接）
-  if (!token && req.query && req.query.auth_token) {
-    token = req.query.auth_token;
+  // 3. 从 query 参数获取（兼容旧版和导出 M3U）
+  if (!token && req.query) {
+    // URLSearchParams 使用 get() 方法获取参数
+    token = req.query.get ? (req.query.get('token') || req.query.get('auth_token')) : (req.query.token || req.query.auth_token);
   }
 
   // 调试日志
@@ -1373,7 +1369,8 @@ async function authMiddleware(req, res, config, next) {
     console.log('[Auth Middleware] Path:', req.url);
     console.log('[Auth Middleware] Has Auth Header:', !!authHeader);
     console.log('[Auth Middleware] Has Cookie:', !!req.headers.cookie);
-    console.log('[Auth Middleware] Has auth_token:', !!(req.query && req.query.auth_token));
+    console.log('[Auth Middleware] Has Query:', !!req.query);
+    console.log('[Auth Middleware] Query auth_token:', req.query ? (req.query.get ? req.query.get('auth_token') : req.query.auth_token) : 'N/A');
     console.log('[Auth Middleware] Token Found:', !!token);
   }
 
