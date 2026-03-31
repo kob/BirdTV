@@ -1,0 +1,39 @@
+{
+  "$schema": "https://framework-1258016615.tcloudbaseapp.com/schema/latest.json",
+  "envId": "{{envId}}",
+  "version": "2.0",
+  "framework": {
+    "name": "birdtv",
+    "plugins": {
+      "client": {
+        "use": "@cloudbase/framework-plugin-website",
+        "inputs": {
+          "buildCommand": "",
+          "outputPath": "web",
+          "cloudRun": {
+            "memory": 512,
+            "cpu": 1
+          }
+        }
+      },
+      "server": {
+        "use": "@cloudbase/framework-plugin-node",
+        "inputs": {
+          "entry": "birdtv.js",
+          "name": "birdtv-proxy",
+          "envVariables": {
+            "NODE_ENV": "production",
+            "PORT": "8771",
+            "M3U_PROXY_STATIC_ROOT": "web"
+          },
+          "cloudRun": {
+            "memory": 1024,
+            "cpu": 2,
+            "timeout": 60
+          }
+        }
+      }
+    }
+  },
+  "region": "ap-shanghai"
+}

@@ -1,0 +1,152 @@
+/**
+ * 设置控制器
+ */
+const UAManager = require('../managers/uaManager');
+
+class SettingsController {
+  constructor(storage) {
+    this.storage = storage;
+    this.uaManager = new UAManager(storage);
+    this.uaManager.initialize().catch(err => console.error('[SettingsController] UA初始化失败:', err));
+  }
+
+  // ─── UA 管理 API ───
+
+  async getGlobalUA(req, res) {
+    try {
+      const ua = this.uaManager.getGlobalUA();
+      res.json({ ok: true, userAgent: ua });
+    } catch (error) {
+      console.error('[SettingsController] getGlobalUA error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '获取全局UA失败' }));
+    }
+  }
+
+  async setGlobalUA(req, res) {
+    try {
+      const { userAgent } = req.body;
+      if (typeof userAgent !== 'string') {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: 'userAgent 必须为字符串' }));
+        return;
+      }
+      await this.uaManager.setGlobalUA(userAgent);
+      res.json({ ok: true, userAgent });
+    } catch (error) {
+      console.error('[SettingsController] setGlobalUA error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '设置全局UA失败' }));
+    }
+  }
+
+  async getChannelUA(req, res) {
+    try {
+      const channelId = req.query.channelId;
+      if (!channelId) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: '缺少 channelId' }));
+        return;
+      }
+      const ua = await this.uaManager.getChannelUA(channelId);
+      res.json({ ok: true, userAgent: ua });
+    } catch (error) {
+      console.error('[SettingsController] getChannelUA error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '获取频道UA失败' }));
+    }
+  }
+
+  async setChannelUA(req, res) {
+    try {
+      const { channelId, userAgent } = req.body;
+      if (!channelId) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: '缺少 channelId' }));
+        return;
+      }
+      await this.uaManager.setChannelUA(channelId, userAgent || null);
+      res.json({ ok: true, channelId, userAgent: userAgent || null });
+    } catch (error) {
+      console.error('[SettingsController] setChannelUA error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '设置频道UA失败' }));
+    }
+  }
+
+  async getEffectiveUA(req, res) {
+    try {
+      const channelId = req.query.channelId || null;
+      const ua = await this.uaManager.getEffectiveUA(channelId);
+      res.json({ ok: true, userAgent: ua });
+    } catch (error) {
+      console.error('[SettingsController] getEffectiveUA error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: false, error: '获取有效UA失败' }));
+    }
+  }
+
+  // ─── 原有设置 API ───
+
+  async getSettings(req, res) {
+    try {
+      const settings = await this.storage.getSettings();
+      res.json({ ok: true, data: settings });
+    } catch (error) {
+      console.error('[SettingsController] GetSettings error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取设置失败'
+      }));
+    }
+  }
+
+  async updateSettings(req, res) {
+    try {
+      const updates = req.body;
+      const currentSettings = await this.storage.getSettings();
+      
+      // 合并设置
+      const newSettings = { ...currentSettings, ...updates, updatedAt: new Date().toISOString() };
+      
+      await this.storage.saveSettings(newSettings);
+
+      res.json({ ok: true, data: newSettings });
+    } catch (error) {
+      console.error('[SettingsController] UpdateSettings error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '更新设置失败'
+      }));
+    }
+  }
+
+  async getCategories(req, res) {
+    try {
+      const categories = [
+        { id: 'general', name: '通用设置', items: ['language', 'theme', 'autoplay'] },
+        { id: 'proxy', name: '代理设置', items: ['proxyEnabled', 'proxyUrl', 'timeout'] },
+        { id: 'player', name: '播放器设置', items: ['defaultPlayer', 'vlcPath', 'networkCache'] },
+        { id: 'epg', name: 'EPG 设置', items: ['epgEnabled', 'defaultEpgSource'] },
+        { id: 'cache', name: '缓存设置', items: ['cacheEnabled', 'cacheTtl'] },
+        { id: 'security', name: '安全设置', items: ['authEnabled', 'sessionTimeout'] }
+      ];
+
+      res.json({ ok: true, data: categories });
+    } catch (error) {
+      console.error('[SettingsController] GetCategories error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取设置分类失败'
+      }));
+    }
+  }
+}
+
+module.exports = SettingsController;

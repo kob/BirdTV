@@ -1,0 +1,26 @@
+{
+  "name": "birdtv",
+  "version": "3.3.0",
+  "private": true,
+  "description": "BirdTV IPTV player with M3U support and admin management system",
+  "author": {
+    "name": "kob"
+  },
+  "scripts": {
+    "start": "npm run start:web:local",
+    "start:web": "node birdtv.js",
+    "start:web:local": "cross-env M3U_PROXY_STATIC_ROOT=web node birdtv.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "bcrypt": "^6.0.0",
+    "cross-env": "^7.0.3",
+    "dotenv": "^17.3.1",
+    "formidable": "^3.5.4",
+    "https-proxy-agent": "^7.0.6",
+    "jsonwebtoken": "^9.0.0",
+    "node-fetch": "^3.3.2",
+    "redis": "^4.6.0",
+    "xml2js": "^0.6.2"
+  }
+}

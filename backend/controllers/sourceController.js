@@ -1,0 +1,928 @@
+const M3uSource = require('../models/M3uSource');
+const EpgSource = require('../models/EpgSource');
+const http = require('http');
+const https = require('https');
+
+/**
+ * 源配置控制器
+ */
+class SourceController {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  // M3U 源管理
+  async getM3uSources(req, res) {
+    try {
+      const sources = await this.storage.getSources();
+      res.json({ ok: true, data: sources.m3u || [] });
+    } catch (error) {
+      console.error('[SourceController] GetM3uSources error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取 M3U 源列表失败'
+      }));
+    }
+  }
+
+  async getM3uSource(req, res) {
+    try {
+      const { id } = req.params;
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const source = (sources.m3u || []).find(s => s.id === id || s._id === id);
+
+      if (!source) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      res.json({ ok: true, data: source });
+    } catch (error) {
+      console.error('[SourceController] GetM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取 M3U 源失败'
+      }));
+    }
+  }
+
+  async createM3uSource(req, res) {
+    try {
+      const sourceData = req.body;
+
+      if (!sourceData.name || !sourceData.url) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: '源名称和 URL 为必填项'
+        }));
+      }
+
+      const source = new M3uSource(sourceData);
+      await this.storage.saveSource('m3u', source.toJSON());
+
+      res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, data: source.toJSON() }));
+    } catch (error) {
+      console.error('[SourceController] CreateM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '创建 M3U 源失败'
+      }));
+    }
+  }
+
+  async updateM3uSource(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const index = (sources.m3u || []).findIndex(s => s.id === id || s._id === id);
+
+      if (index === -1) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      const source = new M3uSource(sources.m3u[index]);
+      Object.assign(source, updateData);
+      source.updatedAt = new Date().toISOString();
+
+      await this.storage.saveSource('m3u', source.toJSON());
+
+      res.json({ ok: true, data: source.toJSON() });
+    } catch (error) {
+      console.error('[SourceController] UpdateM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '更新 M3U 源失败'
+      }));
+    }
+  }
+
+  async deleteM3uSource(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await this.storage.deleteSource('m3u', id);
+
+      if (!deleted) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      res.json({ ok: true, message: 'M3U 源已删除' });
+    } catch (error) {
+      console.error('[SourceController] DeleteM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '删除 M3U 源失败'
+      }));
+    }
+  }
+
+  async testM3uSource(req, res) {
+    try {
+      const { id } = req.params;
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const source = (sources.m3u || []).find(s => s.id === id || s._id === id);
+
+      if (!source) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      // 测试源可用性
+      const result = await this._testSourceUrl(source.url);
+
+      res.json({
+        ok: true,
+        data: {
+          id: source.id,
+          url: source.url,
+          ...result
+        }
+      });
+    } catch (error) {
+      console.error('[SourceController] TestM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '测试 M3U 源失败'
+      }));
+    }
+  }
+
+  async getM3uSourceChannels(req, res) {
+    try {
+      const { id } = req.params;
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const source = (sources.m3u || []).find(s => s.id === id || s._id === id);
+
+      if (!source) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      // 获取 M3U 内容并解析频道
+      const channels = await this._parseM3uChannels(source.url);
+
+      res.json({
+        ok: true,
+        data: channels
+      });
+    } catch (error) {
+      console.error('[SourceController] GetM3uSourceChannels error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取频道列表失败: ' + error.message
+      }));
+    }
+  }
+
+  // 解析 M3U 文件获取频道列表
+  async _parseM3uChannels(url) {
+    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
+    try {
+      const response = await fetch(url, { timeout: 30000 });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const content = await response.text();
+      const lines = content.split(/\r?\n/);
+      const channels = [];
+      let pendingName = '';
+      let pendingGroup = '';
+      let pendingTvgId = '';
+      let pendingTvgLogo = '';
+      let pendingKodiProps = {};
+      let pendingUserAgent = '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+
+        if (line.startsWith('#EXTINF:')) {
+          // 解析频道名称和属性
+          pendingName = '';
+          pendingGroup = '';
+          pendingTvgId = '';
+          pendingTvgLogo = '';
+          pendingKodiProps = {};
+          pendingUserAgent = '';
+          
+          // 提取分组信息
+          const groupMatch = line.match(/group-title="([^"]+)"/);
+          if (groupMatch) {
+            pendingGroup = groupMatch[1];
+          }
+          
+          // 提取 tvg-id
+          const tvgIdMatch = line.match(/tvg-id="([^"]+)"/);
+          if (tvgIdMatch) {
+            pendingTvgId = tvgIdMatch[1];
+          }
+          
+          // 提取 tvg-logo
+          const tvgLogoMatch = line.match(/tvg-logo="([^"]+)"/);
+          if (tvgLogoMatch) {
+            pendingTvgLogo = tvgLogoMatch[1];
+          }
+          
+          // 提取频道名称
+          const commaIndex = line.lastIndexOf(',');
+          if (commaIndex >= 0) {
+            pendingName = line.slice(commaIndex + 1).trim();
+          }
+          continue;
+        }
+
+        if (line.startsWith('#KODIPROP:')) {
+          // 解析 KODIPROP 信息
+          const propMatch = line.match(/^#KODIPROP:(.+?)=(.+)$/);
+          if (propMatch) {
+            pendingKodiProps[propMatch[1]] = propMatch[2];
+          }
+          continue;
+        }
+
+        if (line.startsWith('#EXTVLCOPT:http-user-agent=')) {
+          // 解析 EXTVLCOPT:http-user-agent 信息
+          const uaMatch = line.match(/^#EXTVLCOPT:http-user-agent=(.+)$/);
+          if (uaMatch) {
+            pendingUserAgent = uaMatch[1];
+          }
+          continue;
+        }
+
+        if (line.startsWith('#') || line.startsWith('<')) continue;
+
+        // 这是一个 URL 行
+        const channelUrl = line;
+        const name = pendingName || `频道 ${channels.length + 1}`;
+
+        // 构建频道对象
+        const channel = {
+          id: `temp_${Date.now()}_${channels.length}`,
+          name,
+          url: channelUrl,
+          group: pendingGroup,
+          drm: {}
+        };
+
+        // 添加 tvg-id 和 tvg-logo
+        if (pendingTvgId) channel.tvgId = pendingTvgId;
+        if (pendingTvgLogo) channel.tvgLogo = pendingTvgLogo;
+        if (pendingUserAgent) channel.userAgent = pendingUserAgent;
+
+        // 处理 KODIPROP 信息
+        if (Object.keys(pendingKodiProps).length > 0) {
+          // 处理 DASH MPD 相关信息
+          if (pendingKodiProps['inputstream.adaptive.manifest_type'] === 'mpd') {
+            channel.streamType = 'dash';
+            channel.playerType = 'shaka';
+          }
+
+          // 处理 ClearKey 信息
+          if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+              pendingKodiProps['inputstream.adaptive.license_key']) {
+            const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
+            const [kid, key] = licenseKey.split(':');
+            if (kid && key) {
+              channel.drm = {
+                clearKeys: {
+                  [kid]: key
+                }
+              };
+            }
+          }
+        }
+
+        channels.push(channel);
+        pendingName = '';
+        pendingGroup = '';
+        pendingTvgId = '';
+        pendingTvgLogo = '';
+        pendingKodiProps = {};
+        pendingUserAgent = '';
+      }
+
+      return channels;
+    } catch (error) {
+      console.error('[SourceController] _parseM3uChannels error:', error);
+      throw error;
+    }
+  }
+
+  async parseM3uUrl(req, res) {
+    try {
+      const { url } = req.body;
+      
+      if (!url) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: 'M3U 链接为必填项'
+        }));
+      }
+
+      // 解析 M3U 链接获取频道列表
+      const channels = await this._parseM3uChannels(url);
+
+      res.json({
+        ok: true,
+        data: channels
+      });
+    } catch (error) {
+      console.error('[SourceController] ParseM3uUrl error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '解析 M3U 链接失败: ' + error.message
+      }));
+    }
+  }
+
+  async parseM3uFile(req, res) {
+    try {
+      // 处理文件上传
+      const formidable = require('formidable');
+      const form = new formidable.IncomingForm();
+      form.keepExtensions = true;
+      form.parse(req, async (err, fields, files) => {
+        if (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({
+            ok: false,
+            error: 'validation_error',
+            message: '文件上传失败: ' + err.message
+          }));
+        }
+
+        const m3uFile = files.file;
+        if (!m3uFile) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({
+            ok: false,
+            error: 'validation_error',
+            message: '请选择M3U文件'
+          }));
+        }
+
+        // 读取文件内容
+        const fs = require('fs');
+        // 调试：打印文件对象结构
+        console.log('File object structure:', JSON.stringify(m3uFile, null, 2));
+        
+        // 处理文件对象可能是数组的情况
+        const fileObj = Array.isArray(m3uFile) ? m3uFile[0] : m3uFile;
+        if (!fileObj) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({
+            ok: false,
+            error: 'validation_error',
+            message: '无法获取文件对象'
+          }));
+        }
+        
+        // 尝试使用不同的属性名
+        const filePath = fileObj.filepath || fileObj.filePath || fileObj.path;
+        if (!filePath) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          return res.end(JSON.stringify({
+            ok: false,
+            error: 'validation_error',
+            message: '无法获取文件路径'
+          }));
+        }
+        const content = fs.readFileSync(filePath, 'utf8');
+        
+        // 解析M3U内容
+        const channels = this._parseM3uContent(content);
+
+        res.json({
+          ok: true,
+          data: channels
+        });
+      });
+    } catch (error) {
+      console.error('[SourceController] ParseM3uFile error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '解析 M3U 文件失败: ' + error.message
+      }));
+    }
+  }
+
+  // 解析M3U内容
+  _parseM3uContent(content) {
+    const lines = content.split(/\r?\n/);
+    const channels = [];
+    let pendingName = '';
+    let pendingGroup = '';
+    let pendingTvgId = '';
+    let pendingTvgLogo = '';
+    let pendingKodiProps = {};
+    let pendingUserAgent = '';
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      if (line.startsWith('#EXTINF:')) {
+        // 解析频道名称和属性
+        pendingName = '';
+        pendingGroup = '';
+        pendingTvgId = '';
+        pendingTvgLogo = '';
+        pendingKodiProps = {};
+        pendingUserAgent = '';
+        
+        // 提取分组信息
+        const groupMatch = line.match(/group-title="([^"]+)"/);
+        if (groupMatch) {
+          pendingGroup = groupMatch[1];
+        }
+        
+        // 提取 tvg-id
+        const tvgIdMatch = line.match(/tvg-id="([^"]+)"/);
+        if (tvgIdMatch) {
+          pendingTvgId = tvgIdMatch[1];
+        }
+        
+        // 提取 tvg-logo
+        const tvgLogoMatch = line.match(/tvg-logo="([^"]+)"/);
+        if (tvgLogoMatch) {
+          pendingTvgLogo = tvgLogoMatch[1];
+        }
+        
+        // 提取频道名称
+        const commaIndex = line.lastIndexOf(',');
+        if (commaIndex >= 0) {
+          pendingName = line.slice(commaIndex + 1).trim();
+        }
+        continue;
+      }
+
+      if (line.startsWith('#KODIPROP:')) {
+        // 解析 KODIPROP 信息
+        const propMatch = line.match(/^#KODIPROP:(.+?)=(.+)$/);
+        if (propMatch) {
+          pendingKodiProps[propMatch[1]] = propMatch[2];
+        }
+        continue;
+      }
+
+      if (line.startsWith('#EXTVLCOPT:http-user-agent=')) {
+        // 解析 EXTVLCOPT:http-user-agent 信息
+        const uaMatch = line.match(/^#EXTVLCOPT:http-user-agent=(.+)$/);
+        if (uaMatch) {
+          pendingUserAgent = uaMatch[1];
+        }
+        continue;
+      }
+
+      if (line.startsWith('#') || line.startsWith('<')) continue;
+
+      // 这是一个 URL 行
+      const channelUrl = line;
+      const name = pendingName || `频道 ${channels.length + 1}`;
+
+      // 构建频道对象
+      const channel = {
+        id: `temp_${Date.now()}_${channels.length}`,
+        name,
+        url: channelUrl,
+        group: pendingGroup,
+        drm: {}
+      };
+
+      // 添加 tvg-id 和 tvg-logo
+      if (pendingTvgId) channel.tvgId = pendingTvgId;
+      if (pendingTvgLogo) channel.tvgLogo = pendingTvgLogo;
+      if (pendingUserAgent) channel.userAgent = pendingUserAgent;
+
+      // 处理 KODIPROP 信息
+      if (Object.keys(pendingKodiProps).length > 0) {
+        // 处理 DASH MPD 相关信息
+        if (pendingKodiProps['inputstream.adaptive.manifest_type'] === 'mpd') {
+          channel.streamType = 'dash';
+          channel.playerType = 'shaka';
+        }
+
+        // 处理 ClearKey 信息
+        if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+            pendingKodiProps['inputstream.adaptive.license_key']) {
+          const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
+          const [kid, key] = licenseKey.split(':');
+          if (kid && key) {
+            channel.drm = {
+              clearKeys: {
+                [kid]: key
+              }
+            };
+          }
+        }
+      }
+
+      channels.push(channel);
+      pendingName = '';
+      pendingGroup = '';
+      pendingTvgId = '';
+      pendingTvgLogo = '';
+      pendingKodiProps = {};
+      pendingUserAgent = '';
+    }
+
+    return channels;
+  }
+
+  async importM3uSource(req, res) {
+    try {
+      const { id } = req.params;
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const source = (sources.m3u || []).find(s => s.id === id || s._id === id);
+
+      if (!source) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'M3U 源不存在'
+        }));
+      }
+
+      // 获取 M3U 内容并解析频道
+      const Channel = require('../models/Channel');
+      const sourceId = source.id || source._id;
+      const imported = await this._importChannelsFromM3U(source.url, sourceId);
+
+      res.json({
+        ok: true,
+        data: {
+          imported: imported.length,
+          sourceId: sourceId,
+          sourceName: source.name
+        }
+      });
+    } catch (error) {
+      console.error('[SourceController] ImportM3uSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '导入 M3U 源失败: ' + error.message
+      }));
+    }
+  }
+
+  // 从 M3U URL 导入频道
+  async _importChannelsFromM3U(url, sourceId) {
+    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+    const Channel = require('../models/Channel');
+
+    try {
+      const response = await fetch(url, { timeout: 30000 });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const content = await response.text();
+      const lines = content.split(/\r?\n/);
+      const channels = [];
+      let pendingName = '';
+      let pendingGroup = '';
+      let pendingTvgId = '';
+      let pendingTvgLogo = '';
+      let pendingKodiProps = {};
+      let pendingUserAgent = '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+
+        if (line.startsWith('#EXTINF:')) {
+          // 解析频道名称和属性
+          pendingName = '';
+          pendingGroup = '';
+          pendingTvgId = '';
+          pendingTvgLogo = '';
+          pendingKodiProps = {};
+          pendingUserAgent = '';
+          
+          // 提取分组信息
+          const groupMatch = line.match(/group-title="([^"]+)"/);
+          if (groupMatch) {
+            pendingGroup = groupMatch[1];
+          }
+          
+          // 提取 tvg-id
+          const tvgIdMatch = line.match(/tvg-id="([^"]+)"/);
+          if (tvgIdMatch) {
+            pendingTvgId = tvgIdMatch[1];
+          }
+          
+          // 提取 tvg-logo
+          const tvgLogoMatch = line.match(/tvg-logo="([^"]+)"/);
+          if (tvgLogoMatch) {
+            pendingTvgLogo = tvgLogoMatch[1];
+          }
+          
+          // 提取频道名称
+          const commaIndex = line.lastIndexOf(',');
+          if (commaIndex >= 0) {
+            pendingName = line.slice(commaIndex + 1).trim();
+          }
+          continue;
+        }
+
+        if (line.startsWith('#KODIPROP:')) {
+          // 解析 KODIPROP 信息
+          const propMatch = line.match(/^#KODIPROP:(.+?)=(.+)$/);
+          if (propMatch) {
+            pendingKodiProps[propMatch[1]] = propMatch[2];
+          }
+          continue;
+        }
+
+        if (line.startsWith('#EXTVLCOPT:http-user-agent=')) {
+          // 解析 EXTVLCOPT:http-user-agent 信息
+          const uaMatch = line.match(/^#EXTVLCOPT:http-user-agent=(.+)$/);
+          if (uaMatch) {
+            pendingUserAgent = uaMatch[1];
+          }
+          continue;
+        }
+
+        if (line.startsWith('#') || line.startsWith('<')) continue;
+
+        // 这是一个 URL 行
+        const channelUrl = line;
+        const name = pendingName || `频道 ${channels.length + 1}`;
+
+        // 构建频道数据
+        const channelData = {
+          name,
+          url: channelUrl,
+          sourceId: sourceId,
+          group: pendingGroup,
+          streamType: 'auto',
+          playerType: 'auto'
+        };
+
+        // 添加 tvg-id 和 tvg-logo
+        if (pendingTvgId) channelData.tvgId = pendingTvgId;
+        if (pendingTvgLogo) channelData.tvgLogo = pendingTvgLogo;
+        if (pendingUserAgent) channelData.userAgent = pendingUserAgent;
+
+        // 处理 KODIPROP 信息
+        if (Object.keys(pendingKodiProps).length > 0) {
+          // 处理 DASH MPD 相关信息
+          if (pendingKodiProps['inputstream.adaptive.manifest_type'] === 'mpd') {
+            channelData.streamType = 'dash';
+            channelData.playerType = 'shaka';
+          }
+
+          // 处理 ClearKey 信息
+          if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+              pendingKodiProps['inputstream.adaptive.license_key']) {
+            const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
+            const [kid, key] = licenseKey.split(':');
+            if (kid && key) {
+              channelData.drm = {
+                clearKeys: {
+                  [kid]: key
+                }
+              };
+            }
+          }
+        }
+
+        const channel = new Channel(channelData);
+        channels.push(channel.toJSON());
+        pendingName = '';
+        pendingGroup = '';
+        pendingTvgId = '';
+        pendingTvgLogo = '';
+        pendingKodiProps = {};
+        pendingUserAgent = '';
+      }
+
+      // 批量保存频道
+      for (const channelData of channels) {
+        await this.storage.saveChannel(channelData);
+      }
+
+      return channels;
+    } catch (error) {
+      console.error('[SourceController] _importChannelsFromM3U error:', error);
+      throw error;
+    }
+  }
+
+  // EPG 源管理
+  async getEpgSources(req, res) {
+    try {
+      const sources = await this.storage.getSources();
+      res.json({ ok: true, data: sources.epg || [] });
+    } catch (error) {
+      console.error('[SourceController] GetEpgSources error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取 EPG 源列表失败'
+      }));
+    }
+  }
+
+  async getEpgSource(req, res) {
+    try {
+      const { id } = req.params;
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const source = (sources.epg || []).find(s => s.id === id || s._id === id);
+
+      if (!source) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'EPG 源不存在'
+        }));
+      }
+
+      res.json({ ok: true, data: source });
+    } catch (error) {
+      console.error('[SourceController] GetEpgSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取 EPG 源失败'
+      }));
+    }
+  }
+
+  async createEpgSource(req, res) {
+    try {
+      const sourceData = req.body;
+
+      if (!sourceData.name || !sourceData.url) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: '源名称和 URL 为必填项'
+        }));
+      }
+
+      const source = new EpgSource(sourceData);
+      await this.storage.saveSource('epg', source.toJSON());
+
+      res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, data: source.toJSON() }));
+    } catch (error) {
+      console.error('[SourceController] CreateEpgSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '创建 EPG 源失败'
+      }));
+    }
+  }
+
+  async updateEpgSource(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const sources = await this.storage.getSources();
+      // 同时支持 id 和 _id 字段匹配
+      const index = (sources.epg || []).findIndex(s => s.id === id || s._id === id);
+
+      if (index === -1) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'EPG 源不存在'
+        }));
+      }
+
+      const source = new EpgSource(sources.epg[index]);
+      Object.assign(source, updateData);
+      source.updatedAt = new Date().toISOString();
+
+      await this.storage.saveSource('epg', source.toJSON());
+
+      res.json({ ok: true, data: source.toJSON() });
+    } catch (error) {
+      console.error('[SourceController] UpdateEpgSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '更新 EPG 源失败'
+      }));
+    }
+  }
+
+  async deleteEpgSource(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await this.storage.deleteSource('epg', id);
+
+      if (!deleted) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: 'EPG 源不存在'
+        }));
+      }
+
+      res.json({ ok: true, message: 'EPG 源已删除' });
+    } catch (error) {
+      console.error('[SourceController] DeleteEpgSource error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '删除 EPG 源失败'
+      }));
+    }
+  }
+
+  /**
+   * 测试源 URL 可用性
+   */
+  async _testSourceUrl(url) {
+    try {
+      const result = await proxyRequestToRemote(url, {
+        method: 'HEAD'
+      });
+
+      return {
+        status: 'success',
+        statusCode: result.status,
+        finalUrl: result.finalUrl,
+        cached: result.cached,
+        redirected: result.redirected
+      };
+    } catch (error) {
+      return {
+        status: 'error',
+        error: error.message
+      };
+    }
+  }
+}
+
+module.exports = SourceController;

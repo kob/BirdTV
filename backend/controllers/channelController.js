@@ -1,0 +1,372 @@
+const Channel = require('../models/Channel');
+
+/**
+ * 频道控制器
+ */
+class ChannelController {
+  constructor(storage) {
+    this.storage = storage;
+  }
+
+  async getChannels(req, res) {
+    try {
+      const channels = await this.storage.getChannels();
+      const sources = await this.storage.getSources();
+      const m3uSources = sources.m3u || [];
+
+      // 为每个频道添加源的默认播放器和代理模式信息
+      const enrichedChannels = channels.map(channel => {
+        if (channel.sourceId) {
+          const source = m3uSources.find(s => s.id === channel.sourceId);
+          if (source) {
+            return {
+              ...channel,
+              sourceDefaultPlayerType: source.defaultPlayerType,
+              sourceProxyMode: source.proxyMode,
+              sourceName: source.name
+            };
+          }
+        }
+        return channel;
+      });
+
+      res.json({ ok: true, data: enrichedChannels });
+    } catch (error) {
+      console.error('[ChannelController] GetChannels error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取频道列表失败'
+      }));
+    }
+  }
+
+  async getChannel(req, res) {
+    try {
+      const { id } = req.params;
+      const channels = await this.storage.getChannels();
+      const channel = channels.find(c => c.id === id);
+
+      if (!channel) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: '频道不存在'
+        }));
+      }
+
+      res.json({ ok: true, data: channel });
+    } catch (error) {
+      console.error('[ChannelController] GetChannel error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取频道失败'
+      }));
+    }
+  }
+
+  async createChannel(req, res) {
+    try {
+      const channelData = req.body;
+      
+      // 验证必需字段
+      if (!channelData.name || !channelData.url) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: '频道名称和 URL 为必填项'
+        }));
+      }
+
+      const channel = new Channel(channelData);
+      await this.storage.saveChannel(channel.toJSON());
+
+      res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ ok: true, data: channel.toJSON() }));
+    } catch (error) {
+      console.error('[ChannelController] CreateChannel error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '创建频道失败'
+      }));
+    }
+  }
+
+  async updateChannel(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const channels = await this.storage.getChannels();
+      const index = channels.findIndex(c => c.id === id);
+
+      if (index === -1) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: '频道不存在'
+        }));
+      }
+
+      const channel = new Channel(channels[index]);
+      channel.update(updateData);
+
+      await this.storage.saveChannel(channel.toJSON());
+
+      res.json({ ok: true, data: channel.toJSON() });
+    } catch (error) {
+      console.error('[ChannelController] UpdateChannel error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '更新频道失败'
+      }));
+    }
+  }
+
+  async deleteChannel(req, res) {
+    try {
+      const { id } = req.params;
+      const deleted = await this.storage.deleteChannel(id);
+
+      if (!deleted) {
+        res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'not_found',
+          message: '频道不存在'
+        }));
+      }
+
+      res.json({ ok: true, message: '频道已删除' });
+    } catch (error) {
+      console.error('[ChannelController] DeleteChannel error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '删除频道失败'
+      }));
+    }
+  }
+
+  async batchImportChannels(req, res) {
+    try {
+      const { channels } = req.body;
+
+      if (!Array.isArray(channels) || channels.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: 'channels 必须是非空数组'
+        }));
+      }
+
+      const results = [];
+      for (const channelData of channels) {
+        try {
+          const channel = new Channel(channelData);
+          await this.storage.saveChannel(channel.toJSON());
+          results.push({ success: true, id: channel.id });
+        } catch (error) {
+          results.push({ success: false, error: error.message });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      res.json({
+        ok: true,
+        data: {
+          total: channels.length,
+          success: successCount,
+          failed: channels.length - successCount,
+          results
+        }
+      });
+    } catch (error) {
+      console.error('[ChannelController] BatchImport error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '批量导入失败'
+      }));
+    }
+  }
+
+  async searchChannels(req, res) {
+    try {
+      const q = req.query.get('q');
+      const streamType = req.query.get('streamType');
+      const playerType = req.query.get('playerType');
+      const channels = await this.storage.getChannels();
+
+      let filtered = channels;
+
+      // 关键词搜索
+      if (q) {
+        const query = q.toLowerCase();
+        filtered = filtered.filter(c =>
+          c.name.toLowerCase().includes(query) ||
+          c.url.toLowerCase().includes(query)
+        );
+      }
+
+      // 流类型筛选
+      if (streamType) {
+        filtered = filtered.filter(c => c.streamType === streamType);
+      }
+
+      // 播放器类型筛选
+      if (playerType) {
+        filtered = filtered.filter(c => c.playerType === playerType);
+      }
+
+      res.json({ ok: true, data: filtered });
+    } catch (error) {
+      console.error('[ChannelController] SearchChannels error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '搜索频道失败'
+      }));
+    }
+  }
+
+  async batchDeleteChannels(req, res) {
+    try {
+      const { ids } = req.body;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: 'ids 必须是非空数组'
+        }));
+      }
+
+      const results = [];
+      for (const id of ids) {
+        try {
+          const deleted = await this.storage.deleteChannel(id);
+          results.push({ success: deleted, id });
+        } catch (error) {
+          results.push({ success: false, error: error.message, id });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      res.json({
+        ok: true,
+        data: {
+          total: ids.length,
+          success: successCount,
+          failed: ids.length - successCount,
+          results
+        }
+      });
+    } catch (error) {
+      console.error('[ChannelController] BatchDelete error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '批量删除失败'
+      }));
+    }
+  }
+
+  async batchUpdateChannels(req, res) {
+    try {
+      const { ids, data } = req.body;
+
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: 'ids 必须是非空数组'
+        }));
+      }
+
+      if (!data || typeof data !== 'object') {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'validation_error',
+          message: 'data 必须是非空对象'
+        }));
+      }
+
+      const results = [];
+      for (const id of ids) {
+        try {
+          const channels = await this.storage.getChannels();
+          const index = channels.findIndex(c => c.id === id);
+
+          if (index === -1) {
+            results.push({ success: false, error: '频道不存在', id });
+            continue;
+          }
+
+          const channel = new Channel(channels[index]);
+          channel.update(data);
+
+          await this.storage.saveChannel(channel.toJSON());
+          results.push({ success: true, id });
+        } catch (error) {
+          results.push({ success: false, error: error.message, id });
+        }
+      }
+
+      const successCount = results.filter(r => r.success).length;
+      res.json({
+        ok: true,
+        data: {
+          total: ids.length,
+          success: successCount,
+          failed: ids.length - successCount,
+          results
+        }
+      });
+    } catch (error) {
+      console.error('[ChannelController] BatchUpdate error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '批量更新失败'
+      }));
+    }
+  }
+
+  async getGroups(req, res) {
+    try {
+      const channels = await this.storage.getChannels();
+      const groups = [...new Set(channels.map(ch => ch.group || '未分组').filter(Boolean))];
+      res.json({ ok: true, data: groups.sort() });
+    } catch (error) {
+      console.error('[ChannelController] GetGroups error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取分组列表失败'
+      }));
+    }
+  }
+}
+
+module.exports = ChannelController;

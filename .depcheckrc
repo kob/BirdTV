@@ -1,0 +1,14 @@
+{
+  "ignores": [
+    "build",
+    "dist",
+    "coverage",
+    "*.min.js",
+    "*.wasm"
+  ],
+  "ignoreMatches": [
+    "esbuild",
+    "vite",
+    "prettier"
+  ]
+}
