@@ -237,7 +237,7 @@ function readFormSource(elements) {
     const playreadyLicense = elements.playreadyLicenseInput.value.trim();
     const userAgent = elements.userAgentInput ? elements.userAgentInput.value.trim() : "";
     const streamType = elements.streamTypeSelect ? normalizeStreamType(elements.streamTypeSelect.value, true) : 'auto';
-    const playerType = elements.playerTypeSelect.value;
+    const playerType = elements.stagePlayerTypeSelect ? elements.stagePlayerTypeSelect.value : 'auto';
     const vlcLinkMode = elements.vlcLinkModeSelect ? String(elements.vlcLinkModeSelect.value || '').trim() : '';
 
     if (!name || !url) {
@@ -305,8 +305,7 @@ function fillForm(elements, source) {
     if (safePlayerType === 'vlc') {
         safePlayerType = String(source.vlcLinkMode || '').trim() === 'direct' ? 'vlc-direct' : 'vlc-proxy';
     }
-    elements.playerTypeSelect.value = safePlayerType;
-    if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = elements.playerTypeSelect.value || 'auto';
+    if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = safePlayerType || 'auto';
 
     const clearKeys = source.drm && source.drm.clearKeys ? Object.entries(source.drm.clearKeys)[0] : null;
     elements.kidInput.value = clearKeys ? clearKeys[0] : "";
@@ -331,7 +330,6 @@ function clearForm(elements) {
         elements.vlcLinkModeSelect.value = String(localStorage.getItem(VLC_LINK_MODE_KEY) || 'proxy') === 'direct' ? 'direct' : 'proxy';
     }
     if (elements.vlcPathInput) elements.vlcPathInput.value = '';
-    elements.playerTypeSelect.value = "auto";
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = "auto";
     updateVlcLinkModeLabel(null, elements);
 }
@@ -357,12 +355,11 @@ function playWithForcedVlcMode(elements, vlcMode) {
     if (!source) return;
     source.playerType = vlcMode === 'direct' ? 'vlc-direct' : 'vlc-proxy';
     source.vlcLinkMode = vlcMode;
-    if (elements.playerTypeSelect) elements.playerTypeSelect.value = source.playerType;
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = source.playerType;
     if (elements.vlcLinkModeSelect) elements.vlcLinkModeSelect.value = vlcMode;
     localStorage.setItem(VLC_LINK_MODE_KEY, vlcMode);
     updateVlcLinkModeLabel(source, elements);
-    updateStatus(elements, `准备使用 VLC${vlcMode === 'direct' ? '直链' : '代理'}播放`, 'VLC准备');
+    updateStatus(elements, `准备使用 VLC${vlcMode === 'direct' ? '直链' : '代理'}播放`, 'VLC 准备');
     playSource(source, elements);
 }
 
@@ -577,16 +574,11 @@ function bindEvents(elements) {
     });
 
     // 播放器类型
-    if (elements.playerTypeSelect && elements.stagePlayerTypeSelect) {
-        elements.stagePlayerTypeSelect.value = elements.playerTypeSelect.value || 'auto';
-
-        elements.playerTypeSelect.addEventListener('change', () => {
-            elements.stagePlayerTypeSelect.value = elements.playerTypeSelect.value || 'auto';
-        });
+    if (elements.stagePlayerTypeSelect) {
+        elements.stagePlayerTypeSelect.value = 'auto';
 
         elements.stagePlayerTypeSelect.addEventListener('change', async () => {
             const selected = elements.stagePlayerTypeSelect.value || 'auto';
-            elements.playerTypeSelect.value = selected;
             if (state.currentIndex >= 0 && state.currentIndex < state.channels.length) {
                 const channel = state.channels[state.currentIndex];
                 if (selected === 'auto') delete channel.playerType;

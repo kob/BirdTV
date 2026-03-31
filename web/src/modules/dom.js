@@ -24,7 +24,6 @@ export function getElements() {
         m3uImportTypeSelect: document.getElementById("m3uImportTypeSelect"),
         vlcLinkModeSelect: document.getElementById("vlcLinkModeSelect"),
         vlcPathInput: document.getElementById("vlcPathInput"),
-        playerTypeSelect: document.getElementById("playerTypeSelect"),
         stagePlayerTypeSelect: document.getElementById("stagePlayerTypeSelect"),
         searchInput: document.getElementById("searchInput"),
         jsonInput: document.getElementById("jsonInput"),
