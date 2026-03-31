@@ -455,6 +455,8 @@ class ExportController {
       m3uContent = m3uContent.replace(/(https?:\/\/[^\s]*\/m3u-proxy\?url=[^\s]*)/g, (match, url) => {
         console.log('[DownloadByShortCode] Processing URL:', url);
         
+        let processedUrl = url;
+        
         try {
           // 解析 URL 参数
           const urlObj = new URL(url);
@@ -471,20 +473,18 @@ class ExportController {
             // 移除旧的 auth_token 和 link_id
             urlObj.searchParams.delete('auth_token');
             urlObj.searchParams.delete('link_id');
+            
+            // 使用处理后的 URL
+            processedUrl = urlObj.toString();
+            console.log('[DownloadByShortCode] Processed URL:', processedUrl);
           }
         } catch (e) {
           console.log('[DownloadByShortCode] URL parse error:', e.message);
         }
         
-        // Check if URL already has auth parameters
-        if (url.includes('auth_token=')) {
-          console.log('[DownloadByShortCode] URL already has auth_token, skipping');
-          return url;
-        }
-        
-        // Add auth parameters
-        const separator = url.includes('?') ? '&' : '?';
-        const newUrl = `${url}${separator}auth_token=${encodedToken}&link_id=${linkRecord.id}`;
+        // Add auth parameters to processed URL
+        const separator = processedUrl.includes('?') ? '&' : '?';
+        const newUrl = `${processedUrl}${separator}auth_token=${encodedToken}&link_id=${linkRecord.id}`;
         console.log('[DownloadByShortCode] New URL:', newUrl);
         return newUrl;
       });
