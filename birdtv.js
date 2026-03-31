@@ -1392,6 +1392,7 @@ async function authMiddleware(req, res, config, next) {
   let isValid = false;
   let tokenPayload = null;
   let isExportToken = false;
+  let isLinkToken = false;
   try {
     const decoded = tokenService.decodeToken(token);
     
@@ -1402,6 +1403,13 @@ async function authMiddleware(req, res, config, next) {
       tokenPayload = decoded;
       isExportToken = true;
       console.log('[Auth Middleware] Validated export token:', decoded);
+    } else if (decoded.linkId) {
+      // 如果是短链接 Token（包含 linkId），只验证签名和过期时间
+      tokenService.verifyToken(decoded);
+      isValid = true;
+      tokenPayload = decoded;
+      isLinkToken = true;
+      console.log('[Auth Middleware] Validated link token:', decoded);
     } else {
       // 否则使用 auth 模块验证（JWT Token）
       isValid = await auth.isTokenValid(token);
@@ -1425,14 +1433,14 @@ async function authMiddleware(req, res, config, next) {
   }
 
   // 获取用户信息
-  if (isExportToken && tokenPayload) {
-    // 导出 Token，直接从 payload 中提取用户信息
+  if ((isExportToken || isLinkToken) && tokenPayload) {
+    // 导出 Token 或短链接 Token，直接从 payload 中提取用户信息
     req.user = {
-      id: tokenPayload.userId || 'admin',
-      username: tokenPayload.userId || 'admin',
-      role: 'admin'  // 导出 Token 默认给予 admin 角色
+      id: tokenPayload.userId || tokenPayload.linkId || 'admin',
+      username: tokenPayload.userId || tokenPayload.shortCode || 'link',
+      role: 'admin'  // 导出/短链接 Token 默认给予 admin 角色
     };
-    console.log('[Auth Middleware] Set user from export token:', req.user);
+    console.log('[Auth Middleware] Set user from token:', req.user);
   } else {
     // JWT Token，使用 auth 模块获取用户信息
     req.user = await auth.getUserInfo(token);
