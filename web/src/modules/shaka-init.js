@@ -10,20 +10,62 @@ import { pushDiagnosticEvent } from './diagnostics.js';
 import { toSameOriginM3UProxyUrl } from './proxy.js';
 
 export async function initShakaPlayer(elements) {
+    const startTime = performance.now();
+    
     if (!window.shaka) { if (elements.statusText) elements.statusText.textContent = '播放器库加载失败'; return; }
 
     shaka.polyfill.installAll();
     if (!shaka.Player.isBrowserSupported()) { if (elements.statusText) elements.statusText.textContent = '浏览器不支持 Shaka'; return; }
 
+    // 快速清理旧实例
+    if (state.player) {
+        try { 
+            if (state.overlay) { state.overlay.destroy(); state.overlay = null; }
+            await state.player.unload();
+            await state.player.detach();
+            state.player.destroy();
+        } catch (e) { /* ignore */ }
+        state.player = null;
+    }
+
     state.player = new shaka.Player();
     await state.player.attach(elements.video);
     state.overlay = new shaka.ui.Overlay(state.player, elements.video.parentElement, elements.video);
 
+    // 优化配置：针对直播场景优化首屏速度
     state.player.configure({
-        manifest: { retryParameters: SHAKA_RETRY, defaultPresentationDelay: 0 },
+        manifest: { 
+            retryParameters: SHAKA_RETRY, 
+            defaultPresentationDelay: 0,
+            availabilityWindowOverride: 30, // 限制可用窗口，减少加载时间
+            disableAudio: false,
+            disableVideo: false
+        },
         drm: { retryParameters: SHAKA_RETRY },
-        streaming: { retryParameters: SHAKA_RETRY, stallEnabled: true, stallThreshold: 3, stallSkip: 0.1, safeSeekOffset: 5, rebufferingGoal: 8, bufferingGoal: 8, bufferBehind: 30, ignoreTextStreamFailures: true },
-        abr: { enabled: true }
+        streaming: { 
+            retryParameters: SHAKA_RETRY, 
+            stallEnabled: true, 
+            stallThreshold: 2, // 减少卡顿检测阈值（3→2）
+            stallSkip: 0.1, 
+            safeSeekOffset: 3, // 减少安全搜索偏移（5→3）
+            rebufferingGoal: 5, // 减少重缓冲目标（8→5）
+            bufferingGoal: 5, // 减少缓冲目标（8→5）
+            bufferBehind: 20, // 减少后方缓冲区（30→20）
+            ignoreTextStreamFailures: true,
+            // 直播优化
+            liveSyncDuration: 3, // 直播同步延迟（默认 30，减少到 3）
+            liveSyncInterval: 0.5, // 直播同步检查间隔（默认 1，减少到 0.5）
+            // 减少初始加载延迟
+            minBytesReceived: 0,
+            minBytesToShift: 0
+        },
+        abr: { 
+            enabled: true,
+            defaultBandwidthEstimate: 5000000, // 默认带宽估计 5Mbps
+            switchInterval: 2, // 减少切换间隔（默认 5，减少到 2）
+            bandwidthDowngradeTarget: 0.95, // 带宽降级目标
+            bandwidthUpgradeTarget: 0.85 // 带宽升级目标
+        }
     });
 
     const networkingEngine = state.player.getNetworkingEngine();
@@ -94,6 +136,17 @@ export async function initShakaPlayer(elements) {
         const activePlayer = String(state.currentPlayerType || "").trim().toLowerCase();
         if (activePlayer && activePlayer !== "shaka") return;
         if (elements.statusText) elements.statusText.textContent = formatPlaybackError(detail);
+    });
+    
+    // 性能监控
+    state.player.addEventListener('loaded', () => {
+        const loadTime = performance.now() - startTime;
+        console.log(`[Shaka] 播放器加载完成，耗时：${loadTime.toFixed(0)}ms`);
+    });
+    
+    state.player.addEventListener('playing', () => {
+        const playTime = performance.now() - startTime;
+        console.log(`[Shaka] 开始播放，总耗时：${playTime.toFixed(0)}ms`);
     });
 }
 
