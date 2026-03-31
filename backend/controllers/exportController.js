@@ -11,7 +11,7 @@ class ExportController {
 
   async exportChannels(req, res) {
     try {
-      const { channelIds, description = '' } = req.body;
+      const { channelIds, description = '', useShortLink = false } = req.body;
       
       if (!channelIds || !Array.isArray(channelIds)) {
         return res.status(400).json({ ok: false, message: 'Channel IDs are required' });
@@ -39,6 +39,77 @@ class ExportController {
 
       // Generate M3U content (完整格式，包含 DRM 信息和原始 URL)
       let m3uContent = '#EXTM3U\n';
+      
+      // 如果使用短链接模式，先创建短链接
+      let shortLinkData = null;
+      if (useShortLink) {
+        const linkModel = require('../models/Link');
+        const exportId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const filename = `${exportId}.m3u`;
+        const exportDir = path.resolve(__dirname, '../../data/exports');
+        const filePath = path.join(exportDir, filename);
+        
+        // 先写入临时 M3U 文件（不含 Token）
+        let tempM3uContent = '#EXTM3U\n';
+        channels.forEach(channel => {
+          const tvgId = channel.tvgId || '';
+          const tvgName = channel.name || '';
+          const tvgLogo = channel.tvgLogo || '';
+          const groupTitle = channel.group || '未分组';
+
+          let extinfLine = `#EXTINF:-1 tvg-id="${tvgId}" tvg-name="${tvgName}"`;
+          if (tvgLogo) {
+            extinfLine += ` tvg-logo="${tvgLogo}"`;
+          }
+          extinfLine += ` group-title="${groupTitle}",${tvgName}`;
+          tempM3uContent += extinfLine + '\n';
+
+          if (channel.drm && channel.drm.clearKeys) {
+            m3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
+            m3uContent += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n';
+            const firstKey = Object.entries(channel.drm.clearKeys)[0];
+            if (firstKey) {
+              const [kid, key] = firstKey;
+              m3uContent += `#KODIPROP:inputstream.adaptive.license_key=${kid}:${key}\n`;
+            }
+          }
+          tempM3uContent += `${channel.url}\n`;
+        });
+        
+        fs.writeFileSync(filePath, tempM3uContent);
+        const fileSize = fs.statSync(filePath).size;
+        
+        // 创建导出记录
+        const exportRecord = exportModel.create({
+          id: exportId,
+          filename,
+          userId: req.user?.username || 'admin',
+          description: description,
+          fileSize,
+          exportToken: encodedToken,
+          tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
+        });
+        
+        // 创建短链接
+        const linkRecord = linkModel.create({
+          exportId,
+          filename,
+          userId: req.user?.username || 'admin',
+          username: 'export',
+          description: description,
+          expiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          maxDownloads: 999999,
+          ipBinding: null
+        });
+        
+        const shortCode = linkRecord.shortCode;
+        shortLinkData = {
+          shortCode,
+          shortLink: `${baseUrl}/link/${shortCode}`
+        };
+      }
+      
+      // 生成 M3U 内容
       channels.forEach(channel => {
         const tvgId = channel.tvgId || '';
         const tvgName = channel.name || '';
@@ -56,7 +127,6 @@ class ExportController {
         if (channel.drm && channel.drm.clearKeys) {
           m3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
           m3uContent += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n';
-          // 提取第一个 clearKey
           const firstKey = Object.entries(channel.drm.clearKeys)[0];
           if (firstKey) {
             const [kid, key] = firstKey;
@@ -64,13 +134,19 @@ class ExportController {
           }
         }
 
-        // 如果是代理 URL，添加 auth_token 参数
-        let finalUrl = channel.url;
-        if (finalUrl.includes('/m3u-proxy') || finalUrl.includes('/stream/proxy')) {
-          const separator = finalUrl.includes('?') ? '&' : '?';
-          finalUrl = `${finalUrl}${separator}auth_token=${encodedToken}`;
+        // 如果使用短链接模式，使用短链接；否则使用代理 URL + auth_token
+        if (useShortLink && shortLinkData) {
+          // 短链接模式：直接使用短链接（会在访问时动态生成 Token）
+          m3uContent += `${shortLinkData.shortLink}\n`;
+        } else {
+          // 传统模式：为代理 URL 添加 auth_token
+          let finalUrl = channel.url;
+          if (finalUrl.includes('/m3u-proxy') || finalUrl.includes('/stream/proxy')) {
+            const separator = finalUrl.includes('?') ? '&' : '?';
+            finalUrl = `${finalUrl}${separator}auth_token=${encodedToken}`;
+          }
+          m3uContent += `${finalUrl}\n`;
         }
-        m3uContent += `${finalUrl}\n`;
       });
 
       // Generate export ID and filename
@@ -378,6 +454,27 @@ class ExportController {
       // 使用更通用的正则表达式匹配代理 URL，支持 http 和 https，支持任何主机名
       m3uContent = m3uContent.replace(/(https?:\/\/[^\s]*\/m3u-proxy\?url=[^\s]*)/g, (match, url) => {
         console.log('[DownloadByShortCode] Processing URL:', url);
+        
+        try {
+          // 解析 URL 参数
+          const urlObj = new URL(url);
+          const originalUrl = urlObj.searchParams.get('url');
+          
+          if (originalUrl) {
+            // 清理原始 URL 中的 token 参数（避免冲突）
+            const cleanOriginalUrl = originalUrl.replace(/[?&](token|auth|key|secret|sig|signature)=[^&]*/gi, '');
+            console.log('[DownloadByShortCode] Cleaned original URL:', cleanOriginalUrl);
+            
+            // 重新构建 BirdTV 代理 URL
+            urlObj.searchParams.set('url', cleanOriginalUrl);
+            
+            // 移除旧的 auth_token 和 link_id
+            urlObj.searchParams.delete('auth_token');
+            urlObj.searchParams.delete('link_id');
+          }
+        } catch (e) {
+          console.log('[DownloadByShortCode] URL parse error:', e.message);
+        }
         
         // Check if URL already has auth parameters
         if (url.includes('auth_token=')) {
