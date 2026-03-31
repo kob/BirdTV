@@ -1363,11 +1363,17 @@ async function authMiddleware(req, res, config, next) {
     token = req.query.token;
   }
 
+  // 4. 从 auth_token 参数获取（兼容导出的 M3U 链接）
+  if (!token && req.query && req.query.auth_token) {
+    token = req.query.auth_token;
+  }
+
   // 调试日志
   if (isProxyRequest) {
     console.log('[Auth Middleware] Path:', req.url);
     console.log('[Auth Middleware] Has Auth Header:', !!authHeader);
     console.log('[Auth Middleware] Has Cookie:', !!req.headers.cookie);
+    console.log('[Auth Middleware] Has auth_token:', !!(req.query && req.query.auth_token));
     console.log('[Auth Middleware] Token Found:', !!token);
   }
 
@@ -1605,6 +1611,9 @@ function createAppServer(configInput = {}) {
 
       // 代理接口（需要认证）
       if (pathname === '/m3u-proxy' || pathname === '/tv-iill' || pathname.startsWith('/tv-iill/') || pathname.startsWith('/m3u-remote/')) {
+        // 解析查询参数（供 authMiddleware 使用）
+        req.query = url.searchParams;
+        
         await authMiddleware(req, res, config, async () => {
           if (pathname.startsWith('/m3u-remote/')) {
             const remotePath = pathname.slice('/m3u-remote'.length) + url.search;
