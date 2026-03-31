@@ -579,16 +579,25 @@ function bindEvents(elements) {
 
         elements.stagePlayerTypeSelect.addEventListener('change', async () => {
             const selected = elements.stagePlayerTypeSelect.value || 'auto';
+            console.log('[PlayerTypeChange] 用户选择播放器:', selected);
+            
             if (state.currentIndex >= 0 && state.currentIndex < state.channels.length) {
                 const channel = state.channels[state.currentIndex];
                 if (selected === 'auto') delete channel.playerType;
                 else channel.playerType = selected;
                 persistChannels(state.channels);
                 renderPlaylist(elements);
+                
+                // 直接使用当前频道的信息，而不是从表单读取
+                console.log('[PlayerTypeChange] 更新频道播放器类型:', channel.name, '->', channel.playerType || 'auto');
+                await playSource(channel, elements);
+            } else {
+                // 没有正在播放的频道，从表单读取
+                const source = readFormSource(elements);
+                if (!source) { updateStatus(elements, '已切换播放器类型，请填写频道并点击播放', '已切换'); return; }
+                if (selected !== 'auto') source.playerType = selected;
+                await playSource(source, elements);
             }
-            const source = readFormSource(elements);
-            if (!source) { updateStatus(elements, '已切换播放器类型，请填写频道并点击播放', '已切换'); return; }
-            await playSource(source, elements);
         });
     }
 
