@@ -3698,16 +3698,34 @@
     }
 
     async function saveSettings() {
-      const data = {
-        defaultPlayer: document.getElementById('settingPlayer').value,
-        cacheM3uTtl: parseInt(document.getElementById('settingCacheM3u').value) || 10,
-        cacheEpgTtl: parseInt(document.getElementById('settingCacheEpg').value) || 30,
-        timeout: parseInt(document.getElementById('settingTimeout').value) || 40,
-        playbackMode: document.getElementById('settingPlaybackMode').value,
-        m3uProxyAuth: document.getElementById('settingM3uProxyAuth').value === 'true'
-      };
-      const res = await api('/settings', { method: 'PUT', body: JSON.stringify(data) });
-      if (res && res.ok) toast('设置已保存', 'success'); else toast('保存失败', 'error');
+      try {
+        const data = {
+          defaultPlayer: document.getElementById('settingPlayer').value,
+          cacheM3uTtl: parseInt(document.getElementById('settingCacheM3u').value) || 10,
+          cacheEpgTtl: parseInt(document.getElementById('settingCacheEpg').value) || 30,
+          timeout: parseInt(document.getElementById('settingTimeout').value) || 40,
+          playbackMode: document.getElementById('settingPlaybackMode').value,
+          m3uProxyAuth: document.getElementById('settingM3uProxyAuth').value === 'true'
+        };
+        
+        console.log('[Settings] 保存设置:', data);
+        
+        const res = await api('/settings', { method: 'PUT', body: JSON.stringify(data) });
+        
+        console.log('[Settings] 响应:', res);
+        
+        if (res && res.ok) {
+          toast('设置已保存', 'success');
+          // 重新加载设置以确保显示最新值
+          loadSettings();
+        } else {
+          console.error('[Settings] 保存失败:', res);
+          toast('保存失败：' + (res?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('[Settings] 保存异常:', error);
+        toast('保存失败：' + error.message, 'error');
+      }
     }
 
     // ========== 分组与 UA 管理 ==========
