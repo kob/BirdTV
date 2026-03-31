@@ -19,6 +19,7 @@ const { execSync, spawn, spawnSync } = require('child_process');
 
 // 引入授权模块
 const auth = require('./auth');
+const tokenService = require('./backend/services/tokenService');
 
 // 导入存储服务
 const StorageService = require('./backend/services/storageService');
@@ -1387,7 +1388,29 @@ async function authMiddleware(req, res, config, next) {
     return;
   }
 
-  const isValid = await auth.isTokenValid(token);
+  // 尝试解码 Token，判断类型
+  let isValid = false;
+  let tokenPayload = null;
+  let isExportToken = false;
+  try {
+    const decoded = tokenService.decodeToken(token);
+    
+    // 如果是导出 Token（type: 'export'），使用 tokenService 验证
+    if (decoded.type === 'export') {
+      tokenService.verifyToken(decoded);
+      isValid = true;
+      tokenPayload = decoded;
+      isExportToken = true;
+      console.log('[Auth Middleware] Validated export token:', decoded);
+    } else {
+      // 否则使用 auth 模块验证（JWT Token）
+      isValid = await auth.isTokenValid(token);
+    }
+  } catch (e) {
+    // Token 解码失败，尝试用 auth 验证（可能是 JWT）
+    isValid = await auth.isTokenValid(token);
+  }
+  
   if (!isValid) {
     res.writeHead(401, {
       'Content-Type': 'application/json; charset=utf-8',
@@ -1401,7 +1424,19 @@ async function authMiddleware(req, res, config, next) {
     return;
   }
 
-  req.user = await auth.getUserInfo(token);
+  // 获取用户信息
+  if (isExportToken && tokenPayload) {
+    // 导出 Token，直接从 payload 中提取用户信息
+    req.user = {
+      id: tokenPayload.userId || 'admin',
+      username: tokenPayload.userId || 'admin',
+      role: 'admin'  // 导出 Token 默认给予 admin 角色
+    };
+    console.log('[Auth Middleware] Set user from export token:', req.user);
+  } else {
+    // JWT Token，使用 auth 模块获取用户信息
+    req.user = await auth.getUserInfo(token);
+  }
   await next();
 }
 
