@@ -1276,6 +1276,31 @@ function createApiRouter(controllers) {
       return settingsController.getCategories(req, res);
     }
 
+    // GET /api/settings/ua/global - 获取全局 UA
+    if (url === '/api/settings/ua/global' && method === 'GET') {
+      return settingsController.getGlobalUA(req, res);
+    }
+
+    // POST /api/settings/ua/global - 设置全局 UA
+    if (url === '/api/settings/ua/global' && method === 'POST') {
+      return settingsController.setGlobalUA(req, res);
+    }
+
+    // GET /api/settings/ua/channel - 获取频道 UA
+    if (url === '/api/settings/ua/channel' && method === 'GET') {
+      return settingsController.getChannelUA(req, res);
+    }
+
+    // POST /api/settings/ua/channel - 设置频道 UA
+    if (url === '/api/settings/ua/channel' && method === 'POST') {
+      return settingsController.setChannelUA(req, res);
+    }
+
+    // GET /api/settings/ua/effective - 获取有效 UA
+    if (url === '/api/settings/ua/effective' && method === 'GET') {
+      return settingsController.getEffectiveUA(req, res);
+    }
+
     // 未匹配的路由
     res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: 'not_found', message: 'API 路由不存在' }));
