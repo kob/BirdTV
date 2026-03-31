@@ -51,13 +51,8 @@ export async function initShakaPlayer(elements) {
             rebufferingGoal: 5, // 减少重缓冲目标（8→5）
             bufferingGoal: 5, // 减少缓冲目标（8→5）
             bufferBehind: 20, // 减少后方缓冲区（30→20）
-            ignoreTextStreamFailures: true,
-            // 直播优化
-            liveSyncDuration: 3, // 直播同步延迟（默认 30，减少到 3）
-            liveSyncInterval: 0.5, // 直播同步检查间隔（默认 1，减少到 0.5）
-            // 减少初始加载延迟
-            minBytesReceived: 0,
-            minBytesToShift: 0
+            ignoreTextStreamFailures: true
+            // 注：liveSyncDuration 和 liveSyncInterval 在 Shaka Player v4.x 中已移除
         },
         abr: { 
             enabled: true,
