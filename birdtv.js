@@ -756,13 +756,20 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
   }
 
   if (method !== 'HEAD' && shouldRewriteM3u(payload, remoteUrl)) {
+    console.log('[M3U Rewrite] Triggered! Content-Type:', payload.headers['content-type']);
+    console.log('[M3U Rewrite] Final URL:', payload.finalUrl);
+    console.log('[M3U Rewrite] Remote URL:', remoteUrl);
     try {
       const sourceText = payload.body.toString('utf8');
       // 从原始请求 URL 中提取 auth_token、link_id 和 channel_id
       const authToken = url.searchParams.get('auth_token');
       const linkId = url.searchParams.get('link_id');
       const channelId = url.searchParams.get('channel_id');
+      console.log('[M3U Rewrite] authToken:', authToken ? 'present' : 'missing');
+      console.log('[M3U Rewrite] linkId:', linkId || 'missing');
+      console.log('[M3U Rewrite] Input sample:', sourceText.substring(0, 300));
       const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, authToken, linkId, channelId);
+      console.log('[M3U Rewrite] Output sample:', rewritten.substring(0, 300));
       payload.body = Buffer.from(rewritten, 'utf8');
       payload.headers = {
         ...payload.headers,
@@ -779,6 +786,8 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
         error: String(error && error.message ? error.message : error)
       });
     }
+  } else {
+    console.log('[M3U Rewrite] NOT triggered. method:', method, 'shouldRewriteM3u:', shouldRewriteM3u(payload, remoteUrl));
   }
 
   const headers = {
