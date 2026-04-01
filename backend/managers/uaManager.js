@@ -5,7 +5,8 @@
 
 const UA_SETTINGS_KEY = 'globalUserAgent';
 const CHANNEL_UA_SETTINGS_KEY = 'channelUserAgents';
-const DEFAULT_UA = 'okhttp';
+// 从环境变量读取默认 UA，支持 BIRDTV_DEFAULT_UA 和 M3U_PROXY_DEFAULT_UA
+const DEFAULT_UA = process.env.BIRDTV_DEFAULT_UA || process.env.M3U_PROXY_DEFAULT_UA || 'okhttp';
 
 class UAManager {
   constructor(storage) {

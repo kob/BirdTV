@@ -349,7 +349,7 @@ function shouldRewriteM3u(payload, remoteUrl) {
   return finalLower.includes('.m3u8') || finalLower.includes('.m3u') || remoteLower.includes('.m3u8') || remoteLower.includes('.m3u');
 }
 
-function buildLocalProxyUrl(targetUrl, userAgent, authToken = null) {
+function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = null) {
   let out = `/m3u-proxy?url=${encodeURIComponent(targetUrl)}`;
   if (userAgent) {
     out += `&ua=${encodeURIComponent(String(userAgent))}`;
@@ -357,6 +357,10 @@ function buildLocalProxyUrl(targetUrl, userAgent, authToken = null) {
   // 添加认证参数（如果有，用于导出的 M3U）
   if (authToken) {
     out += `&auth_token=${encodeURIComponent(authToken)}`;
+  }
+  // 添加 link_id 参数（如果有）
+  if (linkId) {
+    out += `&link_id=${encodeURIComponent(linkId)}`;
   }
   return out;
 }
@@ -372,7 +376,7 @@ function toAbsoluteUrl(raw, baseUrl) {
   }
 }
 
-function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null) {
+function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId = null) {
   const lines = String(inputText || '').split(/\r?\n/);
   return lines
     .map((line) => {
@@ -383,13 +387,13 @@ function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null) {
         return line.replace(/URI="([^"]+)"/g, (match, uri) => {
           const abs = toAbsoluteUrl(uri, baseUrl);
           if (!/^https?:/i.test(abs)) return match;
-          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken)}"`;
+          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken, linkId)}"`;
         });
       }
 
       const abs = toAbsoluteUrl(trimmed, baseUrl);
       if (!/^https?:/i.test(abs)) return line;
-      return buildLocalProxyUrl(abs, userAgent, authToken);
+      return buildLocalProxyUrl(abs, userAgent, authToken, linkId);
     })
     .join('\n');
 }
@@ -751,9 +755,22 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
   if (method !== 'HEAD' && shouldRewriteM3u(payload, remoteUrl)) {
     try {
       const sourceText = payload.body.toString('utf8');
-      // 从原始请求 URL 中提取 auth_token（如果存在，用于导出的 M3U）
-      const authToken = url.searchParams.get('auth_token');
-      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, authToken);
+      // 从原始请求 URL 中提取 auth_token 和 link_id（如果存在，用于导出的 M3U）
+      const reqUrl = new URL(clientReq.url, `http://${clientReq.headers.host || 'localhost'}`);
+      const authToken = reqUrl.searchParams.get('auth_token');
+      const linkId = reqUrl.searchParams.get('link_id');
+      console.log('[M3U Rewrite] Request URL:', clientReq.url);
+      console.log('[M3U Rewrite] Extracted auth_token:', authToken ? 'YES (' + authToken.substring(0, 20) + '...)' : 'NO');
+      console.log('[M3U Rewrite] Extracted link_id:', linkId || 'NO');
+      
+      // 构建包含 auth_token 和 link_id 的代理 URL
+      const rewriteAuthToken = authToken;
+      const rewriteLinkId = linkId;
+      
+      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
+      console.log('[M3U Rewrite] First 10 lines of rewritten content:');
+      const lines = rewritten.split('\n').slice(0, 10);
+      lines.forEach((line, i) => console.log(`  Line ${i}: ${line}`));
       payload.body = Buffer.from(rewritten, 'utf8');
       payload.headers = {
         ...payload.headers,
