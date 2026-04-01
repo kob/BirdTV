@@ -349,10 +349,14 @@ function shouldRewriteM3u(payload, remoteUrl) {
   return finalLower.includes('.m3u8') || finalLower.includes('.m3u') || remoteLower.includes('.m3u8') || remoteLower.includes('.m3u');
 }
 
-function buildLocalProxyUrl(targetUrl, userAgent) {
+function buildLocalProxyUrl(targetUrl, userAgent, authToken = null) {
   let out = `/m3u-proxy?url=${encodeURIComponent(targetUrl)}`;
   if (userAgent) {
     out += `&ua=${encodeURIComponent(String(userAgent))}`;
+  }
+  // 添加认证参数（如果有，用于导出的 M3U）
+  if (authToken) {
+    out += `&auth_token=${encodeURIComponent(authToken)}`;
   }
   return out;
 }
@@ -368,7 +372,7 @@ function toAbsoluteUrl(raw, baseUrl) {
   }
 }
 
-function rewriteM3uText(inputText, baseUrl, userAgent) {
+function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null) {
   const lines = String(inputText || '').split(/\r?\n/);
   return lines
     .map((line) => {
@@ -379,13 +383,13 @@ function rewriteM3uText(inputText, baseUrl, userAgent) {
         return line.replace(/URI="([^"]+)"/g, (match, uri) => {
           const abs = toAbsoluteUrl(uri, baseUrl);
           if (!/^https?:/i.test(abs)) return match;
-          return `URI="${buildLocalProxyUrl(abs, userAgent)}"`;
+          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken)}"`;
         });
       }
 
       const abs = toAbsoluteUrl(trimmed, baseUrl);
       if (!/^https?:/i.test(abs)) return line;
-      return buildLocalProxyUrl(abs, userAgent);
+      return buildLocalProxyUrl(abs, userAgent, authToken);
     })
     .join('\n');
 }
@@ -747,7 +751,9 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
   if (method !== 'HEAD' && shouldRewriteM3u(payload, remoteUrl)) {
     try {
       const sourceText = payload.body.toString('utf8');
-      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent);
+      // 从原始请求 URL 中提取 auth_token（如果存在，用于导出的 M3U）
+      const authToken = url.searchParams.get('auth_token');
+      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, authToken);
       payload.body = Buffer.from(rewritten, 'utf8');
       payload.headers = {
         ...payload.headers,
