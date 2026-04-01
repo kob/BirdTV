@@ -357,9 +357,13 @@ function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = nul
   // 添加认证参数（如果有）
   if (authToken) {
     out += `&auth_token=${encodeURIComponent(authToken)}`;
+  } else {
+    console.log('[buildLocalProxyUrl] authToken is NULL/EMPTY, skipping');
   }
   if (linkId) {
     out += `&link_id=${encodeURIComponent(linkId)}`;
+  } else {
+    console.log('[buildLocalProxyUrl] linkId is NULL/EMPTY, skipping');
   }
   // 添加频道 ID（用于 UA 优先级）
   if (channelId) {
