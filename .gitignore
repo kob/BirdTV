@@ -42,5 +42,6 @@ coverage/
 core*
 core.*
 
-# Data
+# Data (保留目录结构，忽略数据文件)
 data/*.json
+data/exports/*.m3u
