@@ -349,25 +349,10 @@ function shouldRewriteM3u(payload, remoteUrl) {
   return finalLower.includes('.m3u8') || finalLower.includes('.m3u') || remoteLower.includes('.m3u8') || remoteLower.includes('.m3u');
 }
 
-function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = null, channelId = null) {
+function buildLocalProxyUrl(targetUrl, userAgent) {
   let out = `/m3u-proxy?url=${encodeURIComponent(targetUrl)}`;
   if (userAgent) {
     out += `&ua=${encodeURIComponent(String(userAgent))}`;
-  }
-  // 添加认证参数（如果有）
-  if (authToken) {
-    out += `&auth_token=${encodeURIComponent(authToken)}`;
-  } else {
-    console.log('[buildLocalProxyUrl] authToken is NULL/EMPTY, skipping');
-  }
-  if (linkId) {
-    out += `&link_id=${encodeURIComponent(linkId)}`;
-  } else {
-    console.log('[buildLocalProxyUrl] linkId is NULL/EMPTY, skipping');
-  }
-  // 添加频道 ID（用于 UA 优先级）
-  if (channelId) {
-    out += `&channel_id=${encodeURIComponent(channelId)}`;
   }
   return out;
 }
@@ -383,7 +368,7 @@ function toAbsoluteUrl(raw, baseUrl) {
   }
 }
 
-function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId = null, channelId = null) {
+function rewriteM3uText(inputText, baseUrl, userAgent) {
   const lines = String(inputText || '').split(/\r?\n/);
   return lines
     .map((line) => {
@@ -394,13 +379,13 @@ function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId 
         return line.replace(/URI="([^"]+)"/g, (match, uri) => {
           const abs = toAbsoluteUrl(uri, baseUrl);
           if (!/^https?:/i.test(abs)) return match;
-          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken, linkId, channelId)}"`;
+          return `URI="${buildLocalProxyUrl(abs, userAgent)}"`;
         });
       }
 
       const abs = toAbsoluteUrl(trimmed, baseUrl);
       if (!/^https?:/i.test(abs)) return line;
-      return buildLocalProxyUrl(abs, userAgent, authToken, linkId, channelId);
+      return buildLocalProxyUrl(abs, userAgent);
     })
     .join('\n');
 }
@@ -760,20 +745,9 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
   }
 
   if (method !== 'HEAD' && shouldRewriteM3u(payload, remoteUrl)) {
-    console.log('[M3U Rewrite] Triggered! Content-Type:', payload.headers['content-type']);
-    console.log('[M3U Rewrite] Final URL:', payload.finalUrl);
-    console.log('[M3U Rewrite] Remote URL:', remoteUrl);
     try {
       const sourceText = payload.body.toString('utf8');
-      // 从原始请求 URL 中提取 auth_token、link_id 和 channel_id
-      const authToken = url.searchParams.get('auth_token');
-      const linkId = url.searchParams.get('link_id');
-      const channelId = url.searchParams.get('channel_id');
-      console.log('[M3U Rewrite] authToken:', authToken ? 'present' : 'missing');
-      console.log('[M3U Rewrite] linkId:', linkId || 'missing');
-      console.log('[M3U Rewrite] Input sample:', sourceText.substring(0, 300));
-      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, authToken, linkId, channelId);
-      console.log('[M3U Rewrite] Output sample:', rewritten.substring(0, 300));
+      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent);
       payload.body = Buffer.from(rewritten, 'utf8');
       payload.headers = {
         ...payload.headers,
@@ -790,8 +764,6 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
         error: String(error && error.message ? error.message : error)
       });
     }
-  } else {
-    console.log('[M3U Rewrite] NOT triggered. method:', method, 'shouldRewriteM3u:', shouldRewriteM3u(payload, remoteUrl));
   }
 
   const headers = {
