@@ -127,7 +127,8 @@ function getConfig(overrides = {}) {
     authEnabled: String(overrides.authEnabled || env.AUTH_ENABLED || 'true'),
     jwtSecret: String(overrides.jwtSecret || env.AUTH_JWT_SECRET || 'default-secret'),
     tokenExpireDays: parseNumber(overrides.tokenExpireDays || env.AUTH_TOKEN_EXPIRE_DAYS, 7),
-    redisHost: String(overrides.redisHost || env.AUTH_REDIS_HOST || 'localhost'),
+    // Redis 配置 - 只有当 AUTH_REDIS_HOST 明确设置时才启用
+    redisHost: overrides.redisHost || env.AUTH_REDIS_HOST || '',
     redisPort: String(overrides.redisPort || env.AUTH_REDIS_PORT || '6379'),
     redisPassword: String(overrides.redisPassword || env.AUTH_REDIS_PASSWORD || ''),
     redisDb: String(overrides.redisDb || env.AUTH_REDIS_DB || '0'),
