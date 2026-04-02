@@ -4,11 +4,16 @@
 
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
+const fs = require('fs');
+const path = require('path');
 
 let redisClient = null;
 let jwtSecret = 'default-secret-change-in-production';
 let tokenExpireDays = 7;
 let authEnabled = false;
+
+// 内存存储持久化文件路径
+let memoryStorageFile = null;
 
 // Redis键前缀
 const KEYS = {
@@ -30,7 +35,7 @@ const DEFAULT_ROLES = {
  */
 async function initAuth(config) {
   authEnabled = config.authEnabled === 'true';
-  
+
   if (!authEnabled) {
     console.log('[Auth] 授权系统已禁用');
     return;
@@ -39,9 +44,14 @@ async function initAuth(config) {
   jwtSecret = config.jwtSecret || 'default-secret-change-in-production';
   tokenExpireDays = parseInt(config.tokenExpireDays) || 7;
 
+  // 设置内存存储持久化文件路径
+  if (config.dataDir) {
+    memoryStorageFile = path.join(config.dataDir, 'auth-storage.json');
+  }
+
   // 初始化Redis连接
   const Redis = require('redis');
-  
+
   // 只有当redisHost不为空时才尝试连接Redis
   if (config.redisHost) {
     try {
@@ -74,15 +84,19 @@ async function initAuth(config) {
     } catch (error) {
       console.error('[Auth] Redis连接失败:', error.message);
       console.log('[Auth] 将使用内存存储作为备用');
+      console.log('[Auth] 内存存储持久化文件:', memoryStorageFile);
       // 备用内存存储
       useMemoryStorage();
-      
+
+      // 尝试从文件加载内存存储数据
+      loadMemoryStorageFromFile();
+
       // 检查是否需要创建默认管理员
       const adminExists = memoryStorage.users.has(config.defaultAdmin || 'admin');
       if (!adminExists) {
         const passwordHash = bcrypt.hashSync(config.defaultPassword || 'admin123', 10);
         const userId = crypto.randomUUID();
-        
+
         const userData = {
           id: userId,
           username: config.defaultAdmin || 'admin',
@@ -91,22 +105,29 @@ async function initAuth(config) {
           createdAt: Date.now(),
           isDefaultPassword: true
         };
-        
+
         memoryStorage.users.set(config.defaultAdmin || 'admin', JSON.stringify(userData));
+        saveMemoryStorageToFile(); // 保存到文件
         console.log('[Auth] 默认管理员账户已创建（内存存储）');
+      } else {
+        console.log('[Auth] 管理员账户已存在（从文件加载）');
       }
     }
   } else {
     // 当redisHost为空时，直接使用内存存储
     console.log('[Auth] Redis未配置，将使用内存存储');
+    console.log('[Auth] 内存存储持久化文件:', memoryStorageFile);
     useMemoryStorage();
-    
+
+    // 尝试从文件加载内存存储数据
+    loadMemoryStorageFromFile();
+
     // 检查是否需要创建默认管理员
     const adminExists = memoryStorage.users.has(config.defaultAdmin || 'admin');
     if (!adminExists) {
       const passwordHash = bcrypt.hashSync(config.defaultPassword || 'admin123', 10);
       const userId = crypto.randomUUID();
-      
+
       const userData = {
         id: userId,
         username: config.defaultAdmin || 'admin',
@@ -115,21 +136,78 @@ async function initAuth(config) {
         createdAt: Date.now(),
         isDefaultPassword: true
       };
-      
+
       memoryStorage.users.set(config.defaultAdmin || 'admin', JSON.stringify(userData));
+      saveMemoryStorageToFile(); // 保存到文件
       console.log('[Auth] 默认管理员账户已创建（内存存储）');
+    } else {
+      console.log('[Auth] 管理员账户已存在（从文件加载）');
     }
   }
 }
 
 /**
  * 内存存储（当Redis不可用时使用）
+ * 支持文件持久化，防止服务重启后数据丢失
  */
 let memoryStorage = {
   users: new Map(),
   tokens: new Map(),
   roles: new Map()
 };
+
+/**
+ * 从文件加载内存存储数据
+ */
+function loadMemoryStorageFromFile() {
+  if (!memoryStorageFile) {
+    return;
+  }
+
+  try {
+    if (fs.existsSync(memoryStorageFile)) {
+      const data = fs.readFileSync(memoryStorageFile, 'utf-8');
+      const parsed = JSON.parse(data);
+      memoryStorage.users = new Map(Object.entries(parsed.users || {}));
+      memoryStorage.tokens = new Map(Object.entries(parsed.tokens || {}));
+      memoryStorage.roles = new Map(Object.entries(parsed.roles || {}));
+      console.log('[Auth] 内存存储数据已从文件加载:', memoryStorageFile);
+    }
+  } catch (error) {
+    console.error('[Auth] 从文件加载内存存储失败:', error.message);
+    // 加载失败时初始化为空 Map
+    memoryStorage.users = new Map();
+    memoryStorage.tokens = new Map();
+    memoryStorage.roles = new Map();
+  }
+}
+
+/**
+ * 将内存存储数据保存到文件
+ */
+function saveMemoryStorageToFile() {
+  if (!memoryStorageFile) {
+    return;
+  }
+
+  try {
+    // 确保目录存在
+    const dir = path.dirname(memoryStorageFile);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    const data = {
+      users: Object.fromEntries(memoryStorage.users),
+      tokens: Object.fromEntries(memoryStorage.tokens),
+      roles: Object.fromEntries(memoryStorage.roles)
+    };
+    fs.writeFileSync(memoryStorageFile, JSON.stringify(data, null, 2));
+    console.log('[Auth] 内存存储数据已保存到文件:', memoryStorageFile);
+  } catch (error) {
+    console.error('[Auth] 保存内存存储到文件失败:', error.message);
+  }
+}
 
 function useMemoryStorage() {
   // 初始化默认角色
@@ -231,6 +309,7 @@ async function createUser(username, password, role = 'user', isDefaultPassword =
     );
   } else {
     memoryStorage.users.set(username, JSON.stringify(userData));
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   return { userId, username, role };
@@ -267,6 +346,7 @@ async function verifyUser(username, password) {
     );
   } else {
     memoryStorage.tokens.set(token, JSON.stringify({ userId: userData.id, username: userData.username }));
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   return {
@@ -316,6 +396,7 @@ async function logout(token) {
     await redisClient.del(KEYS.TOKEN_PREFIX + token);
   } else {
     memoryStorage.tokens.delete(token);
+    saveMemoryStorageToFile(); // 保存到文件
   }
 }
 
@@ -505,6 +586,7 @@ async function updateUser(userId, data) {
     );
   } else {
     memoryStorage.users.set(targetUsername, JSON.stringify(targetUser));
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   // 删除该用户的所有 token（强制重新登录）
@@ -526,6 +608,7 @@ async function updateUser(userId, data) {
         memoryStorage.tokens.delete(token);
       }
     }
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   return {
@@ -565,6 +648,7 @@ async function deleteUser(userId) {
         break;
       }
     }
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   if (!targetUsername) {
@@ -590,6 +674,7 @@ async function deleteUser(userId) {
         memoryStorage.tokens.delete(token);
       }
     }
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   return true;
@@ -633,6 +718,7 @@ async function changePassword(username, newPassword) {
     );
   } else {
     memoryStorage.users.set(username, JSON.stringify(userData));
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   // 删除该用户的所有 token（强制重新登录）
@@ -654,6 +740,7 @@ async function changePassword(username, newPassword) {
         memoryStorage.tokens.delete(token);
       }
     }
+    saveMemoryStorageToFile(); // 保存到文件
   }
 
   return true;
