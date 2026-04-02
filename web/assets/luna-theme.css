@@ -7,6 +7,7 @@
   --card: rgba(15, 30, 57, 0.62);
   --line: rgba(146, 187, 255, 0.2);
   --line-strong: rgba(146, 187, 255, 0.36);
+  --border: rgba(146, 187, 255, 0.2);
   --text: #eaf3ff;
   --muted: #9cb2d3;
   --brand: #4c9eff;
@@ -27,6 +28,7 @@ html[data-theme="mist"] {
   --card: rgba(19, 45, 58, 0.58);
   --line: rgba(145, 223, 220, 0.2);
   --line-strong: rgba(145, 223, 220, 0.36);
+  --border: rgba(145, 223, 220, 0.2);
   --text: #eafffb;
   --muted: #9ec8ca;
   --brand: #4fd7c8;
@@ -44,6 +46,7 @@ html[data-theme="graphite"] {
   --card: rgba(33, 37, 50, 0.56);
   --line: rgba(181, 191, 221, 0.2);
   --line-strong: rgba(181, 191, 221, 0.36);
+  --border: rgba(181, 191, 221, 0.2);
   --text: #f1f4ff;
   --muted: #a8b0ca;
   --brand: #86a7ff;
