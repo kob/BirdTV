@@ -603,8 +603,7 @@
               <button class="btn" id="batchDeleteBtn" onclick="batchDeleteChannels()" style="display:none;">批量删除</button>
               <button class="btn" id="batchExportBtn" onclick="batchExportChannels()" style="display:none;">批量导出</button>
               <button class="btn" id="batchEditBtn" onclick="batchEditChannels()" style="display:none;">批量修改</button>
-              <button class="btn btn-primary" onclick="importChannelsFromSource()">+ 从节目源导入</button>
-              <button class="btn" onclick="importChannelsFromFile()">从文件导入</button>
+              <button class="btn btn-primary" onclick="showImportMenuModal()">+ 导入频道</button>
               <button class="btn" onclick="showChannelModal()">添加频道</button>
             </div>
           </div>
@@ -1530,6 +1529,245 @@
       if (!confirm('确定要删除该频道吗？')) return;
       const res = await api('/channels/' + id, { method: 'DELETE' });
       if (res && res.ok) { toast('删除成功', 'success'); loadChannels(); } else toast('删除失败', 'error');
+    }
+
+    // ========== 导入菜单 ==========
+    function showImportMenuModal() {
+      showModal('导入频道', `
+        <div style="display:flex;flex-direction:column;gap:16px;padding:20px 0;">
+          <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+            <div onclick="closeModal();showManualImportModal();" style="cursor:pointer;padding:24px;border:2px solid var(--border);border-radius:12px;text-align:center;min-width:200px;transition:all 0.3s;" onmouseover="this.style.borderColor='#7ac1ff';this.style.background='rgba(122,193,255,0.1)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='transparent';">
+              <div style="font-size:48px;margin-bottom:12px;">📁</div>
+              <div style="font-weight:700;font-size:16px;color:var(--text-main);margin-bottom:8px;">手动导入</div>
+              <div style="font-size:13px;color:var(--muted);">上传 M3U 文件<br>或手动添加频道</div>
+            </div>
+            <div onclick="closeModal();importChannelsFromSource();" style="cursor:pointer;padding:24px;border:2px solid var(--border);border-radius:12px;text-align:center;min-width:200px;transition:all 0.3s;" onmouseover="this.style.borderColor='#7ac1ff';this.style.background='rgba(122,193,255,0.1)';" onmouseout="this.style.borderColor='var(--border)';this.style.background='transparent';">
+              <div style="font-size:48px;margin-bottom:12px;">📡</div>
+              <div style="font-weight:700;font-size:16px;color:var(--text-main);margin-bottom:8px;">从节目源导入</div>
+              <div style="font-size:13px;color:var(--muted);">从已配置的<br>节目源导入频道</div>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    // ========== 手动导入模态框 ==========
+    function showManualImportModal() {
+      showModal('手动导入频道', `
+        <div style="padding:16px 0;">
+          <div style="display:flex;gap:12px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:16px;">
+            <button class="btn btn-primary" id="manualImportTabFile" onclick="switchManualImportTab('file')">上传 M3U 文件</button>
+            <button class="btn" id="manualImportTabSingle" onclick="switchManualImportTab('single')">手动添加频道</button>
+          </div>
+          
+          <!-- 文件上传区域 -->
+          <div id="manualImportFileSection">
+            <div class="form-group">
+              <label>选择 M3U 文件 *</label>
+              <input type="file" id="manualM3uFile" accept=".m3u,.m3u8" style="padding:8px;border:1px solid var(--border);border-radius:6px;width:100%;">
+              <p style="font-size:12px;color:var(--muted);margin-top:6px;">支持 .m3u 和 .m3u8 格式的播放列表文件</p>
+            </div>
+            <div id="manualFilePreview" style="display:none;margin-top:16px;">
+              <h4 style="margin-bottom:12px;">频道预览</h4>
+              <div id="manualFileChannelList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:12px;"></div>
+            </div>
+          </div>
+          
+          <!-- 手动添加区域 -->
+          <div id="manualImportSingleSection" style="display:none;">
+            <div class="form-group">
+              <label>频道名称 *</label>
+              <input type="text" id="manualSingleName" placeholder="例如：CCTV-1">
+            </div>
+            <div class="form-group">
+              <label>播放地址 *</label>
+              <input type="text" id="manualSingleUrl" placeholder="例如：http://example.com/stream.m3u8">
+            </div>
+            <div class="form-group">
+              <label>分组</label>
+              <input type="text" id="manualSingleGroup" placeholder="例如：央视">
+            </div>
+            <div class="form-group">
+              <label>Logo URL</label>
+              <input type="text" id="manualSingleLogo" placeholder="可选">
+            </div>
+          </div>
+        </div>
+      `, `
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" id="manualImportSubmitBtn" onclick="submitManualImport()" style="display:none;">导入</button>
+      `);
+      
+      // 绑定文件选择事件
+      setTimeout(() => {
+        const fileInput = document.getElementById('manualM3uFile');
+        if (fileInput) {
+          fileInput.addEventListener('change', handleManualFileSelect);
+        }
+      }, 100);
+    }
+
+    function switchManualImportTab(tab) {
+      const fileSection = document.getElementById('manualImportFileSection');
+      const singleSection = document.getElementById('manualImportSingleSection');
+      const fileTab = document.getElementById('manualImportTabFile');
+      const singleTab = document.getElementById('manualImportTabSingle');
+      const submitBtn = document.getElementById('manualImportSubmitBtn');
+      
+      if (tab === 'file') {
+        fileSection.style.display = 'block';
+        singleSection.style.display = 'none';
+        fileTab.classList.add('btn-primary');
+        singleTab.classList.remove('btn-primary');
+        submitBtn.style.display = document.getElementById('manualFilePreview')?.style.display === 'block' ? 'inline-flex' : 'none';
+      } else {
+        fileSection.style.display = 'none';
+        singleSection.style.display = 'block';
+        fileTab.classList.remove('btn-primary');
+        singleTab.classList.add('btn-primary');
+        submitBtn.style.display = 'inline-flex';
+        submitBtn.textContent = '添加';
+        submitBtn.onclick = submitManualSingleImport;
+      }
+    }
+
+    async function handleManualFileSelect(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const res = await fetch('/api/sources/m3u/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await res.json();
+        
+        if (result && result.ok && result.data) {
+          const channels = result.data;
+          const previewDiv = document.getElementById('manualFilePreview');
+          const listDiv = document.getElementById('manualFileChannelList');
+          
+          listDiv.innerHTML = channels.map((c, i) => `
+            <div style="display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--border);" class="manual-channel-item">
+              <input type="checkbox" checked data-idx="${i}" style="margin-right:12px;">
+              <div style="flex:1;">
+                <div style="font-weight:600;">${esc(c.name || '未命名')}</div>
+                <div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:400px;">${esc(c.url || '')}</div>
+              </div>
+              <div style="font-size:12px;color:var(--muted);margin-left:12px;">${esc(c.group || '未分组')}</div>
+            </div>
+          `).join('');
+          
+          previewDiv.style.display = 'block';
+          
+          // 显示导入按钮
+          const submitBtn = document.getElementById('manualImportSubmitBtn');
+          if (submitBtn) {
+            submitBtn.style.display = 'inline-flex';
+            submitBtn.textContent = `导入选中 (${channels.length})`;
+            submitBtn.onclick = submitManualFileImport;
+          }
+        } else {
+          toast('解析文件失败', 'error');
+        }
+      } catch (err) {
+        console.error('解析文件失败:', err);
+        toast('解析文件失败', 'error');
+      }
+    }
+
+    async function submitManualFileImport() {
+      const checkboxes = document.querySelectorAll('.manual-channel-item input[type="checkbox"]:checked');
+      if (checkboxes.length === 0) {
+        toast('请选择要导入的频道', 'error');
+        return;
+      }
+      
+      // 获取所有频道数据
+      const listDiv = document.getElementById('manualFileChannelList');
+      const allItems = listDiv.querySelectorAll('.manual-channel-item');
+      const channelsToImport = [];
+      
+      allItems.forEach((item, idx) => {
+        const cb = item.querySelector('input[type="checkbox"]');
+        if (cb && cb.checked) {
+          // 从显示的内容中提取数据
+          const nameEl = item.querySelector('div > div:first-child');
+          const urlEl = item.querySelector('div > div:nth-child(2)');
+          const groupEl = item.querySelector('div:last-child');
+          
+          channelsToImport.push({
+            name: nameEl ? nameEl.textContent : '',
+            url: urlEl ? urlEl.textContent : '',
+            group: groupEl ? groupEl.textContent : '',
+            streamType: 'live'
+          });
+        }
+      });
+      
+      if (channelsToImport.length === 0) {
+        toast('请选择要导入的频道', 'error');
+        return;
+      }
+      
+      try {
+        const res = await api('/channels/batch', {
+          method: 'POST',
+          body: JSON.stringify({ channels: channelsToImport })
+        });
+        
+        if (res && res.ok) {
+          toast(`成功导入 ${channelsToImport.length} 个频道`, 'success');
+          closeModal();
+          loadChannels();
+        } else {
+          toast('导入失败', 'error');
+        }
+      } catch (err) {
+        console.error('导入失败:', err);
+        toast('导入失败', 'error');
+      }
+    }
+
+    async function submitManualSingleImport() {
+      const name = document.getElementById('manualSingleName')?.value?.trim();
+      const url = document.getElementById('manualSingleUrl')?.value?.trim();
+      const group = document.getElementById('manualSingleGroup')?.value?.trim();
+      const logo = document.getElementById('manualSingleLogo')?.value?.trim();
+      
+      if (!name || !url) {
+        toast('请填写频道名称和播放地址', 'error');
+        return;
+      }
+      
+      const data = {
+        name,
+        url,
+        group: group || '未分组',
+        logo: logo || '',
+        streamType: 'live'
+      };
+      
+      try {
+        const res = await api('/channels', {
+          method: 'POST',
+          body: JSON.stringify(data)
+        });
+        
+        if (res && res.ok) {
+          toast('添加成功', 'success');
+          closeModal();
+          loadChannels();
+        } else {
+          toast('添加失败', 'error');
+        }
+      } catch (err) {
+        console.error('添加失败:', err);
+        toast('添加失败', 'error');
+      }
     }
 
     async function importChannelsFromSource() {
