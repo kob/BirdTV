@@ -51,7 +51,8 @@ class AuthController {
         ok: true,
         data: {
           token: result.token,
-          user: result.user
+          user: result.user,
+          isDefaultPassword: result.isDefaultPassword
         }
       }));
     } catch (error) {
@@ -113,6 +114,55 @@ class AuthController {
         ok: false,
         error: 'server_error',
         message: '获取用户信息失败'
+      }));
+    }
+  }
+
+  /**
+   * 检查是否使用默认密码
+   */
+  async checkDefaultPassword(req, res) {
+    try {
+      const currentUser = req.user;
+
+      if (!currentUser) {
+        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        return res.end(JSON.stringify({
+          ok: false,
+          error: 'unauthorized',
+          message: '未授权'
+        }));
+      }
+
+      // 从存储中获取用户信息
+      let userData = null;
+      const redisClient = this.auth.redisClient || null;
+      
+      if (redisClient) {
+        const data = await redisClient.get('auth:user:' + currentUser.username);
+        if (data) {
+          userData = JSON.parse(data);
+        }
+      } else {
+        const memoryStorage = this.auth.memoryStorage;
+        if (memoryStorage && memoryStorage.users) {
+          const data = memoryStorage.users.get(currentUser.username);
+          if (data) {
+            userData = JSON.parse(data);
+          }
+        }
+      }
+
+      const isDefaultPassword = userData?.isDefaultPassword || false;
+
+      res.json({ ok: true, data: { isDefaultPassword } });
+    } catch (error) {
+      console.error('[AuthController] 检查默认密码失败:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '检查失败'
       }));
     }
   }

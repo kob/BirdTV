@@ -162,8 +162,8 @@ class SourceController {
         }));
       }
 
-      // 测试源可用性
-      const result = await this._testSourceUrl(source.url);
+      // 测试源可用性，使用节目源的自定义UA
+      const result = await this._testSourceUrl(source.url, source.userAgent);
 
       res.json({
         ok: true,
@@ -200,8 +200,8 @@ class SourceController {
         }));
       }
 
-      // 获取 M3U 内容并解析频道
-      const channels = await this._parseM3uChannels(source.url);
+      // 获取 M3U 内容并解析频道，使用节目源的自定义UA
+      const channels = await this._parseM3uChannels(source.url, source.userAgent);
 
       res.json({
         ok: true,
@@ -219,11 +219,15 @@ class SourceController {
   }
 
   // 解析 M3U 文件获取频道列表
-  async _parseM3uChannels(url) {
+  async _parseM3uChannels(url, userAgent = null) {
     const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
     try {
-      const response = await fetch(url, { timeout: 30000 });
+      const fetchOptions = { timeout: 30000 };
+      if (userAgent) {
+        fetchOptions.headers = { 'User-Agent': userAgent };
+      }
+      const response = await fetch(url, fetchOptions);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -597,10 +601,10 @@ class SourceController {
         }));
       }
 
-      // 获取 M3U 内容并解析频道
+      // 获取 M3U 内容并解析频道，使用节目源的自定义UA
       const Channel = require('../models/Channel');
       const sourceId = source.id || source._id;
-      const imported = await this._importChannelsFromM3U(source.url, sourceId);
+      const imported = await this._importChannelsFromM3U(source.url, sourceId, source.userAgent);
 
       res.json({
         ok: true,
@@ -622,12 +626,16 @@ class SourceController {
   }
 
   // 从 M3U URL 导入频道
-  async _importChannelsFromM3U(url, sourceId) {
+  async _importChannelsFromM3U(url, sourceId, userAgent = null) {
     const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
     const Channel = require('../models/Channel');
 
     try {
-      const response = await fetch(url, { timeout: 30000 });
+      const fetchOptions = { timeout: 30000 };
+      if (userAgent) {
+        fetchOptions.headers = { 'User-Agent': userAgent };
+      }
+      const response = await fetch(url, fetchOptions);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -903,11 +911,13 @@ class SourceController {
   /**
    * 测试源 URL 可用性
    */
-  async _testSourceUrl(url) {
+  async _testSourceUrl(url, userAgent = null) {
     try {
-      const result = await proxyRequestToRemote(url, {
-        method: 'HEAD'
-      });
+      const options = { method: 'HEAD' };
+      if (userAgent) {
+        options.userAgent = userAgent;
+      }
+      const result = await proxyRequestToRemote(url, options);
 
       return {
         status: 'success',

@@ -11,6 +11,7 @@ class M3uSource {
     this.importType = data.importType || 'auto'; // auto/mpd/ts/hls/unknown
     this.defaultPlayerType = data.defaultPlayerType || 'auto'; // auto/vlc-proxy/vlc-direct/shaka/hls/mpegts/native
     this.proxyMode = data.proxyMode || 'auto'; // auto/proxy/direct
+    this.userAgent = data.userAgent || ''; // 自定义UA，为空时使用全局默认
     this.enabled = data.enabled !== undefined ? data.enabled : true;
     this.channelCount = data.channelCount || 0;
     this.lastSyncAt = data.lastSyncAt || null;
@@ -30,6 +31,7 @@ class M3uSource {
       importType: this.importType,
       defaultPlayerType: this.defaultPlayerType,
       proxyMode: this.proxyMode,
+      userAgent: this.userAgent,
       enabled: this.enabled,
       channelCount: this.channelCount,
       lastSyncAt: this.lastSyncAt,
@@ -47,6 +49,7 @@ class M3uSource {
     if (data.importType !== undefined) this.importType = data.importType;
     if (data.defaultPlayerType !== undefined) this.defaultPlayerType = data.defaultPlayerType;
     if (data.proxyMode !== undefined) this.proxyMode = data.proxyMode;
+    if (data.userAgent !== undefined) this.userAgent = data.userAgent;
     if (data.enabled !== undefined) this.enabled = data.enabled;
     if (data.channelCount !== undefined) this.channelCount = data.channelCount;
     if (data.lastSyncAt !== undefined) this.lastSyncAt = data.lastSyncAt;

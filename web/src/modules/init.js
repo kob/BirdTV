@@ -75,6 +75,26 @@ async function init() {
             const userData = await response.json();
             console.log('认证检查：验证成功', userData);
             localStorage.setItem('userInfo', JSON.stringify(userData.data || userData));
+            
+            // 检查用户是否使用默认密码（需要调用API获取）
+            try {
+                const checkResponse = await fetch('/api/auth/check-default-password', { 
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    } 
+                });
+                if (checkResponse.ok) {
+                    const checkData = await checkResponse.json();
+                    if (checkData.ok && checkData.data?.isDefaultPassword) {
+                        console.log('检测到使用默认密码，跳转到修改密码页面');
+                        window.location.href = '/change-password.html';
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('检查默认密码失败', e);
+            }
         } catch (e) {
             console.error('认证检查：请求错误', e);
         }

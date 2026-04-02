@@ -895,9 +895,21 @@ function serveStaticFile(req, res, filePath, staticRoot) {
 async function parseRequestBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
+    
+    // 检查是否有请求体
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    console.log('[parseRequestBody] Content-Length:', contentLength);
+    if (contentLength === 0) {
+      console.log('[parseRequestBody] No body, resolving empty object');
+      resolve({});
+      return;
+    }
+    
     req.on('data', chunk => {
+      console.log('[parseRequestBody] Received chunk:', chunk.toString());
       body += chunk.toString();
     });
+    
     req.on('end', () => {
       try {
         const contentType = req.headers['content-type'];
@@ -907,10 +919,23 @@ async function parseRequestBody(req) {
           resolve(body);
         }
       } catch (error) {
+        console.error('[parseRequestBody] JSON parse error:', error.message);
         reject(error);
       }
     });
-    req.on('error', reject);
+    
+    req.on('error', (err) => {
+      console.error('[parseRequestBody] Request error:', err.message);
+      reject(err);
+    });
+    
+    // 添加超时处理
+    setTimeout(() => {
+      if (body === '') {
+        console.warn('[parseRequestBody] Timeout waiting for request body');
+        resolve({});
+      }
+    }, 5000);
   });
 }
 
@@ -929,7 +954,8 @@ function createApiRouter(controllers) {
 
   return async function apiRouter(req, res) {
     const method = getRequestMethod(req);
-    const url = req.url;
+    // 使用 pathname 而不是完整的 url（去除查询参数）
+    const url = req.pathname || req.url.split('?')[0];
 
     // 为原生 http.ServerResponse 添加 Express 风格的辅助方法
         if (!res.json) {
@@ -1068,7 +1094,10 @@ function createApiRouter(controllers) {
 
     // ==================== 认证 API ====================
     // POST /api/auth/login - 登录（无需认证）
+    console.log('[apiRouter] Checking auth login, url:', url, 'method:', req.method);
     if (url === '/api/auth/login' && req.method === 'POST') {
+      console.log('[apiRouter] Login matched, calling authController.login');
+      console.log('[apiRouter] Request body:', JSON.stringify(req.body));
       return authController.login(req, res);
     }
 
@@ -1085,6 +1114,11 @@ function createApiRouter(controllers) {
     // PUT /api/auth/password - 修改密码
     if (url === '/api/auth/password' && method === 'PUT') {
       return authController.changePassword(req, res);
+    }
+
+    // GET /api/auth/check-default-password - 检查是否使用默认密码
+    if (url === '/api/auth/check-default-password' && method === 'GET') {
+      return authController.checkDefaultPassword(req, res);
     }
 
     // GET /api/auth/users - 获取用户列表（管理员）
@@ -1644,6 +1678,8 @@ function createAppServer(configInput = {}) {
       if (pathname.startsWith('/api/')) {
         // 解析查询参数
         req.query = url.searchParams;
+        // 保存 pathname 供后续使用
+        req.pathname = pathname;
         
         // 对于文件上传的路由，不解析请求体（由控制器自己处理）
         if (pathname !== '/api/sources/m3u/upload' || req.method !== 'POST') {
@@ -1651,7 +1687,9 @@ function createAppServer(configInput = {}) {
         }
         
         // 登录接口不需要认证
+        console.log('[API Route] Checking login path:', pathname, 'method:', req.method);
         if (pathname === '/api/auth/login' && req.method === 'POST') {
+          console.log('[API Route] Login route matched, calling apiRouter');
           await serverState.controllers.apiRouter(req, res);
           return;
         }

@@ -41,37 +41,84 @@ async function initAuth(config) {
 
   // 初始化Redis连接
   const Redis = require('redis');
-  try {
-    redisClient = Redis.createClient({
-      socket: {
-        host: config.redisHost || 'localhost',
-        port: parseInt(config.redisPort) || 6379
-      },
-      password: config.redisPassword || undefined,
-      database: parseInt(config.redisDb) || 0
-    });
+  
+  // 只有当redisHost不为空时才尝试连接Redis
+  if (config.redisHost) {
+    try {
+      redisClient = Redis.createClient({
+        socket: {
+          host: config.redisHost,
+          port: parseInt(config.redisPort) || 6379
+        },
+        password: config.redisPassword || undefined,
+        database: parseInt(config.redisDb) || 0
+      });
 
-    await redisClient.connect();
-    console.log('[Auth] Redis连接成功');
+      await redisClient.connect();
+      console.log('[Auth] Redis连接成功');
 
-    // 初始化默认角色
-    await initDefaultRoles();
+      // 初始化默认角色
+      await initDefaultRoles();
 
-    // 检查是否需要创建默认管理员
-    const adminExists = await userExists(config.defaultAdmin || 'admin');
-    if (!adminExists) {
-      await createUser(
-        config.defaultAdmin || 'admin',
-        config.defaultPassword || 'admin123',
-        'admin'
-      );
-      console.log('[Auth] 默认管理员账户已创建');
+      // 检查是否需要创建默认管理员
+      const adminExists = await userExists(config.defaultAdmin || 'admin');
+      if (!adminExists) {
+        await createUser(
+          config.defaultAdmin || 'admin',
+          config.defaultPassword || 'admin123',
+          'admin',
+          true
+        );
+        console.log('[Auth] 默认管理员账户已创建');
+      }
+    } catch (error) {
+      console.error('[Auth] Redis连接失败:', error.message);
+      console.log('[Auth] 将使用内存存储作为备用');
+      // 备用内存存储
+      useMemoryStorage();
+      
+      // 检查是否需要创建默认管理员
+      const adminExists = memoryStorage.users.has(config.defaultAdmin || 'admin');
+      if (!adminExists) {
+        const passwordHash = bcrypt.hashSync(config.defaultPassword || 'admin123', 10);
+        const userId = crypto.randomUUID();
+        
+        const userData = {
+          id: userId,
+          username: config.defaultAdmin || 'admin',
+          passwordHash,
+          role: 'admin',
+          createdAt: Date.now(),
+          isDefaultPassword: true
+        };
+        
+        memoryStorage.users.set(config.defaultAdmin || 'admin', JSON.stringify(userData));
+        console.log('[Auth] 默认管理员账户已创建（内存存储）');
+      }
     }
-  } catch (error) {
-    console.error('[Auth] Redis连接失败:', error.message);
-    console.log('[Auth] 将使用内存存储作为备用');
-    // 备用内存存储
+  } else {
+    // 当redisHost为空时，直接使用内存存储
+    console.log('[Auth] Redis未配置，将使用内存存储');
     useMemoryStorage();
+    
+    // 检查是否需要创建默认管理员
+    const adminExists = memoryStorage.users.has(config.defaultAdmin || 'admin');
+    if (!adminExists) {
+      const passwordHash = bcrypt.hashSync(config.defaultPassword || 'admin123', 10);
+      const userId = crypto.randomUUID();
+      
+      const userData = {
+        id: userId,
+        username: config.defaultAdmin || 'admin',
+        passwordHash,
+        role: 'admin',
+        createdAt: Date.now(),
+        isDefaultPassword: true
+      };
+      
+      memoryStorage.users.set(config.defaultAdmin || 'admin', JSON.stringify(userData));
+      console.log('[Auth] 默认管理员账户已创建（内存存储）');
+    }
   }
 }
 
@@ -163,7 +210,7 @@ function verifyToken(token) {
 /**
  * 创建用户
  */
-async function createUser(username, password, role = 'user') {
+async function createUser(username, password, role = 'user', isDefaultPassword = false) {
   const passwordHash = await bcrypt.hash(password, 10);
   const userId = crypto.randomUUID();
 
@@ -172,7 +219,8 @@ async function createUser(username, password, role = 'user') {
     username,
     passwordHash,
     role,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    isDefaultPassword: isDefaultPassword
   };
 
   if (redisClient) {
@@ -227,7 +275,8 @@ async function verifyUser(username, password) {
       id: userData.id,
       username: userData.username,
       role: userData.role
-    }
+    },
+    isDefaultPassword: userData.isDefaultPassword || false
   };
 }
 
@@ -572,6 +621,8 @@ async function changePassword(username, newPassword) {
   // 更新密码
   userData.passwordHash = await bcrypt.hash(newPassword, 10);
   userData.updatedAt = Date.now();
+  // 清除默认密码标记
+  userData.isDefaultPassword = false;
 
   // 保存更新
   if (redisClient) {
@@ -623,5 +674,7 @@ module.exports = {
   updateUser,
   deleteUser,
   changePassword,
-  isEnabled: () => authEnabled
+  isEnabled: () => authEnabled,
+  redisClient,
+  memoryStorage
 };
