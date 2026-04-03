@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  birdtv:
+    build: .
+    image: birdtv:latest
+    container_name: birdtv
+    restart: unless-stopped
+    ports:
+      - "${BIRDTV_PORT:-8771}:8771"
+    environment:
+      # 服务器
+      - HOST=0.0.0.0
+      - PORT=8771
+      - NODE_ENV=production
+      # 认证
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-change-me-in-production}
+      - AUTH_TOKEN_EXPIRE_DAYS=${AUTH_TOKEN_EXPIRE_DAYS:-7}
+      - AUTH_DEFAULT_ADMIN=${AUTH_DEFAULT_ADMIN:-admin}
+      - AUTH_DEFAULT_PASSWORD=${AUTH_DEFAULT_PASSWORD:-admin123}
+      # Redis / Kvrocks
+      - AUTH_REDIS_HOST=kvrocks
+      - AUTH_REDIS_PORT=${AUTH_REDIS_PORT:-6666}
+      - AUTH_REDIS_PASSWORD=${AUTH_REDIS_PASSWORD:-}
+      - AUTH_REDIS_DB=${AUTH_REDIS_DB:-0}
+      # 代理
+      - M3U_PROXY_TIMEOUT_MS=${M3U_PROXY_TIMEOUT_MS:-40000}
+      - M3U_PROXY_REDIRECT_LIMIT=${M3U_PROXY_REDIRECT_LIMIT:-3}
+      - M3U_PROXY_DEFAULT_UA=${M3U_PROXY_DEFAULT_UA:-okhttp/4.3}
+    volumes:
+      - birdtv-data:/app/data
+    depends_on:
+      kvrocks:
+        condition: service_healthy
+
+  kvrocks:
+    image: apache/kvrocks:2.11.0
+    container_name: birdtv-kvrocks
+    restart: unless-stopped
+    ports:
+      - "${KVROCKS_PORT:-6666}:6666"
+    volumes:
+      - kvrocks-data:/var/lib/kvrocks
+    command: kvrocks -c /etc/kvrocks/kvrocks.conf
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6666"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  birdtv-data:
+    name: birdtv-data
+  kvrocks-data:
+    name: birdtv-kvrocks-data
