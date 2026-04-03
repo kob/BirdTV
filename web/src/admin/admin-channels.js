@@ -68,8 +68,9 @@
         tbody.innerHTML = pageRows.map(c => {
           // 显示原始URL，与数据目录中存储的一致
           const displayUrl = c.url;
+          const checked = selectedChannelIds.has(c.id) ? 'checked' : '';
           return `<tr>
-          <td><input type="checkbox" class="channel-checkbox" value="${c.id}"></td>
+          <td><input type="checkbox" class="channel-checkbox" value="${c.id}" ${checked}></td>
           <td>${c.tvgLogo ? `<img src="${esc(c.tvgLogo)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" onerror="this.style.display='none'">` : '-'}</td>
           <td><b>${esc(c.name)}</b></td>
           <td>${esc(c.tvgId || '-')}</td>
@@ -95,13 +96,19 @@
           selectAllCheckbox.addEventListener('change', function() {
             channelCheckboxes.forEach(cb => {
               cb.checked = this.checked;
+              if (this.checked) selectedChannelIds.add(cb.value);
+              else selectedChannelIds.delete(cb.value);
             });
             updateBatchDeleteButton();
           });
         }
         
         channelCheckboxes.forEach(cb => {
-          cb.addEventListener('change', updateBatchDeleteButton);
+          cb.addEventListener('change', function() {
+            if (this.checked) selectedChannelIds.add(this.value);
+            else selectedChannelIds.delete(this.value);
+            updateBatchDeleteButton();
+          });
         });
 
         function updateBatchDeleteButton() {
@@ -212,5 +219,5 @@
     async function deleteChannel(id) {
       if (!confirm('确定要删除该频道吗？')) return;
       const res = await api('/channels/' + id, { method: 'DELETE' });
-      if (res && res.ok) { toast('删除成功', 'success'); loadChannels(); } else toast('删除失败', 'error');
+      if (res && res.ok) { selectedChannelIds.delete(id); toast('删除成功', 'success'); loadChannels(); } else toast('删除失败', 'error');
     }

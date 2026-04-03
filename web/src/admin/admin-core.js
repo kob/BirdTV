@@ -13,6 +13,7 @@
     const SOURCE_PAGE_SIZE = 8;
     const USER_PAGE_SIZE = 10;
     let channelPage = 1;
+    const selectedChannelIds = new Set();
     let m3uPage = 1;
     let epgPage = 1;
     let userPage = 1;
@@ -147,6 +148,7 @@
           if (newSize !== CHANNEL_PAGE_SIZE) {
             CHANNEL_PAGE_SIZE = newSize;
             channelPage = 1; // Reset to first page when changing page size
+            selectedChannelIds.clear();
             loadChannels();
           }
         });
@@ -208,6 +210,7 @@
       if (!input) return;
       input.addEventListener('input', () => {
         channelPage = 1;
+        selectedChannelIds.clear();
         if (channelSearchDebounceTimer) {
           clearTimeout(channelSearchDebounceTimer);
         }
@@ -229,6 +232,7 @@
         if (sourceSelect) sourceSelect.style.display = 'none';
       }
       channelPage = 1;
+      selectedChannelIds.clear();
       loadChannels();
     }
 
@@ -312,7 +316,7 @@
       document.getElementById('page-' + page).classList.add('active');
       document.querySelector('[data-page="' + page + '"]').classList.add('active');
       if (page === 'dashboard') loadDashboard();
-      if (page === 'channels') loadChannels();
+      if (page === 'channels') { channelPage = 1; selectedChannelIds.clear(); loadChannels(); }
       if (page === 'sources') loadSources();
       if (page === 'epg') loadEpgChannels();
       if (page === 'users') loadUsers();

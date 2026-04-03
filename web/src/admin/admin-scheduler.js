@@ -279,6 +279,7 @@
         });
 
         if (res && res.ok) {
+          channelIds.forEach(id => selectedChannelIds.delete(id));
           setBatchProgressDone('删除完成', '成功删除 ' + count + ' 个频道', true);
         } else {
           setBatchProgressFail('删除失败', res ? res.message : '服务器返回错误');
