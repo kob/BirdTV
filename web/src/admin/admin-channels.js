@@ -110,6 +110,7 @@
           });
         }
         
+        const channelCheckboxes = document.querySelectorAll('.channel-checkbox');
         channelCheckboxes.forEach(cb => {
           cb.addEventListener('change', function() {
             if (this.checked) selectedChannelIds.add(this.value);
