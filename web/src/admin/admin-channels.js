@@ -156,7 +156,9 @@
       let displayUrl = d.url || '';
       if (displayUrl && (d.proxyMode === 'proxy' || d.proxyMode === 'auto')) {
         try {
-          const urlObj = new URL(displayUrl);
+          // 支持完整 URL 和相对路径两种格式
+          const fullUrl = displayUrl.startsWith('/') ? location.origin + displayUrl : displayUrl;
+          const urlObj = new URL(fullUrl);
           const urlParam = urlObj.searchParams.get('url');
           if (urlParam) {
             displayUrl = decodeURIComponent(urlParam);
@@ -202,9 +204,9 @@
       const proxyMode = document.getElementById('chProxyMode').value;
       let url = document.getElementById('chUrl').value.trim();
 
-      // 如果代理方式是 proxy 或 auto，将 URL 转换为代理地址
+      // 如果代理方式是 proxy 或 auto，将 URL 转换为相对代理地址（不含域名，导出时再拼接）
       if (proxyMode === 'proxy' || proxyMode === 'auto') {
-        url = `${location.origin}/m3u-proxy?url=${encodeURIComponent(url)}`;
+        url = `/m3u-proxy?url=${encodeURIComponent(url)}`;
       }
 
       const data = {

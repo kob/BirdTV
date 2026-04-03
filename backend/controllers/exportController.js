@@ -106,8 +106,11 @@ class ExportController {
               tempM3uContent += `#KODIPROP:inputstream.adaptive.license_key=${kid}:${key}\n`;
             }
           }
-          // 添加 UA 到代理 URL
+          // 添加 UA 到代理 URL（相对路径补全为完整 URL）
           let shortUrl = channel.url;
+          if (shortUrl.startsWith('/m3u-proxy') || shortUrl.startsWith('/stream/proxy')) {
+            shortUrl = baseUrl + shortUrl;
+          }
           if (shortUrl.includes('/m3u-proxy') || shortUrl.includes('/stream/proxy')) {
             const separator = shortUrl.includes('?') ? '&' : '?';
             shortUrl += `${separator}ua=${encodeURIComponent(effectiveUA)}`;
@@ -186,6 +189,10 @@ class ExportController {
         } else {
           // 传统模式：为代理 URL 添加 auth_token 和 ua
           let finalUrl = channel.url;
+          // 相对路径补全为完整 URL
+          if (finalUrl.startsWith('/m3u-proxy') || finalUrl.startsWith('/stream/proxy')) {
+            finalUrl = baseUrl + finalUrl;
+          }
           if (finalUrl.includes('/m3u-proxy') || finalUrl.includes('/stream/proxy')) {
             const separator = finalUrl.includes('?') ? '&' : '?';
             finalUrl = `${finalUrl}${separator}auth_token=${encodedToken}`;
@@ -508,8 +515,8 @@ class ExportController {
 
       // Add auth parameters to each URL in the M3U file
       console.log('[DownloadByShortCode] Original M3U content sample:', m3uContent.substring(0, 500));
-      // 使用更通用的正则表达式匹配代理 URL，支持 http 和 https，支持任何主机名
-      m3uContent = m3uContent.replace(/(https?:\/\/[^\s]*\/m3u-proxy\?url=[^\s]*)/g, (match, url) => {
+      // 匹配完整代理 URL 和相对路径代理 URL
+      m3uContent = m3uContent.replace(/(https?:\/\/[^\s]*\/m3u-proxy\?url=[^\s]*|\/m3u-proxy\?url=[^\s]*)/g, (match, url) => {
         console.log('[DownloadByShortCode] Processing URL:', url);
         
         // Check if URL already has auth parameters
@@ -518,9 +525,17 @@ class ExportController {
           return url;
         }
         
+        // 相对路径补全为完整 URL
+        let fullUrl = url;
+        if (url.startsWith('/')) {
+          const proto = req.headers['x-forwarded-proto'] || req.protocol;
+          const host = req.headers['x-forwarded-host'] || req.get('host');
+          fullUrl = `${proto}://${host}${url}`;
+        }
+        
         // Add auth parameters
-        const separator = url.includes('?') ? '&' : '?';
-        const newUrl = `${url}${separator}auth_token=${encodedToken}&link_id=${linkRecord.id}`;
+        const separator = fullUrl.includes('?') ? '&' : '?';
+        const newUrl = `${fullUrl}${separator}auth_token=${encodedToken}&link_id=${linkRecord.id}`;
         console.log('[DownloadByShortCode] New URL:', newUrl);
         return newUrl;
       });
