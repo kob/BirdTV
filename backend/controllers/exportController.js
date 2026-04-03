@@ -11,10 +11,17 @@ class ExportController {
 
   async exportChannels(req, res) {
     try {
-      const { channelIds, description = '', useShortLink = false } = req.body;
+      const { channelIds, description = '', useShortLink = false, filename: customFilename = '' } = req.body;
       
       if (!channelIds || !Array.isArray(channelIds)) {
         return res.status(400).json({ ok: false, message: 'Channel IDs are required' });
+      }
+
+      // 处理自定义文件名
+      let filename;
+      if (customFilename && customFilename.trim()) {
+        // 清理文件名，移除非法字符和 .m3u 后缀（后端统一添加）
+        filename = customFilename.trim().replace(/[/\\:*?"<>|]/g, '_').replace(/\.m3u$/i, '') + '.m3u';
       }
 
       // Get selected channels
@@ -22,6 +29,22 @@ class ExportController {
       const channels = allChannels.filter(channel => channelIds.includes(channel.id));
       if (!channels.length) {
         return res.status(400).json({ ok: false, message: 'No channels found' });
+      }
+
+      const exportDir = path.resolve(__dirname, '../../data/exports');
+
+      // 同名覆盖：删除已有的同名导出记录和文件
+      if (filename) {
+        const existingExports = exportModel.getAll();
+        const existing = existingExports.find(e => e.filename === filename);
+        if (existing) {
+          const oldFilePath = path.join(exportDir, existing.filename);
+          if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
+          exportModel.delete(existing.id);
+          // 删除关联的短链接
+          const existingLinks = linkModel.getAll();
+          existingLinks.filter(l => l.exportId === existing.id).forEach(l => linkModel.delete(l.id));
+        }
       }
 
       // 生成长期有效的导出 Token（1 年有效期）
@@ -151,9 +174,7 @@ class ExportController {
 
       // Generate export ID and filename
       const exportId = `export_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const filename = `${exportId}.m3u`;
-      // 使用绝对路径
-      const exportDir = path.resolve(__dirname, '../../data/exports');
+      if (!filename) filename = `${exportId}.m3u`;
       const filePath = path.join(exportDir, filename);
       console.log(`Writing M3U file to: ${filePath}`);
 
@@ -301,6 +322,7 @@ class ExportController {
       const expiresAt = new Date();
       expiresAt.setHours(expiresAt.getHours() + parseInt(expiresIn));
 
+      // 订阅模式下 maxDownloads=0 表示不限制
       // Create link record
       const linkRecord = linkModel.create({
         exportId,
@@ -361,7 +383,7 @@ class ExportController {
   async updateLink(req, res) {
     try {
       const { id } = req.params;
-      const { username, description, expiresIn, maxDownloads, ipBinding } = req.body;
+      const { username, description, expiresIn, maxDownloads, ipBinding, exportId } = req.body;
       
       if (!id) {
         return res.status(400).json({ ok: false, message: 'Link ID is required' });
@@ -377,6 +399,14 @@ class ExportController {
       const updates = {};
       if (username !== undefined) updates.username = username;
       if (description !== undefined) updates.description = description;
+      if (exportId !== undefined && exportId) {
+        const exportRecord = exportModel.getById(exportId);
+        if (!exportRecord) {
+          return res.status(404).json({ ok: false, message: 'Export not found' });
+        }
+        updates.exportId = exportId;
+        updates.filename = exportRecord.filename;
+      }
       if (expiresIn !== undefined) {
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + parseInt(expiresIn));
@@ -419,8 +449,8 @@ class ExportController {
         return res.status(403).json({ ok: false, message: 'Link expired' });
       }
 
-      // Check download limit
-      if (linkRecord.downloadCount >= linkRecord.maxDownloads) {
+      // Check download limit (0 = unlimited)
+      if (linkRecord.maxDownloads > 0 && linkRecord.downloadCount >= linkRecord.maxDownloads) {
         return res.status(403).json({ ok: false, message: 'Download limit reached' });
       }
 

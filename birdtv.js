@@ -882,9 +882,26 @@ function serveStaticFile(req, res, filePath, staticRoot) {
       return;
     }
 
+    // 对大文件使用 chunked 传输，避免 Content-Length 导致代理截断
+    if (stats.size > 10000) {
+      // 对于支持 Accept-Encoding 的客户端，使用 gzip 压缩
+      const acceptEnc = String(req.headers['accept-encoding'] || '');
+      if (isCompressible && acceptEnc.includes('gzip')) {
+        headers['Content-Encoding'] = 'gzip';
+        res.writeHead(200, headers);
+        fs.createReadStream(resolved).pipe(zlib.createGzip()).pipe(res);
+      } else {
+        // 不设置 Content-Length，让 Node.js 使用 chunked 传输
+        res.writeHead(200, headers);
+        const rs = fs.createReadStream(resolved, { highWaterMark: 16384 });
+        rs.pipe(res);
+      }
+      return;
+    }
+
     headers['Content-Length'] = stats.size;
     res.writeHead(200, headers);
-    fs.createReadStream(resolved).pipe(res);
+    res.end(fs.readFileSync(resolved));
   });
 }
 
@@ -1054,39 +1071,39 @@ function createApiRouter(controllers) {
       return exportController.cleanupExpired(req, res);
     }
 
-    // ==================== 用户链接管理 API ====================
-    // POST /api/exports/link - 创建用户链接
+    // ==================== 用户订阅管理 API ====================
+    // POST /api/exports/link - 创建订阅
     if (url === '/api/exports/link' && req.method === 'POST') {
       return exportController.createLink(req, res);
     }
 
-    // GET /api/exports/links - 列出用户链接
+    // GET /api/exports/links - 列出订阅
     if (url === '/api/exports/links' && method === 'GET') {
       return exportController.listLinks(req, res);
     }
 
-    // DELETE /api/exports/link/:id - 删除用户链接
+    // DELETE /api/exports/link/:id - 删除订阅
     if (url.match(/^\/api\/exports\/link\/[a-z0-9_]+$/) && method === 'DELETE') {
       const id = url.split('/').pop();
       req.params = { id };
       return exportController.deleteLink(req, res);
     }
 
-    // PUT /api/exports/link/:id - 更新用户链接
+    // PUT /api/exports/link/:id - 更新订阅
     if (url.match(/^\/api\/exports\/link\/[a-z0-9_]+$/) && method === 'PUT') {
       const id = url.split('/').pop();
       req.params = { id };
       return exportController.updateLink(req, res);
     }
 
-    // GET /api/exports/link/:shortCode - 通过短链接下载
+    // GET /api/exports/link/:code - 通过订阅码下载
     if (url.match(/^\/api\/exports\/link\/[a-zA-Z0-9]+$/) && method === 'GET') {
       const shortCode = url.split('/').pop();
       req.params = { shortCode };
       return exportController.downloadByShortCode(req, res);
     }
 
-    // 优化的短链接路径 - GET /link/:shortCode
+    // 订阅链接路径 - GET /link/:code
     if (url.match(/^\/link\/[a-zA-Z0-9]+$/) && method === 'GET') {
       const shortCode = url.split('/').pop();
       req.params = { shortCode };

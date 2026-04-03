@@ -43,10 +43,15 @@ class Link {
     return links.find(e => e.shortCode === shortCode);
   }
 
-  generateShortCode() {
-    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  getByUsername(username) {
+    const links = this.getAll();
+    return links.find(e => e.username === username);
+  }
+
+  generateSubCode() {
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let code = '';
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 24; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return code;
@@ -55,9 +60,24 @@ class Link {
   create(data) {
     const links = this.getAll();
     let shortCode;
+    if (data.username) {
+      // 如果关联了用户，检查是否已有订阅，有则更新
+      const existing = this.getByUsername(data.username);
+      if (existing) {
+        this.update(existing.id, {
+          exportId: data.exportId,
+          filename: data.filename,
+          description: data.description || existing.description,
+          expiresAt: data.expiresAt,
+          maxDownloads: data.maxDownloads || existing.maxDownloads,
+          ipBinding: data.ipBinding || existing.ipBinding
+        });
+        return this.getById(existing.id);
+      }
+    }
     do {
-      shortCode = this.generateShortCode();
-    } while (links.some(link => link.shortCode === shortCode));
+      shortCode = this.generateSubCode();
+    } while (this.getAll().some(link => link.shortCode === shortCode));
 
     const newLink = {
       id: `link_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
