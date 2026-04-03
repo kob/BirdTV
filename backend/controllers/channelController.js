@@ -10,12 +10,29 @@ class ChannelController {
 
   async getChannels(req, res) {
     try {
-      const channels = await this.storage.getChannels();
+      // 支持分页参数
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 50;
+      const offset = (page - 1) * limit;
+      const group = req.query.group || null; // 支持按分组筛选
+
+      let channels = await this.storage.getChannels();
       const sources = await this.storage.getSources();
       const m3uSources = sources.m3u || [];
 
+      // 按分组筛选
+      if (group) {
+        channels = channels.filter(ch => ch.group === group);
+      }
+
+      // 计算总数
+      const total = channels.length;
+
+      // 分页处理
+      const paginatedChannels = channels.slice(offset, offset + limit);
+
       // 为每个频道添加源的默认播放器和代理模式信息
-      const enrichedChannels = channels.map(channel => {
+      const enrichedChannels = paginatedChannels.map(channel => {
         if (channel.sourceId) {
           const source = m3uSources.find(s => s.id === channel.sourceId);
           if (source) {
@@ -30,7 +47,17 @@ class ChannelController {
         return channel;
       });
 
-      res.json({ ok: true, data: enrichedChannels });
+      res.json({
+        ok: true,
+        data: enrichedChannels,
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+          hasMore: offset + limit < total
+        }
+      });
     } catch (error) {
       console.error('[ChannelController] GetChannels error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
