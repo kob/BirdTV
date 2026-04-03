@@ -168,6 +168,32 @@
             align-items: center;
             justify-content: center;
             font-size: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .channel-poster img {
+            opacity: 0;
+            transition: opacity 0.3s;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .channel-poster img.loaded {
+            opacity: 1;
+        }
+
+        .channel-poster .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+        }
+
+        .channel-poster img.loaded + .placeholder {
+            display: none;
         }
 
         .channel-info {
@@ -755,11 +781,17 @@
                     <div class="channel-epg-empty" data-channel-name="${channel.name}">点击加载节目信息</div>
                 `;
 
+                // 台标使用 data-src 懒加载，初始显示占位符
+                const posterHtml = channel.tvgLogo ? `
+                    <img data-src="${channel.tvgLogo}" alt="${channel.name}" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='block'">
+                    <span class="placeholder">📺</span>
+                ` : `
+                    <span class="placeholder">📺</span>
+                `;
+
                 return `
                 <div class="channel-card ${currentChannel && currentChannel.name === channel.name ? 'playing' : ''}" data-index="${index}" data-channel-name="${channel.name}">
-                    <div class="channel-poster">
-                        ${channel.tvgLogo ? `<img src="${channel.tvgLogo}" alt="${channel.name}" style="width: 100%; height: 100%; object-fit: contain; background: rgba(0,0,0,0.3);" onerror="this.style.display='none';this.parentElement.textContent='📺'">` : '📺'}
-                    </div>
+                    <div class="channel-poster">${posterHtml}</div>
                     <div class="channel-info">
                         <div class="channel-name">${channel.name}</div>
                         <div class="channel-group">${channel.group || '未分组'}</div>
@@ -807,6 +839,9 @@
                 loadMore.innerHTML = '下拉加载更多...';
                 channelList.appendChild(loadMore);
             }
+
+            // 触发图片懒加载
+            observeLazyImages();
         }
 
         // 更新单个卡片的 EPG 显示
@@ -986,11 +1021,44 @@
             // 使用 MutationObserver 监听 DOM 变化，确保新加载的触发器也被监听
             const mutationObserver = new MutationObserver(() => {
                 observeLoadMore();
+                // 同时懒加载新出现的图片
+                observeLazyImages();
             });
 
             mutationObserver.observe(channelList, {
                 childList: true,
                 subtree: true
+            });
+
+            // 初始懒加载图片
+            observeLazyImages();
+        }
+
+        // 图片懒加载
+        function observeLazyImages() {
+            const imgObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        const src = img.dataset.src;
+                        if (src) {
+                            img.src = src;
+                            img.onload = () => {
+                                img.classList.add('loaded');
+                            };
+                            imgObserver.unobserve(img);
+                        }
+                    }
+                });
+            }, {
+                root: null,
+                rootMargin: '300px',
+                threshold: 0.1
+            });
+
+            // 监听所有带 data-src 的图片
+            document.querySelectorAll('img[data-src]').forEach(img => {
+                imgObserver.observe(img);
             });
         }
     </script>
