@@ -88,17 +88,24 @@
         </tr>`
         }).join('');
 
-        // 绑定全选/取消全选事件
+        // 绑定全选/取消全选事件（仅操作当前页，跨页选中状态保留）
         const selectAllCheckbox = document.getElementById('selectAllChannels');
-        const channelCheckboxes = document.querySelectorAll('.channel-checkbox');
+        const pageIds = pageRows.map(c => c.id);
+        const pageAllSelected = pageIds.length > 0 && pageIds.every(id => selectedChannelIds.has(id));
+        const pagePartialSelected = !pageAllSelected && pageIds.some(id => selectedChannelIds.has(id));
         
         if (selectAllCheckbox) {
+          selectAllCheckbox.checked = pageAllSelected;
+          selectAllCheckbox.indeterminate = pagePartialSelected;
           selectAllCheckbox.addEventListener('change', function() {
-            channelCheckboxes.forEach(cb => {
-              cb.checked = this.checked;
-              if (this.checked) selectedChannelIds.add(cb.value);
-              else selectedChannelIds.delete(cb.value);
+            pageIds.forEach(id => {
+              if (this.checked) selectedChannelIds.add(id);
+              else selectedChannelIds.delete(id);
             });
+            document.querySelectorAll('.channel-checkbox').forEach(cb => {
+              cb.checked = this.checked;
+            });
+            selectAllCheckbox.indeterminate = false;
             updateBatchDeleteButton();
           });
         }
