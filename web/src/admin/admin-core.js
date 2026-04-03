@@ -44,7 +44,9 @@
       var overlay = document.getElementById('modalOverlay');
       document.getElementById('modalTitle').textContent = title;
       document.getElementById('modalBody').innerHTML = bodyHtml;
-      document.getElementById('modalFooter').innerHTML = footerHtml;
+      const footer = document.getElementById('modalFooter');
+      footer.innerHTML = footerHtml;
+      footer.style.display = footerHtml ? 'flex' : 'none';
       overlay.classList.add('show');
       overlay.style.cssText = 'display:flex !important; position:fixed !important; inset:0 !important; z-index:99999 !important; align-items:center !important; justify-content:center !important; background:rgba(0,0,0,0.65) !important; padding:16px !important;';
     }
