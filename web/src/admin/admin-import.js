@@ -313,7 +313,7 @@
       if (!sourceId) return;
       const container = document.getElementById('channelListContainer');
       container.style.display = 'block';
-      container.innerHTML = '<div style="text-align:center;padding:32px 0;"><div class="spinner"></div><p style="margin-top:12px;color:var(--muted);">正在拉取节目源并解析频道列表，请稍候...</p></div>';
+      document.getElementById('channelListContent').innerHTML = '<div style="text-align:center;padding:32px 0;"><div class="spinner"></div><p style="margin-top:12px;color:var(--muted);">正在拉取节目源并解析频道列表，请稍候...</p></div>';
       try {
         const sourceRes = await api('/sources/m3u/' + sourceId);
         if (!sourceRes || !sourceRes.ok || !sourceRes.data) { container.innerHTML = '<p style="color:var(--error);text-align:center;padding:16px;">获取节目源信息失败</p>'; return; }
