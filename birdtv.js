@@ -30,6 +30,7 @@ const ChannelController = require('./backend/controllers/channelController');
 const SourceController = require('./backend/controllers/sourceController');
 const SettingsController = require('./backend/controllers/settingsController');
 const ExportController = require('./backend/controllers/exportController');
+const { SchedulerService, describeCron } = require('./backend/services/schedulerService');
 
 let HttpsProxyAgent = null;
 try {
@@ -1360,6 +1361,84 @@ function createApiRouter(controllers) {
       return settingsController.getEffectiveUA(req, res);
     }
 
+    // ==================== 定时任务 API ====================
+    // 获取调度器引用
+    const scheduler = serverState.scheduler;
+
+    // GET /api/scheduler/tasks - 获取所有定时任务
+    if (url === '/api/scheduler/tasks' && method === 'GET') {
+      return (async () => {
+        try {
+          const tasks = await scheduler.getTasks();
+          res.json({ ok: true, data: tasks, status: scheduler.getStatus() });
+        } catch (e) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, message: '获取任务列表失败' }));
+        }
+      })();
+    }
+
+    // POST /api/scheduler/tasks - 创建定时任务
+    if (url === '/api/scheduler/tasks' && method === 'POST') {
+      return (async () => {
+        try {
+          const task = await scheduler.createTask(req.body);
+          res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: true, data: task }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, message: e.message }));
+        }
+      })();
+    }
+
+    // PUT /api/scheduler/tasks/:id - 更新定时任务
+    const schedulerTaskMatch = url.match(/^\/api\/scheduler\/tasks\/([^/]+)$/);
+    if (schedulerTaskMatch && method === 'PUT') {
+      return (async () => {
+        try {
+          const task = await scheduler.updateTask(schedulerTaskMatch[1], req.body);
+          res.json({ ok: true, data: task });
+        } catch (e) {
+          const code = e.message === '任务不存在' ? 404 : 400;
+          res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, message: e.message }));
+        }
+      })();
+    }
+
+    // DELETE /api/scheduler/tasks/:id - 删除定时任务
+    if (schedulerTaskMatch && method === 'DELETE') {
+      return (async () => {
+        try {
+          await scheduler.deleteTask(schedulerTaskMatch[1]);
+          res.json({ ok: true, message: '任务已删除' });
+        } catch (e) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, message: e.message }));
+        }
+      })();
+    }
+
+    // POST /api/scheduler/tasks/:id/run - 手动执行任务
+    const schedulerRunMatch = url.match(/^\/api\/scheduler\/tasks\/([^/]+)\/run$/);
+    if (schedulerRunMatch && method === 'POST') {
+      return (async () => {
+        try {
+          const result = await scheduler.runTask(schedulerRunMatch[1]);
+          res.json({ ok: true, data: result });
+        } catch (e) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, message: e.message }));
+        }
+      })();
+    }
+
+    // GET /api/scheduler/status - 获取调度器状态
+    if (url === '/api/scheduler/status' && method === 'GET') {
+      return res.json({ ok: true, data: scheduler.getStatus() });
+    }
+
     // 未匹配的路由
     res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: 'not_found', message: 'API 路由不存在' }));
@@ -1867,6 +1946,11 @@ async function startServer(configInput = {}) {
     })
   };
 
+  // 启动定时任务调度器
+  const scheduler = new SchedulerService(storage, sourceController);
+  await scheduler.start();
+  serverState.scheduler = scheduler;
+
   const { server } = createAppServer(config);
   serverState.server = server;
 
@@ -1902,6 +1986,10 @@ async function startServer(configInput = {}) {
 }
 
 async function stopServer() {
+  if (serverState.scheduler) {
+    serverState.scheduler.stop();
+    serverState.scheduler = null;
+  }
   return new Promise((resolve) => {
     if (!serverState.server) {
       resolve();

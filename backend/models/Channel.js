@@ -14,6 +14,7 @@ class Channel {
     this.drm = data.drm || {};
     this.userAgent = data.userAgent || '';
     this.group = data.group || '';
+    this.sourceId = data.sourceId || '';
     this.tvgId = data.tvgId || '';
     this.tvgLogo = data.tvgLogo || '';
     this.createdAt = data.createdAt || new Date().toISOString();
@@ -35,6 +36,7 @@ class Channel {
       drm: this.drm,
       userAgent: this.userAgent,
       group: this.group,
+      sourceId: this.sourceId,
       tvgId: this.tvgId,
       tvgLogo: this.tvgLogo,
       createdAt: this.createdAt,

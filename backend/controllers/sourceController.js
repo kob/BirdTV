@@ -11,6 +11,76 @@ class SourceController {
     this.storage = storage;
   }
 
+  /**
+   * 使用原生 http/https 获取远程内容（替代 node-fetch，避免 ESM 兼容问题）
+   */
+  _fetchContent(url, userAgent = null, timeoutMs = 30000) {
+    return new Promise((resolve, reject) => {
+      let redirectCount = 0;
+      const maxRedirects = 5;
+
+      const makeRequest = (currentUrl) => {
+        const parsed = new URL(currentUrl);
+        const lib = parsed.protocol === 'https:' ? https : http;
+
+        const options = {
+          hostname: parsed.hostname,
+          port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
+          path: parsed.pathname + parsed.search,
+          method: 'GET',
+          timeout: timeoutMs,
+          headers: {
+            'Accept': '*/*',
+            'Accept-Encoding': 'identity',
+          }
+        };
+
+        if (userAgent) {
+          options.headers['User-Agent'] = userAgent;
+        }
+
+        const req = lib.request(options, (res) => {
+          // 处理重定向
+          if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+            redirectCount++;
+            if (redirectCount > maxRedirects) {
+              reject(new Error('Too many redirects'));
+              return;
+            }
+            let location = res.headers.location;
+            if (location.startsWith('/')) {
+              location = `${parsed.protocol}//${parsed.hostname}${location}`;
+            }
+            makeRequest(location);
+            return;
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            res.resume();
+            reject(new Error(`HTTP ${res.statusCode}`));
+            return;
+          }
+
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => {
+            const body = Buffer.concat(chunks).toString('utf-8');
+            resolve(body);
+          });
+        });
+
+        req.on('error', (err) => reject(err));
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Request timeout'));
+        });
+        req.end();
+      };
+
+      makeRequest(url);
+    });
+  }
+
   // M3U 源管理
   async getM3uSources(req, res) {
     try {
@@ -68,6 +138,19 @@ class SourceController {
         }));
       }
 
+      const existingSources = await this.storage.getSources();
+      const duplicate = (existingSources.m3u || []).find(
+        s => s.name && s.name.trim().toLowerCase() === sourceData.name.trim().toLowerCase()
+      );
+      if (duplicate) {
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'duplicate_name',
+          message: '已存在相同名称的节目源：' + sourceData.name
+        }));
+      }
+
       const source = new M3uSource(sourceData);
       await this.storage.saveSource('m3u', source.toJSON());
 
@@ -100,6 +183,21 @@ class SourceController {
           error: 'not_found',
           message: 'M3U 源不存在'
         }));
+      }
+
+      // 重名检查（排除自身）
+      if (updateData.name) {
+        const duplicate = (sources.m3u || []).find(
+          (s, i) => i !== index && s.name && s.name.trim().toLowerCase() === updateData.name.trim().toLowerCase()
+        );
+        if (duplicate) {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+              return res.end(JSON.stringify({
+            ok: false,
+            error: 'duplicate_name',
+            message: '已存在相同名称的节目源：' + updateData.name
+          }));
+        }
       }
 
       const source = new M3uSource(sources.m3u[index]);
@@ -218,21 +316,12 @@ class SourceController {
     }
   }
 
-  // 解析 M3U 文件获取频道列表
+  // 解析 M3U 文件获取频道列表（纯解析，不执行导入/删除操作）
   async _parseM3uChannels(url, userAgent = null) {
-    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
-
     try {
-      const fetchOptions = { timeout: 30000 };
-      if (userAgent) {
-        fetchOptions.headers = { 'User-Agent': userAgent };
-      }
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      const content = await this._fetchContent(url, userAgent);
+      this._lastParsedContent = content;
 
-      const content = await response.text();
       const lines = content.split(/\r?\n/);
       const channels = [];
       let pendingName = '';
@@ -627,20 +716,22 @@ class SourceController {
 
   // 从 M3U URL 导入频道
   async _importChannelsFromM3U(url, sourceId, userAgent = null) {
-    const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
     const Channel = require('../models/Channel');
 
     try {
-      const fetchOptions = { timeout: 30000 };
-      if (userAgent) {
-        fetchOptions.headers = { 'User-Agent': userAgent };
-      }
-      const response = await fetch(url, fetchOptions);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      const content = await this._fetchContent(url, userAgent);
+      // 先删除该源之前导入的频道，避免重复
+      const allChannels = await this.storage.getChannels();
+      const existingIds = allChannels
+        .filter(c => c.sourceId === sourceId)
+        .map(c => c.id);
+      if (existingIds.length > 0) {
+        for (const cid of existingIds) {
+          await this.storage.deleteChannel(cid);
+        }
+        console.log(`[SourceController] 已清理源 ${sourceId} 的 ${existingIds.length} 个旧频道`);
       }
 
-      const content = await response.text();
       const lines = content.split(/\r?\n/);
       const channels = [];
       let pendingName = '';
@@ -830,6 +921,19 @@ class SourceController {
         }));
       }
 
+      const existingSources = await this.storage.getSources();
+      const duplicate = (existingSources.epg || []).find(
+        s => s.name && s.name.trim().toLowerCase() === sourceData.name.trim().toLowerCase()
+      );
+      if (duplicate) {
+        res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+            return res.end(JSON.stringify({
+          ok: false,
+          error: 'duplicate_name',
+          message: '已存在相同名称的 EPG 源：' + sourceData.name
+        }));
+      }
+
       const source = new EpgSource(sourceData);
       await this.storage.saveSource('epg', source.toJSON());
 
@@ -862,6 +966,21 @@ class SourceController {
           error: 'not_found',
           message: 'EPG 源不存在'
         }));
+      }
+
+      // 重名检查（排除自身）
+      if (updateData.name) {
+        const duplicate = (sources.epg || []).find(
+          (s, i) => i !== index && s.name && s.name.trim().toLowerCase() === updateData.name.trim().toLowerCase()
+        );
+        if (duplicate) {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+              return res.end(JSON.stringify({
+            ok: false,
+            error: 'duplicate_name',
+            message: '已存在相同名称的 EPG 源：' + updateData.name
+          }));
+        }
       }
 
       const source = new EpgSource(sources.epg[index]);
@@ -913,18 +1032,12 @@ class SourceController {
    */
   async _testSourceUrl(url, userAgent = null) {
     try {
-      const options = { method: 'HEAD' };
-      if (userAgent) {
-        options.userAgent = userAgent;
-      }
-      const result = await proxyRequestToRemote(url, options);
-
+      const content = await this._fetchContent(url, userAgent, 15000);
       return {
         status: 'success',
-        statusCode: result.status,
-        finalUrl: result.finalUrl,
-        cached: result.cached,
-        redirected: result.redirected
+        statusCode: 200,
+        finalUrl: url,
+        contentLength: content.length
       };
     } catch (error) {
       return {

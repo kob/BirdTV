@@ -172,16 +172,50 @@ class ChannelController {
         }));
       }
 
+      const existingChannels = await this.storage.getChannels();
+      let updatedCount = 0;
+      let createdCount = 0;
       const results = [];
+
       for (const channelData of channels) {
         try {
-          const channel = new Channel(channelData);
-          await this.storage.saveChannel(channel.toJSON());
-          results.push({ success: true, id: channel.id });
+          // 按 sourceId + tvgId + name 三项匹配已有频道
+          const newSourceId = channelData.sourceId || '';
+          const newTvgId = channelData.tvgId || '';
+          const newName = (channelData.name || '').trim().toLowerCase();
+
+          const matchIndex = existingChannels.findIndex(c =>
+            (c.sourceId || '') === newSourceId &&
+            (c.tvgId || '') === newTvgId &&
+            (c.name || '').trim().toLowerCase() === newName
+          );
+
+          if (matchIndex >= 0) {
+            // 已存在：保留原有 id 和 createdAt，更新其他字段
+            const existing = existingChannels[matchIndex];
+            const channel = new Channel(channelData);
+            channel.id = existing.id;
+            channel.createdAt = existing.createdAt;
+            channel.updatedAt = new Date().toISOString();
+            existingChannels[matchIndex] = channel.toJSON();
+            results.push({ success: true, id: channel.id, action: 'updated' });
+            updatedCount++;
+            console.log(`[BatchImport] UPDATE channel "${channelData.name}" id=${channel.id} (sourceId=${newSourceId}, tvgId=${newTvgId})`);
+          } else {
+            // 不存在：新增频道
+            const channel = new Channel(channelData);
+            existingChannels.push(channel.toJSON());
+            results.push({ success: true, id: channel.id, action: 'created' });
+            createdCount++;
+            console.log(`[BatchImport] CREATE channel "${channelData.name}" id=${channel.id} (sourceId=${newSourceId}, tvgId=${newTvgId})`);
+          }
         } catch (error) {
           results.push({ success: false, error: error.message });
         }
       }
+
+      // 一次性写入所有频道（避免循环中多次读写文件）
+      await this.storage._set('channels', this.storage.channelsFile, existingChannels);
 
       const successCount = results.filter(r => r.success).length;
       res.json({
@@ -190,6 +224,8 @@ class ChannelController {
           total: channels.length,
           success: successCount,
           failed: channels.length - successCount,
+          created: createdCount,
+          updated: updatedCount,
           results
         }
       });

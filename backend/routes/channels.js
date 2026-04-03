@@ -30,6 +30,21 @@ function createChannelsRoutes(channelController) {
       return channelController.batchImportChannels(req, res);
     }
 
+    // POST /api/channels/batch/delete - 批量删除频道
+    if (url === '/api/channels/batch/delete' && method === 'POST') {
+      return channelController.batchDeleteChannels(req, res);
+    }
+
+    // POST /api/channels/batch/update - 批量修改频道
+    if (url === '/api/channels/batch/update' && method === 'POST') {
+      return channelController.batchUpdateChannels(req, res);
+    }
+
+    // GET /api/channels/groups - 获取分组列表
+    if (url === '/api/channels/groups' && method === 'GET') {
+      return channelController.getGroups(req, res);
+    }
+
     // 处理带 ID 的路由
     const match = url.match(/^\/api\/channels\/([^/]+)$/);
     if (match) {

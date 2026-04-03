@@ -247,6 +247,19 @@
       border-color: rgba(93, 227, 255, 0.62);
       box-shadow: 0 0 0 2px rgba(93, 227, 255, 0.14);
     }
+    .form-group.has-error input {
+      border-color: #f44336;
+      box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.2);
+    }
+    .form-error {
+      color: #f44336;
+      font-size: 12px;
+      margin-top: 4px;
+      display: none;
+    }
+    .form-error.show {
+      display: block;
+    }
 
     .modal-overlay {
       position: fixed;
@@ -357,6 +370,18 @@
     .loading { text-align: center; padding: 40px; color: var(--muted); }
     .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(255, 255, 255, 0.2); border-top-color: #5de3ff; border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    .import-progress-bar-track { width: 100%; height: 8px; background: rgba(146, 187, 255, 0.12); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+    .import-progress-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #5de3ff, #7b68ee); border-radius: 4px; transition: width 0.4s ease; }
+    .import-progress-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 16px; font-size: 24px; }
+    .import-progress-icon.running { background: rgba(93, 227, 255, 0.15); }
+    .import-progress-icon.done { background: rgba(76, 175, 80, 0.15); }
+    .import-progress-icon.fail { background: rgba(244, 67, 54, 0.15); }
+    .import-progress-step { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 13px; color: var(--muted); }
+    .import-progress-step.active { color: #fff; }
+    .import-progress-step .step-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(146, 187, 255, 0.2); flex-shrink: 0; }
+    .import-progress-step.active .step-dot { background: #5de3ff; }
+    .import-progress-step.completed .step-dot { background: #4caf50; }
+    .import-progress-step.completed { color: var(--muted); }
 
     .skeleton-line {
       height: 10px;
@@ -552,6 +577,10 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         导出管理
       </a>
+      <a class="nav-item" data-page="scheduler" onclick="switchPage('scheduler')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        定时任务
+      </a>
       <a class="nav-item" data-page="links" onclick="switchPage('links')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
         用户链接管理
@@ -592,24 +621,28 @@
         <div class="card">
           <div class="toolbar">
             <div class="search-box" style="display:flex;align-items:center;gap:0;">
-              <select id="channelSearchType" style="padding:6px 12px;border:1px solid rgba(146, 187, 255, 0.2);border-radius:4px 0 0 4px;background:rgba(7, 15, 30, 0.56);color:#e8f2ff;">
+              <select id="channelSearchType" onchange="onChannelSearchTypeChange()" style="padding:6px 12px;border:1px solid rgba(146, 187, 255, 0.2);border-radius:4px 0 0 4px;background:rgba(7, 15, 30, 0.56);color:#e8f2ff;">
                 <option value="name">名称</option>
                 <option value="group">分组</option>
+                <option value="source">源名称</option>
               </select>
               <input type="text" id="channelSearch" placeholder="输入内容..." style="padding:6px 12px;border:1px solid rgba(146, 187, 255, 0.2);border-left:0;border-radius:0 4px 4px 0;background:rgba(7, 15, 30, 0.56);color:#e8f2ff;">
+              <select id="channelSourceFilter" style="padding:6px 12px;border:1px solid rgba(146, 187, 255, 0.2);border-left:0;background:rgba(7, 15, 30, 0.56);color:#e8f2ff;display:none;">
+                <option value="">全部</option>
+              </select>
               <span class="result-count" id="channelResultCount">0 条</span>
             </div>
             <div class="btn-group">
               <button class="btn" id="batchDeleteBtn" onclick="batchDeleteChannels()" style="display:none;">批量删除</button>
               <button class="btn" id="batchExportBtn" onclick="batchExportChannels()" style="display:none;">批量导出</button>
               <button class="btn" id="batchEditBtn" onclick="batchEditChannels()" style="display:none;">批量修改</button>
-              <button class="btn btn-primary" onclick="showImportMenuModal()">+ 导入频道</button>
-              <button class="btn" onclick="showChannelModal()">添加频道</button>
+              <button class="btn btn-primary" onclick="showManualImportModal()">导入频道</button>
+              <button class="btn btn-primary" onclick="showChannelModal()">添加频道</button>
             </div>
           </div>
           <table><thead><tr>
             <th style="width:40px;"><input type="checkbox" id="selectAllChannels"></th>
-            <th>Logo</th><th>名称</th><th>TVG ID</th><th>URL</th><th>分组</th><th>代理方式</th><th>播放器</th><th>DRM</th><th>UA</th><th>操作</th>
+            <th>Logo</th><th>名称</th><th>TVG ID</th><th>URL</th><th>分组</th><th>源名称</th><th>代理方式</th><th>播放器</th><th>DRM</th><th>UA</th><th>操作</th>
           </tr></thead><tbody id="channelTableBody"></tbody></table>
           <div class="pagination" id="channelPagination" style="display:none;"></div>
           <div class="empty" id="channelEmpty" style="display:none;">
@@ -1000,6 +1033,42 @@
         </div>
       </div>
 
+      <!-- 定时任务 -->
+      <div class="page" id="page-scheduler">
+        <div class="page-header"><h2>定时任务</h2><p>自动从节目源定时导入频道</p></div>
+
+        <div class="card">
+          <div class="toolbar">
+            <div style="flex:1;display:flex;align-items:center;gap:12px;">
+              <span class="result-count" id="schedulerStatus">-</span>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-primary" onclick="showSchedulerTaskModal()">新建任务</button>
+              <button class="btn" onclick="loadSchedulerTasks()">刷新</button>
+            </div>
+          </div>
+          <table id="schedulerTable">
+            <thead>
+              <tr>
+                <th>任务名称</th>
+                <th>节目源</th>
+                <th>执行周期</th>
+                <th>状态</th>
+                <th>上次执行</th>
+                <th>下次执行</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="schedulerTableBody">
+            </tbody>
+          </table>
+          <div class="empty" id="schedulerEmpty" style="display:none;">
+            <div class="empty-illustration">🕐</div>
+            <p>暂无定时任务</p>
+          </div>
+        </div>
+      </div>
+
       <!-- 用户链接管理 -->
       <div class="page" id="page-links">
         <div class="page-header"><h2>用户链接管理</h2><p>为特定用户生成下载链接</p></div>
@@ -1276,6 +1345,21 @@
       });
     }
 
+    function onChannelSearchTypeChange() {
+      const type = document.getElementById('channelSearchType')?.value;
+      const textInput = document.getElementById('channelSearch');
+      const sourceSelect = document.getElementById('channelSourceFilter');
+      if (type === 'source') {
+        if (textInput) textInput.style.display = 'none';
+        if (sourceSelect) sourceSelect.style.display = '';
+      } else {
+        if (textInput) textInput.style.display = '';
+        if (sourceSelect) sourceSelect.style.display = 'none';
+      }
+      channelPage = 1;
+      loadChannels();
+    }
+
     function setupSearchDebounce(inputId, timerRefName, resetPage, loadFn) {
       const input = document.getElementById(inputId);
       if (!input) return;
@@ -1294,6 +1378,61 @@
       });
     }
 
+    // ========== 批量操作进度模态 ==========
+    function showBatchProgressModal(title, steps) {
+      showModal(title, `
+        <div id="batchProgressArea" style="text-align:center;padding:24px 0;">
+          <div class="import-progress-icon running"><div class="spinner"></div></div>
+          <h3 id="batchProgressTitle" style="margin-bottom:4px;">${esc(title)}</h3>
+          <p id="batchProgressSub" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></p>
+          <div class="import-progress-bar-track"><div class="import-progress-bar-fill" id="batchProgressBar"></div></div>
+          <div id="batchProgressSteps" style="text-align:left;margin-top:20px;padding:0 20px;">
+            ${steps.map((s, i) => `<div class="import-progress-step${i === 0 ? ' active' : ''}" id="batchStep${i+1}"><span class="step-dot"></span>${esc(s)}</div>`).join('')}
+          </div>
+        </div>
+      `, '');
+      const footer = document.getElementById('modalFooter');
+      if (footer) footer.style.display = 'none';
+    }
+
+    function updateBatchProgress(stepNum, totalSteps, title, sub) {
+      for (let i = 1; i <= totalSteps; i++) {
+        const el = document.getElementById('batchStep' + i);
+        if (el) { el.classList.remove('active', 'completed'); if (i < stepNum) el.classList.add('completed'); else if (i === stepNum) el.classList.add('active'); }
+      }
+      const bar = document.getElementById('batchProgressBar');
+      if (bar) bar.style.width = Math.round((stepNum - 1) / (totalSteps - 1) * 100) + '%';
+      const t = document.getElementById('batchProgressTitle');
+      if (t && title) t.textContent = title;
+      const s = document.getElementById('batchProgressSub');
+      if (s && sub) s.textContent = sub;
+    }
+
+    function setBatchProgressDone(title, sub, autoClose) {
+      const bar = document.getElementById('batchProgressBar');
+      if (bar) bar.style.width = '100%';
+      const t = document.getElementById('batchProgressTitle');
+      if (t && title) t.textContent = title;
+      const s = document.getElementById('batchProgressSub');
+      if (s && sub) s.textContent = sub;
+      const icon = document.querySelector('#batchProgressArea .import-progress-icon');
+      if (icon) { icon.className = 'import-progress-icon done'; icon.innerHTML = '&#10003;'; }
+      if (autoClose) setTimeout(() => { closeModal(); loadChannels(); }, 1200);
+    }
+
+    function setBatchProgressFail(title, sub) {
+      const bar = document.getElementById('batchProgressBar');
+      if (bar) bar.style.background = '#f44336';
+      const t = document.getElementById('batchProgressTitle');
+      if (t && title) t.textContent = title;
+      const s = document.getElementById('batchProgressSub');
+      if (s && sub) s.textContent = sub;
+      const icon = document.querySelector('#batchProgressArea .import-progress-icon');
+      if (icon) { icon.className = 'import-progress-icon fail'; icon.innerHTML = '&#10007;'; }
+      const footer = document.getElementById('modalFooter');
+      if (footer) { footer.style.display = 'flex'; footer.innerHTML = '<button class="btn" onclick="closeModal()">关闭</button>'; }
+    }
+
     // ========== 页面切换 ==========
     function switchPage(page) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -1309,6 +1448,7 @@
       if (page === 'groupua') loadGroupUaPage();
       if (page === 'playtest') loadPlayTestPage();
       if (page === 'exports') loadExports();
+      if (page === 'scheduler') loadSchedulerTasks();
       if (page === 'links') loadLinks();
     }
 
@@ -1346,18 +1486,28 @@
     async function loadChannels() {
       const searchType = document.getElementById('channelSearchType')?.value || 'name';
       const q = (document.getElementById('channelSearch')?.value || '').toLowerCase();
+      const sourceFilter = document.getElementById('channelSourceFilter')?.value || '';
       const tbody = document.getElementById('channelTableBody');
       const empty = document.getElementById('channelEmpty');
       const pagination = document.getElementById('channelPagination');
-      setTableSkeleton('channelTableBody', 10, 8);
+      setTableSkeleton('channelTableBody', 11, 8);
       if (empty) empty.style.display = 'none';
       if (pagination) pagination.style.display = 'none';
       try {
         const res = await api('/channels');
         let rows = (res && res.ok && Array.isArray(res.data)) ? res.data : [];
         
+        // 填充源名称下拉选项
+        const sourceNames = [...new Set(rows.map(c => c.sourceName).filter(Boolean))].sort();
+        const sourceSelect = document.getElementById('channelSourceFilter');
+        if (sourceSelect) {
+          const prev = sourceSelect.value;
+          sourceSelect.innerHTML = '<option value="">全部</option>' + sourceNames.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+          sourceSelect.value = prev;
+        }
+
         // 根据搜索类型和关键词过滤频道
-        if (q) {
+        if (q && searchType !== 'source') {
           rows = rows.filter(c => {
             if (searchType === 'name') {
               return c.name.toLowerCase().includes(q);
@@ -1366,6 +1516,11 @@
             }
             return true;
           });
+        }
+
+        // 源名称下拉过滤
+        if (sourceFilter) {
+          rows = rows.filter(c => (c.sourceName || '') === sourceFilter);
         }
         
         const total = rows.length;
@@ -1404,6 +1559,7 @@
           <td>${esc(c.tvgId || '-')}</td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(displayUrl)}">${esc(displayUrl)}</td>
           <td>${esc(c.group || '-')}</td>
+          <td>${esc(c.sourceName || '-')}</td>
           <td><span class="tag tag-blue">${esc(c.proxyMode || 'auto')}</span></td>
           <td><span class="tag tag-green">${esc(c.playerType || 'auto')}</span></td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${c.drm ? JSON.stringify(c.drm) : '-'}">${c.drm ? JSON.stringify(c.drm) : '-'}</td>
@@ -1455,7 +1611,7 @@
           pagination.style.display = 'none';
           pagination.innerHTML = '';
         }
-        setTableEmptyRow('channelTableBody', 10, '加载频道失败，请稍后重试', '⚠️');
+        setTableEmptyRow('channelTableBody', 11, '加载频道失败，请稍后重试', '⚠️');
         toast('加载频道失败', 'error');
       }
     }
@@ -1563,46 +1719,18 @@
       `);
     }
 
-    // ========== 手动导入模态框 ==========
+    // ========== 导入频道 ==========
     function showManualImportModal() {
-      showModal('手动导入频道', `
+      showModal('导入频道', `
         <div style="padding:16px 0;">
-          <div style="display:flex;gap:12px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:16px;">
-            <button class="btn btn-primary" id="manualImportTabFile" onclick="switchManualImportTab('file')">上传 M3U 文件</button>
-            <button class="btn" id="manualImportTabSingle" onclick="switchManualImportTab('single')">手动添加频道</button>
+          <div class="form-group">
+            <label>选择 M3U 文件 *</label>
+            <input type="file" id="manualM3uFile" accept=".m3u,.m3u8" style="padding:8px;border:1px solid var(--border);border-radius:6px;width:100%;">
+            <p style="font-size:12px;color:var(--muted);margin-top:6px;">支持 .m3u 和 .m3u8 格式的播放列表文件</p>
           </div>
-          
-          <!-- 文件上传区域 -->
-          <div id="manualImportFileSection">
-            <div class="form-group">
-              <label>选择 M3U 文件 *</label>
-              <input type="file" id="manualM3uFile" accept=".m3u,.m3u8" style="padding:8px;border:1px solid var(--border);border-radius:6px;width:100%;">
-              <p style="font-size:12px;color:var(--muted);margin-top:6px;">支持 .m3u 和 .m3u8 格式的播放列表文件</p>
-            </div>
-            <div id="manualFilePreview" style="display:none;margin-top:16px;">
-              <h4 style="margin-bottom:12px;">频道预览</h4>
-              <div id="manualFileChannelList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:12px;"></div>
-            </div>
-          </div>
-          
-          <!-- 手动添加区域 -->
-          <div id="manualImportSingleSection" style="display:none;">
-            <div class="form-group">
-              <label>频道名称 *</label>
-              <input type="text" id="manualSingleName" placeholder="例如：CCTV-1">
-            </div>
-            <div class="form-group">
-              <label>播放地址 *</label>
-              <input type="text" id="manualSingleUrl" placeholder="例如：http://example.com/stream.m3u8">
-            </div>
-            <div class="form-group">
-              <label>分组</label>
-              <input type="text" id="manualSingleGroup" placeholder="例如：央视">
-            </div>
-            <div class="form-group">
-              <label>Logo URL</label>
-              <input type="text" id="manualSingleLogo" placeholder="可选">
-            </div>
+          <div id="manualFilePreview" style="display:none;margin-top:16px;">
+            <h4 style="margin-bottom:12px;">频道预览</h4>
+            <div id="manualFileChannelList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:12px;"></div>
           </div>
         </div>
       `, `
@@ -1610,7 +1738,6 @@
         <button class="btn btn-primary" id="manualImportSubmitBtn" onclick="submitManualImport()" style="display:none;">导入</button>
       `);
       
-      // 绑定文件选择事件
       setTimeout(() => {
         const fileInput = document.getElementById('manualM3uFile');
         if (fileInput) {
@@ -1619,29 +1746,7 @@
       }, 100);
     }
 
-    function switchManualImportTab(tab) {
-      const fileSection = document.getElementById('manualImportFileSection');
-      const singleSection = document.getElementById('manualImportSingleSection');
-      const fileTab = document.getElementById('manualImportTabFile');
-      const singleTab = document.getElementById('manualImportTabSingle');
-      const submitBtn = document.getElementById('manualImportSubmitBtn');
-      
-      if (tab === 'file') {
-        fileSection.style.display = 'block';
-        singleSection.style.display = 'none';
-        fileTab.classList.add('btn-primary');
-        singleTab.classList.remove('btn-primary');
-        submitBtn.style.display = document.getElementById('manualFilePreview')?.style.display === 'block' ? 'inline-flex' : 'none';
-      } else {
-        fileSection.style.display = 'none';
-        singleSection.style.display = 'block';
-        fileTab.classList.remove('btn-primary');
-        singleTab.classList.add('btn-primary');
-        submitBtn.style.display = 'inline-flex';
-        submitBtn.textContent = '添加';
-        submitBtn.onclick = submitManualSingleImport;
-      }
-    }
+    function switchManualImportTab(tab) {}
 
     async function handleManualFileSelect(e) {
       const file = e.target.files[0];
@@ -1732,7 +1837,11 @@
         });
         
         if (res && res.ok) {
-          toast(`成功导入 ${channelsToImport.length} 个频道`, 'success');
+          const d = res.data || {};
+          const parts = [];
+          if (d.created) parts.push('新增 ' + d.created + ' 个');
+          if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          toast(parts.length ? '导入完成：' + parts.join('，') : ('成功导入 ' + channelsToImport.length + ' 个频道'), 'success');
           closeModal();
           loadChannels();
         } else {
@@ -1782,7 +1891,7 @@
       }
     }
 
-    async function importChannelsFromSource() {
+    async function importChannelsFromSource(defaultSourceId) {
       try {
         const sourcesRes = await api('/sources/m3u');
         if (!sourcesRes || !sourcesRes.ok || !sourcesRes.data || !sourcesRes.data.length) {
@@ -1794,6 +1903,7 @@
         let sourceOptions = sources.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
 
         showModal('从节目源导入频道', `
+          <div id="importFormArea">
           <div class="form-group">
             <label>选择节目源 *</label>
             <select id="importSourceSelect">
@@ -1813,6 +1923,14 @@
             <h4 style="margin-bottom:12px;">频道列表</h4>
             <div id="channelListContent"></div>
           </div>
+          </div>
+          <div id="importProgressArea" style="display:none;text-align:center;padding:24px 0;">
+            <div class="import-progress-icon running"><div class="spinner"></div></div>
+            <h3 id="importProgressTitle" style="margin-bottom:4px;">正在导入...</h3>
+            <p id="importProgressSub" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></p>
+            <div class="import-progress-bar-track"><div class="import-progress-bar-fill" id="importProgressBar"></div></div>
+            <div id="importProgressSteps" style="text-align:left;margin-top:20px;padding:0 20px;"></div>
+          </div>
         `, `
           <button class="btn" onclick="closeModal()">取消</button>
           <button class="btn" id="loadChannelsBtn" onclick="loadSourceChannels()">加载频道</button>
@@ -1824,6 +1942,14 @@
           document.getElementById('importBtn').style.display = 'none';
           document.getElementById('channelListContainer').style.display = 'none';
         });
+
+        // 如果传入了默认源ID，自动选中并加载
+        if (defaultSourceId) {
+          const sel = document.getElementById('importSourceSelect');
+          sel.value = defaultSourceId;
+          document.getElementById('loadChannelsBtn').style.display = 'inline-flex';
+          loadSourceChannels();
+        }
       } catch (e) {
         toast('加载节目源失败', 'error');
       }
@@ -2005,7 +2131,11 @@
         });
 
         if (res && res.ok) {
-          toast(`成功导入 ${channelsToImport.length} 个频道`, 'success');
+          const d = res.data || {};
+          const parts = [];
+          if (d.created) parts.push('新增 ' + d.created + ' 个');
+          if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          toast(parts.length ? '导入完成：' + parts.join('，') : ('成功导入 ' + channelsToImport.length + ' 个频道'), 'success');
           closeModal();
           loadChannels();
         } else {
@@ -2103,11 +2233,43 @@
         return;
       }
 
+      const totalCount = checkboxes.length;
       const sourceId = document.getElementById('importSourceSelect').value;
       const proxyMode = document.getElementById('sourceProxyMode').value;
       let sourcePlayerType = 'auto';
-      
+
+      // 切换到进度面板
+      const formArea = document.getElementById('importFormArea');
+      const progressArea = document.getElementById('importProgressArea');
+      const progressBar = document.getElementById('importProgressBar');
+      const progressTitle = document.getElementById('importProgressTitle');
+      const progressSub = document.getElementById('importProgressSub');
+      const progressSteps = document.getElementById('importProgressSteps');
+      if (formArea) formArea.style.display = 'none';
+      if (progressArea) progressArea.style.display = 'block';
+      if (progressBar) progressBar.style.width = '0%';
+      if (progressTitle) progressTitle.textContent = '正在导入...';
+      if (progressSub) progressSub.textContent = '共 ' + totalCount + ' 个频道待导入';
+      if (progressSteps) progressSteps.innerHTML = `
+        <div class="import-progress-step active" id="importStep1"><span class="step-dot"></span>获取节目源配置</div>
+        <div class="import-progress-step" id="importStep2"><span class="step-dot"></span>组装频道数据</div>
+        <div class="import-progress-step" id="importStep3"><span class="step-dot"></span>提交到服务器</div>
+        <div class="import-progress-step" id="importStep4"><span class="step-dot"></span>完成</div>
+      `;
+      // 隐藏底栏按钮
+      const footer = document.getElementById('modalFooter');
+      if (footer) footer.style.display = 'none';
+
+      function setStep(stepNum) {
+        for (let i = 1; i <= 4; i++) {
+          const el = document.getElementById('importStep' + i);
+          if (el) { el.classList.remove('active', 'completed'); if (i < stepNum) el.classList.add('completed'); else if (i === stepNum) el.classList.add('active'); }
+        }
+        if (progressBar) progressBar.style.width = Math.round((stepNum - 1) / 3 * 100) + '%';
+      }
+
       try {
+        setStep(1);
         const sourceRes = await api('/sources/m3u/' + sourceId);
         if (sourceRes && sourceRes.ok && sourceRes.data) {
           sourcePlayerType = sourceRes.data.defaultPlayerType || 'auto';
@@ -2116,8 +2278,9 @@
         console.error('获取节目源信息失败:', e);
       }
 
+      setStep(2);
+
       const channelsToImport = Array.from(checkboxes).map(cb => {
-        // 根据代理模式决定存储的 URL
         let channelUrl = cb.dataset.url;
         if (proxyMode === 'proxy' || proxyMode === 'auto') {
           channelUrl = `${location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
@@ -2132,36 +2295,30 @@
           proxyMode: proxyMode,
           playerType: cb.dataset.playertype || sourcePlayerType,
           streamType: cb.dataset.streamtype || 'auto',
-          userAgent: cb.dataset.useragent || ''
+          userAgent: cb.dataset.useragent || '',
+          sourceId: sourceId
         };
         
-        // 如果M3U解析出了DRM信息，使用解析的DRM
         if (cb.dataset.drm) {
           try {
             const drmData = JSON.parse(cb.dataset.drm);
-            if (drmData) {
-              channel.drm = drmData;
-            }
-          } catch (e) {
-            console.error('解析DRM数据失败:', e);
-          }
+            if (drmData) channel.drm = drmData;
+          } catch (e) { console.error('解析DRM数据失败:', e); }
         }
         
-        // 如果设置了Shaka播放器且没有指定DRM，添加clearKeys支持
         if (channel.playerType === 'shaka' && !channel.drm) {
           try {
             const clearKeysData = JSON.parse(cb.dataset.clearkeys || '{}');
-            if (Object.keys(clearKeysData).length > 0) {
-              channel.drm = { clearKeys: clearKeysData };
-            }
-          } catch (e) {
-            console.error('解析ClearKeys数据失败:', e);
-          }
+            if (Object.keys(clearKeysData).length > 0) channel.drm = { clearKeys: clearKeysData };
+          } catch (e) { console.error('解析ClearKeys数据失败:', e); }
         }
         
         return channel;
       });
 
+      if (progressSub) progressSub.textContent = '共 ' + totalCount + ' 个频道待导入 · 数据已就绪';
+
+      setStep(3);
       try {
         const res = await api('/channels/batch', {
           method: 'POST',
@@ -2169,14 +2326,32 @@
         });
 
         if (res && res.ok) {
-          toast(`成功导入 ${channelsToImport.length} 个频道`, 'success');
-          closeModal();
-          loadChannels();
+          setStep(4);
+          if (progressBar) progressBar.style.width = '100%';
+          if (progressTitle) progressTitle.textContent = '导入完成';
+          const d = res.data || {};
+          const parts = [];
+          if (d.created) parts.push('新增 ' + d.created + ' 个');
+          if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          if (progressSub) progressSub.textContent = parts.length ? parts.join('，') : ('成功导入 ' + totalCount + ' 个频道');
+          const icon = progressArea?.querySelector('.import-progress-icon');
+          if (icon) { icon.className = 'import-progress-icon done'; icon.innerHTML = '&#10003;'; }
+          setTimeout(() => { closeModal(); loadChannels(); }, 1500);
         } else {
-          toast('导入失败', 'error');
+          if (progressTitle) progressTitle.textContent = '导入失败';
+          if (progressSub) progressSub.textContent = res ? res.message : '服务器返回错误';
+          const icon = progressArea?.querySelector('.import-progress-icon');
+          if (icon) { icon.className = 'import-progress-icon fail'; icon.innerHTML = '&#10007;'; }
+          if (footer) footer.style.display = 'flex';
+          if (footer) footer.innerHTML = '<button class="btn" onclick="closeModal()">关闭</button>';
         }
       } catch (e) {
-        toast('导入失败', 'error');
+        if (progressTitle) progressTitle.textContent = '导入失败';
+        if (progressSub) progressSub.textContent = '网络请求异常，请检查连接';
+        const icon = progressArea?.querySelector('.import-progress-icon');
+        if (icon) { icon.className = 'import-progress-icon fail'; icon.innerHTML = '&#10007;'; }
+        if (footer) footer.style.display = 'flex';
+        if (footer) footer.innerHTML = '<button class="btn" onclick="closeModal()">关闭</button>';
       }
     }
 
@@ -2210,50 +2385,31 @@
     async function doBatchExport() {
       try {
         const channelIds = currentExportChannelIds;
+        const count = channelIds.length;
         const description = document.getElementById('exportDescription').value || '';
 
-        closeModal();
+        showBatchProgressModal('批量导出', ['准备导出数据', '生成导出文件', '完成']);
+        updateBatchProgress(1, 3, '正在导出...', '共 ' + count + ' 个频道');
 
-        // 显示加载状态
-        const loadingToast = document.createElement('div');
-        loadingToast.className = 'toast toast-info';
-        loadingToast.textContent = '正在导出...';
-        document.getElementById('toastContainer').appendChild(loadingToast);
-
-        // 调用后端 API
         const res = await api('/exports/export', {
           method: 'POST',
-          body: JSON.stringify({
-            channelIds,
-            description
-          })
+          body: JSON.stringify({ channelIds, description })
         });
-
-        loadingToast.remove();
 
         if (res && res.ok) {
           const data = res.data;
-          
-          // 显示导出成功弹窗
-          showModal('导出成功', `
-            <div style="margin-bottom:16px;">
-              <p><b>导出文件:</b> ${data.filename}</p>
-              <p><b>导出简介:</b> ${data.description || '无'}</p>
-              <p><b>文件大小:</b> ${(data.fileSize / 1024).toFixed(2)}KB</p>
-            </div>
-            <p style="font-size:12px;color:var(--muted);">文件已保存到服务器数据目录，可在用户链接管理中为特定用户生成下载链接</p>
-          `, `
-            <button class="btn" onclick="closeModal()">关闭</button>
-            <button class="btn btn-primary" onclick="switchPage('links')">前往用户链接管理</button>
-          `);
-
-          toast(`成功导出 ${channelIds.length} 个频道`, 'success');
+          setBatchProgressDone('导出完成', `文件 ${data.filename}（${(data.fileSize / 1024).toFixed(2)}KB）`, false);
+          const footer = document.getElementById('modalFooter');
+          if (footer) {
+            footer.style.display = 'flex';
+            footer.innerHTML = '<button class="btn" onclick="closeModal()">关闭</button><button class="btn btn-primary" onclick="closeModal();loadChannels();switchPage(\'links\')">前往用户链接管理</button>';
+          }
         } else {
-          toast(res ? res.message : '导出失败', 'error');
+          setBatchProgressFail('导出失败', res ? res.message : '服务器返回错误');
         }
       } catch (e) {
         console.error('批量导出失败:', e);
-        toast('导出失败: ' + (e.message || '未知错误'), 'error');
+        setBatchProgressFail('导出失败', '网络请求异常');
       }
     }
 
@@ -2316,13 +2472,21 @@
 
     async function doBatchEdit() {
       const checkboxes = document.querySelectorAll('.channel-checkbox:checked');
+      const count = checkboxes.length;
       const channelIds = Array.from(checkboxes).map(cb => cb.value);
       const proxyMode = document.getElementById('batchProxyMode').value;
       const playerType = document.getElementById('batchPlayer').value;
       const group = document.getElementById('batchGroup').value;
       const userAgent = document.getElementById('batchUserAgent').value.trim();
 
+      const hasChanges = proxyMode || playerType || group || userAgent;
+      if (!hasChanges) { toast('未做任何修改', 'error'); return; }
+
+      showBatchProgressModal('批量修改', ['组装修改数据', '提交到服务器', '完成']);
+      updateBatchProgress(1, 3, '正在修改...', '共 ' + count + ' 个频道');
+
       try {
+        updateBatchProgress(2, 3, '正在修改...', '提交修改请求中');
         const updateData = { 
           ids: channelIds, 
           data: { 
@@ -2339,15 +2503,13 @@
         });
 
         if (res && res.ok) {
-          toast(`成功修改 ${checkboxes.length} 个频道`, 'success');
-          closeModal();
-          loadChannels();
+          setBatchProgressDone('修改完成', '成功修改 ' + count + ' 个频道', true);
         } else {
-          toast('修改失败', 'error');
+          setBatchProgressFail('修改失败', res ? res.message : '服务器返回错误');
         }
       } catch (e) {
         console.error('批量修改频道失败:', e);
-        toast('修改失败', 'error');
+        setBatchProgressFail('修改失败', '网络请求异常');
       }
     }
 
@@ -2802,6 +2964,264 @@
       }
     }
 
+    // ========== 定时任务 ==========
+    let schedulerSourceCache = [];
+
+    async function loadSchedulerTasks() {
+      const tbody = document.getElementById('schedulerTableBody');
+      const emptyEl = document.getElementById('schedulerEmpty');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted);">加载中...</td></tr>';
+
+      try {
+        const res = await api('/scheduler/tasks');
+        if (!res || !res.ok) {
+          tbody.innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        const tasks = res.data || [];
+        const statusEl = document.getElementById('schedulerStatus');
+        if (res.status) {
+          statusEl.textContent = `调度器运行中 · ${res.status.activeTasks} 个活跃任务`;
+        }
+
+        if (!tasks.length) {
+          tbody.innerHTML = '';
+          emptyEl.style.display = 'block';
+          return;
+        }
+
+        emptyEl.style.display = 'none';
+        tbody.innerHTML = tasks.map(t => {
+          const lastRun = t.lastRunAt
+            ? `<span style="font-size:12px;">${new Date(t.lastRunAt).toLocaleString()}</span>` +
+              (t.lastResult ? (t.lastResult.success
+                ? `<br><span style="color:#4caf50;font-size:12px;">导入 ${t.lastResult.imported} 个频道 · ${t.lastResult.duration}ms</span>`
+                : `<br><span style="color:#f44336;font-size:12px;">失败: ${esc(t.lastResult.error)}</span>`)
+              : '')
+            : '<span style="color:var(--muted);font-size:12px;">尚未执行</span>';
+
+          const nextRun = t.enabled && t.nextRunAt
+            ? `<span style="font-size:12px;color:var(--muted);">${formatCountdown(new Date(t.nextRunAt) - Date.now())}</span>`
+            : '<span style="color:var(--muted);font-size:12px;">-</span>';
+
+          return `<tr>
+            <td><b>${esc(t.name)}</b></td>
+            <td style="font-size:13px;">${esc(t.sourceName || t.sourceId)}</td>
+            <td><code style="background:rgba(146,187,255,0.1);padding:2px 8px;border-radius:4px;font-size:12px;">${esc(t.cron)}</code><br><span style="font-size:11px;color:var(--muted);">${esc(describeCronLocal(t.cron))}</span></td>
+            <td>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="toggleSchedulerTask('${t.id}', this.checked)" style="accent-color:var(--brand);">
+                <span style="font-size:12px;">${t.enabled ? '启用' : '停用'}</span>
+              </label>
+            </td>
+            <td>${lastRun}</td>
+            <td>${nextRun}</td>
+            <td class="btn-group">
+              <button class="btn btn-sm btn-primary" onclick="runSchedulerTask('${t.id}')">执行</button>
+              <button class="btn btn-sm" onclick="showSchedulerTaskModal('${t.id}')">编辑</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteSchedulerTask('${t.id}')">删除</button>
+            </td>
+          </tr>`;
+        }).join('');
+
+        // 每分钟刷新倒计时
+        clearInterval(window._schedulerRefreshTimer);
+        window._schedulerRefreshTimer = setInterval(loadSchedulerTasks, 60000);
+      } catch (e) {
+        console.error('加载定时任务失败:', e);
+        tbody.innerHTML = '';
+        toast('加载定时任务失败', 'error');
+      }
+    }
+
+    function formatCountdown(ms) {
+      if (ms <= 0) return '即将执行';
+      const totalSec = Math.floor(ms / 1000);
+      const days = Math.floor(totalSec / 86400);
+      const hours = Math.floor((totalSec % 86400) / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      if (days > 0) return `${days}天${hours}小时后`;
+      if (hours > 0) return `${hours}小时${mins}分钟后`;
+      if (mins > 0) return `${mins}分钟后`;
+      return '不到1分钟';
+    }
+
+    // 简易 cron 中文描述（前端版）
+    function describeCronLocal(expr) {
+      try {
+        const parts = expr.trim().split(/\s+/);
+        if (parts.length !== 5) return expr;
+        const [min, hour, day, month, dow] = parts;
+        const dowNames = ['日', '一', '二', '三', '四', '五', '六'];
+        let desc = '';
+        if (month !== '*') desc += month + '月 ';
+        if (day !== '*') desc += day + '日 ';
+        if (hour !== '*' && min !== '*') {
+          desc += String(hour).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+        } else if (hour !== '*' && min === '0') {
+          desc += '每小时整点';
+        } else if (min !== '*' && hour === '*') {
+          desc += '每小时第' + min + '分钟';
+        }
+        if (dow !== '*') {
+          desc += ' 周' + dow.split(',').map(d => dowNames[parseInt(d)] || d).join('');
+        }
+        if (!desc) desc = hour === '*' && min === '*' ? '每分钟' : expr;
+        return desc;
+      } catch { return expr; }
+    }
+
+    async function showSchedulerTaskModal(editId) {
+      // 加载节目源列表
+      if (!schedulerSourceCache.length) {
+        try {
+          const srcRes = await api('/sources/m3u');
+          schedulerSourceCache = (srcRes && srcRes.ok && srcRes.data) ? srcRes.data : [];
+        } catch {
+          schedulerSourceCache = [];
+        }
+      }
+
+      let task = null;
+      if (editId) {
+        try {
+          const res = await api('/scheduler/tasks');
+          task = (res && res.data || []).find(t => t.id === editId) || null;
+        } catch {}
+      }
+
+      const sourceOptions = schedulerSourceCache.map(s =>
+        `<option value="${s.id}" ${task && task.sourceId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`
+      ).join('');
+
+      const cronPresets = [
+        { label: '每小时', value: '0 * * * *' },
+        { label: '每天 3:00', value: '0 3 * * *' },
+        { label: '每天 6:00', value: '0 6 * * *' },
+        { label: '每周一 3:00', value: '0 3 * * 1' },
+        { label: '每月 1 号 3:00', value: '0 3 1 * *' },
+        { label: '每 6 小时', value: '0 */6 * * *' },
+      ];
+      const presetBtns = cronPresets.map(p =>
+        `<button class="btn btn-sm" type="button" onclick="document.getElementById('taskCron').value='${p.value}';document.getElementById('cronDesc').textContent='${esc(p.label)}'" style="margin:2px;">${p.label}</button>`
+      ).join('');
+
+      showModal(editId ? '编辑定时任务' : '新建定时任务', `
+        <div class="form-group">
+          <label>任务名称</label>
+          <input type="text" id="taskName" placeholder="例如：每日更新频道" value="${task ? esc(task.name) : ''}" style="width:100%;padding:8px 12px;">
+        </div>
+        <div class="form-group">
+          <label>节目源 *</label>
+          <select id="taskSource" style="width:100%;padding:8px 12px;">
+            <option value="">-- 请选择节目源 --</option>
+            ${sourceOptions}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>执行周期 (Cron 表达式) *</label>
+          <input type="text" id="taskCron" placeholder="例如: 0 3 * * * (每天3点)" value="${task ? esc(task.cron) : '0 3 * * *'}" style="width:100%;padding:8px 12px;font-family:monospace;" oninput="document.getElementById('cronDesc').textContent=describeCronLocal(this.value)">
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;" id="cronDesc">${task ? esc(describeCronLocal(task.cron)) : '每天 03:00'}</div>
+          <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;">${presetBtns}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;">格式: 分 时 日 月 星期（标准 5 段 cron）</div>
+        </div>
+      `, `
+        <button class="btn" onclick="closeModal()">取消</button>
+        <button class="btn btn-primary" onclick="saveSchedulerTask('${editId || ''}')">${editId ? '保存' : '创建'}</button>
+      `);
+    }
+
+    async function saveSchedulerTask(editId) {
+      const name = document.getElementById('taskName').value.trim();
+      const sourceId = document.getElementById('taskSource').value;
+      const cron = document.getElementById('taskCron').value.trim();
+
+      if (!sourceId) { toast('请选择节目源', 'error'); return; }
+      if (!cron) { toast('请填写 cron 表达式', 'error'); return; }
+
+      try {
+        let res;
+        if (editId) {
+          res = await api('/scheduler/tasks/' + editId, {
+            method: 'PUT',
+            body: JSON.stringify({ name: name || undefined, sourceId, cron })
+          });
+        } else {
+          res = await api('/scheduler/tasks', {
+            method: 'POST',
+            body: JSON.stringify({ name: name || undefined, sourceId, cron })
+          });
+        }
+
+        if (res && res.ok) {
+          toast(editId ? '任务已更新' : '任务已创建', 'success');
+          closeModal();
+          loadSchedulerTasks();
+        } else {
+          toast(res ? res.message : '操作失败', 'error');
+        }
+      } catch (e) {
+        toast('操作失败: ' + (e.message || ''), 'error');
+      }
+    }
+
+    async function toggleSchedulerTask(id, enabled) {
+      try {
+        const res = await api('/scheduler/tasks/' + id, {
+          method: 'PUT',
+          body: JSON.stringify({ enabled })
+        });
+        if (res && res.ok) {
+          toast(enabled ? '任务已启用' : '任务已停用', 'success');
+          loadSchedulerTasks();
+        } else {
+          toast('操作失败', 'error');
+          loadSchedulerTasks();
+        }
+      } catch (e) {
+        toast('操作失败', 'error');
+        loadSchedulerTasks();
+      }
+    }
+
+    async function deleteSchedulerTask(id) {
+      if (!confirm('确定要删除该定时任务吗？')) return;
+      try {
+        const res = await api('/scheduler/tasks/' + id, { method: 'DELETE' });
+        if (res && res.ok) {
+          toast('任务已删除', 'success');
+          loadSchedulerTasks();
+        } else {
+          toast('删除失败', 'error');
+        }
+      } catch (e) {
+        toast('删除失败', 'error');
+      }
+    }
+
+    async function runSchedulerTask(id) {
+      if (!confirm('确定要立即执行该任务吗？')) return;
+      toast('正在执行导入任务...', 'info');
+      try {
+        const res = await api('/scheduler/tasks/' + id + '/run', { method: 'POST' });
+        if (res && res.ok) {
+          const d = res.data || {};
+          if (d.success) {
+            toast(`执行成功，导入 ${d.imported} 个频道，耗时 ${d.duration}ms`, 'success');
+          } else {
+            toast(`执行失败: ${d.error}`, 'error');
+          }
+          loadSchedulerTasks();
+        } else {
+          toast(res ? res.message : '执行失败', 'error');
+        }
+      } catch (e) {
+        toast('执行失败: ' + (e.message || ''), 'error');
+      }
+    }
+
     // 暴露到全局作用域
     window.loadSourceChannels = loadSourceChannels;
     window.doImportChannels = doImportChannels;
@@ -2861,26 +3281,28 @@
         return;
       }
 
-      if (!confirm(`确定要删除选中的 ${checkboxes.length} 个频道吗？`)) {
-        return;
-      }
+      const count = checkboxes.length;
+      if (!confirm(`确定要删除选中的 ${count} 个频道吗？`)) return;
+
+      showBatchProgressModal('批量删除', ['准备删除数据', '提交到服务器', '完成']);
+      updateBatchProgress(1, 3, '正在删除...', '共 ' + count + ' 个频道');
 
       const channelIds = Array.from(checkboxes).map(cb => cb.value);
 
       try {
+        updateBatchProgress(2, 3, '正在删除...', '提交删除请求中');
         const res = await api('/channels/batch/delete', {
           method: 'POST',
           body: JSON.stringify({ ids: channelIds })
         });
 
         if (res && res.ok) {
-          toast(`成功删除 ${channelIds.length} 个频道`, 'success');
-          loadChannels();
+          setBatchProgressDone('删除完成', '成功删除 ' + count + ' 个频道', true);
         } else {
-          toast('批量删除失败', 'error');
+          setBatchProgressFail('删除失败', res ? res.message : '服务器返回错误');
         }
       } catch (e) {
-        toast('批量删除失败', 'error');
+        setBatchProgressFail('删除失败', '网络请求异常');
       }
     }
 
@@ -2916,6 +3338,7 @@
             <td>${s.updatedAt ? new Date(s.updatedAt).toLocaleString() : '-'}</td>
             <td class="btn-group">
               <button class="btn btn-sm" onclick="showSourceModal('m3u','${s.id}')">编辑</button>
+              <button class="btn btn-sm btn-primary" onclick="importChannelsFromSource('${s.id}')">导入</button>
               <button class="btn btn-sm btn-danger" onclick="deleteSource('m3u','${s.id}')">删除</button>
             </td>
           </tr>`).join('');
@@ -3806,7 +4229,7 @@
       }
 
       showModal((isEdit ? '编辑' : '添加') + label + '源', `
-        <div class="form-group"><label>名称 *</label><input id="srcName" value="${esc(existingData.name || '')}"></div>
+        <div class="form-group" id="srcNameGroup"><label>名称 *</label><input id="srcName" value="${esc(existingData.name || '')}" oninput="document.getElementById('srcNameGroup').classList.remove('has-error');var e=document.getElementById('srcNameError');if(e){e.textContent='';e.classList.remove('show');}"><div class="form-error" id="srcNameError"></div></div>
         <div class="form-group"><label>URL *</label><input id="srcUrl" value="${esc(existingData.url || '')}" placeholder="http://..."></div>
         ${extraFields}
       `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="saveSource('${type}'${isEdit ? `,'${id}'` : ''})">${isEdit ? '更新' : '添加'}</button>`);
@@ -3820,8 +4243,26 @@
     }
 
     async function saveSource(type, id) {
+      const srcNameGroup = document.getElementById('srcNameGroup');
+      const srcNameError = document.getElementById('srcNameError');
+      // 清除之前的错误状态
+      srcNameGroup?.classList.remove('has-error');
+      if (srcNameError) { srcNameError.textContent = ''; srcNameError.classList.remove('show'); }
+
       const data = { name: document.getElementById('srcName').value.trim(), url: document.getElementById('srcUrl').value.trim() };
       if (!data.name || !data.url) { toast('名称和URL为必填项', 'error'); return; }
+      // 前端重名检查：添加模式下检查是否已存在同名源，编辑模式下排除自身
+      try {
+        const checkRes = await api('/sources/' + type);
+        if (checkRes && checkRes.ok && Array.isArray(checkRes.data)) {
+          const dup = checkRes.data.find(s => s.id !== id && s.name && s.name.trim().toLowerCase() === data.name.toLowerCase());
+          if (dup) {
+            if (srcNameGroup) srcNameGroup.classList.add('has-error');
+            if (srcNameError) { srcNameError.textContent = '已存在相同名称的' + (type === 'm3u' ? '节目' : 'EPG') + '源'; srcNameError.classList.add('show'); }
+            return;
+          }
+        }
+      } catch (_) {}
       if (type === 'm3u') {
         data.defaultPlayerType = document.getElementById('srcPlayerType').value;
         data.proxyMode = document.getElementById('srcProxyMode').value;
@@ -4613,6 +5054,8 @@
       }
       
       setupChannelSearchDebounce();
+      const srcFilter = document.getElementById('channelSourceFilter');
+      if (srcFilter) srcFilter.addEventListener('change', () => { channelPage = 1; loadChannels(); });
       setupSearchDebounce('m3uSearch', 'm3u', () => { m3uPage = 1; }, loadSources);
       setupSearchDebounce('epgSearch', 'epg', () => { epgPage = 1; }, loadSources);
       setupSearchDebounce('userSearch', 'user', () => { userPage = 1; }, loadUsers);
