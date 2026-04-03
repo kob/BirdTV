@@ -327,15 +327,16 @@
     // ========== 仪表盘 ==========
     async function loadDashboard() {
       try {
-        const [channelsRes, sourcesRes, healthRes, settingsRes] = await Promise.all([
+        const [channelsRes, sourcesRes, healthRes, settingsRes, usersRes] = await Promise.all([
           api('/channels').catch(() => ({ ok: false })),
           api('/sources/m3u').catch(() => ({ ok: false })),
           fetch('/health').then(r => r.json()).catch(() => null),
-          api('/settings').catch(() => ({ ok: false }))
+          api('/settings').catch(() => ({ ok: false })),
+          api('/auth/users').catch(() => ({ ok: false }))
         ]);
         document.getElementById('statChannels').textContent = channelsRes.ok ? channelsRes.data.length : '-';
         document.getElementById('statSources').textContent = sourcesRes.ok ? sourcesRes.data.length : '-';
-        document.getElementById('statUsers').textContent = '-';
+        document.getElementById('statUsers').textContent = usersRes.ok ? usersRes.data.length : '-';
         
         // 系统鉴权状态
         document.getElementById('statSystemAuth').textContent = healthRes ? 
