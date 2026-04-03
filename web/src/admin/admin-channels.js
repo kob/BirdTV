@@ -55,12 +55,13 @@
           return;
         }
 
-        const totalPages = Math.max(1, Math.ceil(total / CHANNEL_PAGE_SIZE));
+        const effectivePageSize = CHANNEL_PAGE_SIZE || total;
+        const totalPages = Math.max(1, Math.ceil(total / effectivePageSize));
         if (channelPage > totalPages) {
           channelPage = totalPages;
         }
-        const start = (channelPage - 1) * CHANNEL_PAGE_SIZE;
-        const end = start + CHANNEL_PAGE_SIZE;
+        const start = (channelPage - 1) * effectivePageSize;
+        const end = start + effectivePageSize;
         const pageRows = rows.slice(start, end);
         updateChannelResultCount(pageRows.length, total);
 
@@ -120,7 +121,7 @@
         });
 
         function updateBatchDeleteButton() {
-          const checkedCount = document.querySelectorAll('.channel-checkbox:checked').length;
+          const checkedCount = selectedChannelIds.size;
           const batchDeleteBtn = document.getElementById('batchDeleteBtn');
           const batchExportBtn = document.getElementById('batchExportBtn');
           const batchEditBtn = document.getElementById('batchEditBtn');

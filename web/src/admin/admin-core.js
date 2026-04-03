@@ -98,10 +98,11 @@
     function renderChannelPagination(totalItems) {
       const root = document.getElementById('channelPagination');
       if (!root) return;
-      const totalPages = Math.max(1, Math.ceil(totalItems / CHANNEL_PAGE_SIZE));
+      const effectivePageSize = CHANNEL_PAGE_SIZE || totalItems;
+      const totalPages = Math.max(1, Math.ceil(totalItems / effectivePageSize));
       channelPage = Math.min(channelPage, totalPages);
 
-      if (totalItems <= CHANNEL_PAGE_SIZE) {
+      if (totalItems <= effectivePageSize) {
         root.style.display = 'none';
         root.innerHTML = '';
         return;
@@ -116,6 +117,7 @@
         `  <option value="20" ${CHANNEL_PAGE_SIZE === 20 ? 'selected' : ''}>20条/页</option>`,
         `  <option value="50" ${CHANNEL_PAGE_SIZE === 50 ? 'selected' : ''}>50条/页</option>`,
         `  <option value="100" ${CHANNEL_PAGE_SIZE === 100 ? 'selected' : ''}>100条/页</option>`,
+        `  <option value="0" ${CHANNEL_PAGE_SIZE === 0 ? 'selected' : ''}>全部</option>`,
         `</select>`,
         `<button type="button" class="page-btn" id="channelPrevPage" ${channelPage <= 1 ? 'disabled' : ''}>上一页</button>`,
         `<button type="button" class="page-btn" id="channelNextPage" ${channelPage >= totalPages ? 'disabled' : ''}>下一页</button>`,

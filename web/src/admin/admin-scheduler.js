@@ -257,19 +257,17 @@
     }
 
     async function batchDeleteChannels() {
-      const checkboxes = document.querySelectorAll('.channel-checkbox:checked');
-      if (checkboxes.length === 0) {
+      if (selectedChannelIds.size === 0) {
         toast('请选择要删除的频道', 'error');
         return;
       }
 
-      const count = checkboxes.length;
+      const channelIds = Array.from(selectedChannelIds);
+      const count = channelIds.length;
       if (!confirm(`确定要删除选中的 ${count} 个频道吗？`)) return;
 
       showBatchProgressModal('批量删除', ['准备删除数据', '提交到服务器', '完成']);
       updateBatchProgress(1, 3, '正在删除...', '共 ' + count + ' 个频道');
-
-      const channelIds = Array.from(checkboxes).map(cb => cb.value);
 
       try {
         updateBatchProgress(2, 3, '正在删除...', '提交删除请求中');

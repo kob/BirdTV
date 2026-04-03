@@ -1199,6 +1199,16 @@ function createApiRouter(controllers) {
       return channelController.getGroups(req, res);
     }
 
+    // POST /api/channels/groups - 添加自定义分组
+    if (url === '/api/channels/groups' && req.method === 'POST') {
+      return channelController.addGroup(req, res);
+    }
+
+    // DELETE /api/channels/groups - 删除自定义分组
+    if (url === '/api/channels/groups' && req.method === 'DELETE') {
+      return channelController.deleteGroupFromSettings(req, res);
+    }
+
     // GET /api/channels/:id - 获取频道详情
     const channelMatch = url.match(/^\/api\/channels\/([^/]+)$/);
     if (channelMatch && method === 'GET') {

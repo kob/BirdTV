@@ -392,7 +392,11 @@ class ChannelController {
     try {
       const channels = await this.storage.getChannels();
       const groups = [...new Set(channels.map(ch => ch.group || '未分组').filter(Boolean))];
-      res.json({ ok: true, data: groups.sort() });
+      // 合并自定义分组
+      const settings = await this.storage.getSettings();
+      const customGroups = settings.customGroups || [];
+      const allGroups = [...new Set([...groups, ...customGroups])];
+      res.json({ ok: true, data: allGroups.sort() });
     } catch (error) {
       console.error('[ChannelController] GetGroups error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -401,6 +405,42 @@ class ChannelController {
         error: 'server_error',
         message: '获取分组列表失败'
       }));
+    }
+  }
+
+  async addGroup(req, res) {
+    try {
+      const { groupName } = req.body;
+      if (!groupName || !groupName.trim()) {
+        return res.status(400).json({ ok: false, message: '分组名称不能为空' });
+      }
+      const settings = await this.storage.getSettings();
+      if (!settings.customGroups) settings.customGroups = [];
+      if (settings.customGroups.includes(groupName.trim())) {
+        return res.json({ ok: false, message: '该分组已存在' });
+      }
+      settings.customGroups.push(groupName.trim());
+      await this.storage.saveSettings(settings);
+      res.json({ ok: true, message: '分组添加成功' });
+    } catch (error) {
+      console.error('[ChannelController] addGroup error:', error);
+      res.status(500).json({ ok: false, message: '添加分组失败' });
+    }
+  }
+
+  async deleteGroupFromSettings(req, res) {
+    try {
+      const { groupName } = req.body;
+      const settings = await this.storage.getSettings();
+      if (!settings.customGroups) {
+        return res.json({ ok: true, message: '没有自定义分组' });
+      }
+      settings.customGroups = settings.customGroups.filter(g => g !== groupName);
+      await this.storage.saveSettings(settings);
+      res.json({ ok: true, message: '分组删除成功' });
+    } catch (error) {
+      console.error('[ChannelController] deleteGroup error:', error);
+      res.status(500).json({ ok: false, message: '删除分组失败' });
     }
   }
 }

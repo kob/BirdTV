@@ -31,6 +31,10 @@ class ExportController {
         return res.status(400).json({ ok: false, message: 'No channels found' });
       }
 
+      // 获取全局 UA 作为默认值
+      const settings = await this.storage.getSettings();
+      const globalUA = settings.globalUserAgent || null;
+
       const exportDir = path.resolve(__dirname, '../../data/exports');
 
       // 同名覆盖：删除已有的同名导出记录和文件
@@ -87,16 +91,28 @@ class ExportController {
           extinfLine += ` group-title="${groupTitle}",${tvgName}`;
           tempM3uContent += extinfLine + '\n';
 
+          // 添加 User-Agent 信息（优先频道 UA，否则全局 UA）
+          const effectiveUA = channel.userAgent || globalUA;
+          if (effectiveUA) {
+            tempM3uContent += `#EXTVLCOPT:http-user-agent=${effectiveUA}\n`;
+          }
+
           if (channel.drm && channel.drm.clearKeys) {
-            m3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
-            m3uContent += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n';
+            tempM3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
+            tempM3uContent += '#KODIPROP:inputstream.adaptive.license_type=clearkey\n';
             const firstKey = Object.entries(channel.drm.clearKeys)[0];
             if (firstKey) {
               const [kid, key] = firstKey;
-              m3uContent += `#KODIPROP:inputstream.adaptive.license_key=${kid}:${key}\n`;
+              tempM3uContent += `#KODIPROP:inputstream.adaptive.license_key=${kid}:${key}\n`;
             }
           }
-          tempM3uContent += `${channel.url}\n`;
+          // 添加 UA 到代理 URL
+          let shortUrl = channel.url;
+          if (shortUrl.includes('/m3u-proxy') || shortUrl.includes('/stream/proxy')) {
+            const separator = shortUrl.includes('?') ? '&' : '?';
+            shortUrl += `${separator}ua=${encodeURIComponent(effectiveUA)}`;
+          }
+          tempM3uContent += `${shortUrl}\n`;
         });
         
         fs.writeFileSync(filePath, tempM3uContent);
@@ -146,6 +162,12 @@ class ExportController {
         extinfLine += ` group-title="${groupTitle}",${tvgName}`;
         m3uContent += extinfLine + '\n';
 
+        // 添加 User-Agent 信息（优先频道 UA，否则全局 UA）
+        const effectiveUA = channel.userAgent || globalUA;
+        if (effectiveUA) {
+          m3uContent += `#EXTVLCOPT:http-user-agent=${effectiveUA}\n`;
+        }
+
         // 添加 KODIPROP 信息（如果有 DRM）
         if (channel.drm && channel.drm.clearKeys) {
           m3uContent += '#KODIPROP:inputstream.adaptive.manifest_type=mpd\n';
@@ -162,11 +184,16 @@ class ExportController {
           // 短链接模式：直接使用短链接（会在访问时动态生成 Token）
           m3uContent += `${shortLinkData.shortLink}\n`;
         } else {
-          // 传统模式：为代理 URL 添加 auth_token
+          // 传统模式：为代理 URL 添加 auth_token 和 ua
           let finalUrl = channel.url;
           if (finalUrl.includes('/m3u-proxy') || finalUrl.includes('/stream/proxy')) {
             const separator = finalUrl.includes('?') ? '&' : '?';
             finalUrl = `${finalUrl}${separator}auth_token=${encodedToken}`;
+            // 添加 UA：优先使用频道 UA，否则使用全局 UA
+            const effectiveUA = channel.userAgent || globalUA;
+            if (effectiveUA) {
+              finalUrl += `&ua=${encodeURIComponent(effectiveUA)}`;
+            }
           }
           m3uContent += `${finalUrl}\n`;
         }

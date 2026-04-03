@@ -61,25 +61,25 @@
     async function addNewGroup() {
       const input = document.getElementById('newGroupName');
       const groupName = input?.value?.trim();
-      
+
       if (!groupName) {
         toast('请输入分组名称', 'error');
         return;
       }
-      
-      // 检查是否已存在
-      const res = await api('/channels/groups');
-      if (res && res.ok && Array.isArray(res.data)) {
-        if (res.data.includes(groupName)) {
-          toast('该分组已存在', 'error');
-          return;
+
+      try {
+        const res = await api('/channels/groups', { method: 'POST', body: JSON.stringify({ groupName }) });
+        if (res && res.ok) {
+          toast('分组添加成功', 'success');
+          closeModal();
+          loadGroupManageList();
+        } else {
+          toast(res?.message || '添加失败', 'error');
         }
+      } catch (e) {
+        console.error('添加分组失败:', e);
+        toast('添加分组失败', 'error');
       }
-      
-      // 分组是自动从频道中提取的，这里只是提示用户
-      toast('分组已添加，可以在频道管理中关联', 'success');
-      closeModal();
-      loadGroupManageList();
     }
     
     async function deleteGroup(groupName) {
@@ -88,23 +88,24 @@
       }
       
       try {
-        // 获取该分组下的所有频道
+        // 获取该分组下的所有频道并设为未分组
         const res = await api('/channels');
         if (res && res.ok && Array.isArray(res.data)) {
           const channelsInGroup = res.data.filter(ch => ch.group === groupName);
-          
           if (channelsInGroup.length > 0) {
-            // 批量设置为未分组
             const ids = channelsInGroup.map(ch => ch.id);
             await api('/channels/batch/update', {
               method: 'POST',
               body: JSON.stringify({ ids, data: { group: '未分组' } })
             });
           }
-          
-          toast(`分组"${groupName}"已删除`, 'success');
-          loadGroupManageList();
         }
+
+        // 从自定义分组中删除
+        await api('/channels/groups', { method: 'DELETE', body: JSON.stringify({ groupName }) });
+
+        toast(`分组"${groupName}"已删除`, 'success');
+        loadGroupManageList();
       } catch (e) {
         console.error('删除分组失败:', e);
         toast('删除分组失败', 'error');

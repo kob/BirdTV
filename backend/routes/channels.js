@@ -45,6 +45,16 @@ function createChannelsRoutes(channelController) {
       return channelController.getGroups(req, res);
     }
 
+    // POST /api/channels/groups - 添加自定义分组
+    if (url === '/api/channels/groups' && method === 'POST') {
+      return channelController.addGroup(req, res);
+    }
+
+    // DELETE /api/channels/groups - 删除自定义分组
+    if (url === '/api/channels/groups' && method === 'DELETE') {
+      return channelController.deleteGroupFromSettings(req, res);
+    }
+
     // 处理带 ID 的路由
     const match = url.match(/^\/api\/channels\/([^/]+)$/);
     if (match) {

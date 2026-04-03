@@ -20,12 +20,27 @@
 
     // ========== 导入频道 ==========
     function showManualImportModal() {
+      const UA_PRESETS = [
+        { name: "默认 (okhttp)", value: "okhttp" },
+        { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
+        { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+        { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+        { name: "curl", value: "curl/8.4.0" }
+      ];
       showModal('导入频道', `
         <div style="padding:16px 0;">
           <div class="form-group">
             <label>选择 M3U 文件 *</label>
             <input type="file" id="manualM3uFile" accept=".m3u,.m3u8" style="padding:8px;border:1px solid var(--border);border-radius:6px;width:100%;">
             <p style="font-size:12px;color:var(--muted);margin-top:6px;">支持 .m3u 和 .m3u8 格式的播放列表文件</p>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>默认分组</label><input type="text" id="manualImportGroup" placeholder="未分组" style="width:100%;"></div>
+            <div class="form-group"><label>代理模式</label><select id="manualImportProxyMode" style="width:100%;"><option value="">保持原始</option><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>播放器</label><select id="manualImportPlayer" style="width:100%;"><option value="">保持原始</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option></select></div>
+            <div class="form-group"><label>User Agent</label><select id="manualImportUA" style="width:100%;"><option value="">保持原始</option>${UA_PRESETS.map(ua => `<option value="${esc(ua.value)}">${esc(ua.name)}</option>`).join('')}</select></div>
           </div>
           <div id="manualFilePreview" style="display:none;margin-top:16px;">
             <h4 style="margin-bottom:12px;">频道预览</h4>
@@ -97,7 +112,12 @@
     async function submitManualFileImport() {
       const checkboxes = document.querySelectorAll('.manual-channel-item input[type="checkbox"]:checked');
       if (checkboxes.length === 0) { toast('请选择要导入的频道', 'error'); return; }
-      
+
+      const importGroup = (document.getElementById('manualImportGroup')?.value || '').trim();
+      const importProxy = document.getElementById('manualImportProxyMode')?.value || '';
+      const importPlayer = document.getElementById('manualImportPlayer')?.value || '';
+      const importUA = document.getElementById('manualImportUA')?.value || '';
+
       const listDiv = document.getElementById('manualFileChannelList');
       const allItems = listDiv.querySelectorAll('.manual-channel-item');
       const channelsToImport = [];
@@ -108,7 +128,12 @@
           const nameEl = item.querySelector('div > div:first-child');
           const urlEl = item.querySelector('div > div:nth-child(2)');
           const groupEl = item.querySelector('div:last-child');
-          channelsToImport.push({ name: nameEl?.textContent || '', url: urlEl?.textContent || '', group: groupEl?.textContent || '', streamType: 'live' });
+          const channel = { name: nameEl?.textContent || '', url: urlEl?.textContent || '', streamType: 'live' };
+          channel.group = importGroup || (groupEl?.textContent || '') || '未分组';
+          if (importProxy) channel.proxyMode = importProxy;
+          if (importPlayer) channel.playerType = importPlayer;
+          if (importUA) channel.userAgent = importUA;
+          channelsToImport.push(channel);
         }
       });
       
@@ -432,9 +457,8 @@
     let currentExportChannelIds = [];
 
     async function batchExportChannels() {
-      const checkboxes = document.querySelectorAll('.channel-checkbox:checked');
-      if (checkboxes.length === 0) { toast('请选择要导出的频道', 'error'); return; }
-      currentExportChannelIds = Array.from(checkboxes).map(cb => cb.value);
+      if (selectedChannelIds.size === 0) { toast('请选择要导出的频道', 'error'); return; }
+      currentExportChannelIds = Array.from(selectedChannelIds);
       showModal('批量导出设置', `
         <div class="form-group"><label>选中频道数</label><input type="text" value="${currentExportChannelIds.length} 个频道" disabled></div>
         <div class="form-group"><label>文件名 *</label><input type="text" id="exportFilename" placeholder="例如：我的频道" style="font-size:14px;"><p style="font-size:12px;color:var(--muted);margin-top:4px;">文件将保存为 .m3u 格式，同名文件将被覆盖</p></div>
@@ -463,8 +487,7 @@
     }
 
     async function batchEditChannels() {
-      const checkboxes = document.querySelectorAll('.channel-checkbox:checked');
-      if (checkboxes.length === 0) { toast('请选择要修改的频道', 'error'); return; }
+      if (selectedChannelIds.size === 0) { toast('请选择要修改的频道', 'error'); return; }
       try {
         const res = await api('/channels/groups');
         let groups = []; if (res && res.ok && Array.isArray(res.data)) groups = res.data;
@@ -494,9 +517,8 @@
     }
 
     async function doBatchEdit() {
-      const checkboxes = document.querySelectorAll('.channel-checkbox:checked');
-      const count = checkboxes.length;
-      const channelIds = Array.from(checkboxes).map(cb => cb.value);
+      const channelIds = Array.from(selectedChannelIds);
+      const count = channelIds.length;
       const proxyMode = document.getElementById('batchProxyMode').value;
       const playerType = document.getElementById('batchPlayer').value;
       const group = document.getElementById('batchGroup').value;
