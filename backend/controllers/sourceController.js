@@ -449,7 +449,7 @@ class SourceController {
 
   async parseM3uUrl(req, res) {
     try {
-      const { url } = req.body;
+      const { url, userAgent } = req.body;
       
       if (!url) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -460,8 +460,8 @@ class SourceController {
         }));
       }
 
-      // 解析 M3U 链接获取频道列表
-      const channels = await this._parseM3uChannels(url);
+      // 解析 M3U 链接获取频道列表，传入自定义UA
+      const channels = await this._parseM3uChannels(url, userAgent || null);
 
       res.json({
         ok: true,

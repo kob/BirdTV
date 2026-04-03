@@ -141,40 +141,83 @@
     }
 
     async function importChannelsFromSource(defaultSourceId) {
-      try {
-        const sourcesRes = await api('/sources/m3u');
-        if (!sourcesRes || !sourcesRes.ok || !sourcesRes.data || !sourcesRes.data.length) { toast('暂无节目源，请先添加节目源', 'error'); return; }
-        const sources = sourcesRes.data;
-        let sourceOptions = sources.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+      if (defaultSourceId) {
+        // 从节目源列表直接导入：获取源信息，直接拉取频道，只需设置代理模式和默认播放器
+        try {
+          const sourceRes = await api('/sources/m3u/' + defaultSourceId);
+          if (!sourceRes || !sourceRes.ok || !sourceRes.data) { toast('获取节目源信息失败', 'error'); return; }
+          const source = sourceRes.data;
+          if (!source.url) { toast('节目源没有配置M3U链接', 'error'); return; }
 
-        showModal('从节目源导入频道', `
-          <div id="importFormArea">
-          <div class="form-group"><label>选择节目源 *</label><select id="importSourceSelect"><option value="">-- 请选择节目源 --</option>${sourceOptions}</select></div>
-          <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;"><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
-          <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
-          </div>
-          <div id="importProgressArea" style="display:none;text-align:center;padding:24px 0;">
-            <div class="import-progress-icon running"><div class="spinner"></div></div>
-            <h3 id="importProgressTitle" style="margin-bottom:4px;">正在导入...</h3>
-            <p id="importProgressSub" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></p>
-            <div class="import-progress-bar-track"><div class="import-progress-bar-fill" id="importProgressBar"></div></div>
-            <div id="importProgressSteps" style="text-align:left;margin-top:20px;padding:0 20px;"></div>
-          </div>
-        `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn" id="loadChannelsBtn" onclick="loadSourceChannels()">加载频道</button><button class="btn btn-primary" id="importBtn" onclick="doImportChannels()" style="display:none;">导入选中</button>`);
+          // 用节目源的UA和默认播放器预填充
+          const proxyMode = source.proxyMode || 'auto';
+          const defaultPlayerType = source.defaultPlayerType || 'auto';
+          const sourceUserAgent = source.userAgent || '';
 
-        document.getElementById('importSourceSelect').addEventListener('change', function() {
-          document.getElementById('loadChannelsBtn').style.display = this.value ? 'inline-flex' : 'none';
-          document.getElementById('importBtn').style.display = 'none';
-          document.getElementById('channelListContainer').style.display = 'none';
-        });
+          showModal('从节目源导入频道 - ' + esc(source.name), `
+            <div id="importFormArea">
+            <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;">
+              <option value="auto" ${proxyMode === 'auto' ? 'selected' : ''}>自动</option>
+              <option value="proxy" ${proxyMode === 'proxy' ? 'selected' : ''}>代理</option>
+              <option value="direct" ${proxyMode === 'direct' ? 'selected' : ''}>直连</option>
+            </select></div>
+            <div class="form-group"><label>默认播放器</label><select id="sourcePlayerType" style="width:100%;">
+              <option value="auto" ${defaultPlayerType === 'auto' ? 'selected' : ''}>自动</option>
+              <option value="vlc-proxy" ${defaultPlayerType === 'vlc-proxy' ? 'selected' : ''}>VLC代理</option>
+              <option value="vlc-direct" ${defaultPlayerType === 'vlc-direct' ? 'selected' : ''}>VLC直连</option>
+              <option value="shaka" ${defaultPlayerType === 'shaka' ? 'selected' : ''}>Shaka</option>
+              <option value="hls" ${defaultPlayerType === 'hls' ? 'selected' : ''}>HLS</option>
+              <option value="mpegts" ${defaultPlayerType === 'mpegts' ? 'selected' : ''}>MPEG-TS</option>
+              <option value="native" ${defaultPlayerType === 'native' ? 'selected' : ''}>Native</option>
+            </select></div>
+            <input type="hidden" id="importSourceId" value="${defaultSourceId}">
+            <input type="hidden" id="importSourceUserAgent" value="${esc(sourceUserAgent)}">
+            <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
+            </div>
+            <div id="importProgressArea" style="display:none;text-align:center;padding:24px 0;">
+              <div class="import-progress-icon running"><div class="spinner"></div></div>
+              <h3 id="importProgressTitle" style="margin-bottom:4px;">正在导入...</h3>
+              <p id="importProgressSub" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></p>
+              <div class="import-progress-bar-track"><div class="import-progress-bar-fill" id="importProgressBar"></div></div>
+              <div id="importProgressSteps" style="text-align:left;margin-top:20px;padding:0 20px;"></div>
+            </div>
+          `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn btn-primary" id="importBtn" onclick="doImportChannels()" style="display:none;">导入选中</button>`);
 
-        if (defaultSourceId) {
-          const sel = document.getElementById('importSourceSelect');
-          sel.value = defaultSourceId;
-          document.getElementById('loadChannelsBtn').style.display = 'inline-flex';
+          // 自动加载频道
           loadSourceChannels();
-        }
-      } catch (e) { toast('加载节目源失败', 'error'); }
+        } catch (e) { toast('加载节目源失败', 'error'); }
+      } else {
+        // 从导入菜单进入：需要选择节目源
+        try {
+          const sourcesRes = await api('/sources/m3u');
+          if (!sourcesRes || !sourcesRes.ok || !sourcesRes.data || !sourcesRes.data.length) { toast('暂无节目源，请先添加节目源', 'error'); return; }
+          const sources = sourcesRes.data;
+          let sourceOptions = sources.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+
+          showModal('从节目源导入频道', `
+            <div id="importFormArea">
+            <div class="form-group"><label>选择节目源 *</label><select id="importSourceSelect"><option value="">-- 请选择节目源 --</option>${sourceOptions}</select></div>
+            <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;"><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+            <input type="hidden" id="importSourceId" value="">
+            <input type="hidden" id="importSourceUserAgent" value="">
+            <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
+            </div>
+            <div id="importProgressArea" style="display:none;text-align:center;padding:24px 0;">
+              <div class="import-progress-icon running"><div class="spinner"></div></div>
+              <h3 id="importProgressTitle" style="margin-bottom:4px;">正在导入...</h3>
+              <p id="importProgressSub" style="font-size:13px;color:var(--muted);margin-bottom:16px;"></p>
+              <div class="import-progress-bar-track"><div class="import-progress-bar-fill" id="importProgressBar"></div></div>
+              <div id="importProgressSteps" style="text-align:left;margin-top:20px;padding:0 20px;"></div>
+            </div>
+          `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn" id="loadChannelsBtn" onclick="loadSourceChannels()">加载频道</button><button class="btn btn-primary" id="importBtn" onclick="doImportChannels()" style="display:none;">导入选中</button>`);
+
+          document.getElementById('importSourceSelect').addEventListener('change', function() {
+            document.getElementById('loadChannelsBtn').style.display = this.value ? 'inline-flex' : 'none';
+            document.getElementById('importBtn').style.display = 'none';
+            document.getElementById('channelListContainer').style.display = 'none';
+          });
+        } catch (e) { toast('加载节目源失败', 'error'); }
+      }
     }
 
     function importChannelsFromFile() {
@@ -265,16 +308,23 @@
     }
 
     async function loadSourceChannels() {
-      const sourceId = document.getElementById('importSourceSelect').value;
+      // 兼容：优先从隐藏字段取sourceId，其次从下拉框取
+      const sourceId = document.getElementById('importSourceId')?.value || document.getElementById('importSourceSelect')?.value;
       if (!sourceId) return;
+      const container = document.getElementById('channelListContainer');
+      container.style.display = 'block';
+      container.innerHTML = '<div style="text-align:center;padding:32px 0;"><div class="spinner"></div><p style="margin-top:12px;color:var(--muted);">正在拉取节目源并解析频道列表，请稍候...</p></div>';
       try {
         const sourceRes = await api('/sources/m3u/' + sourceId);
-        if (!sourceRes || !sourceRes.ok || !sourceRes.data) { toast('获取节目源信息失败', 'error'); return; }
+        if (!sourceRes || !sourceRes.ok || !sourceRes.data) { container.innerHTML = '<p style="color:var(--error);text-align:center;padding:16px;">获取节目源信息失败</p>'; return; }
         const m3uUrl = sourceRes.data.url;
-        if (!m3uUrl) { toast('节目源没有配置M3U链接', 'error'); return; }
+        const sourceUserAgent = sourceRes.data.userAgent || '';
+        if (!m3uUrl) { container.innerHTML = '<p style="color:var(--error);text-align:center;padding:16px;">节目源没有配置M3U链接</p>'; return; }
 
-        const res = await api('/sources/m3u/parse', { method: 'POST', body: JSON.stringify({ url: m3uUrl }) });
-        if (!res || !res.ok || !res.data || !res.data.length) { toast('该节目源暂无频道', 'error'); return; }
+        const parseBody = { url: m3uUrl };
+        if (sourceUserAgent) parseBody.userAgent = sourceUserAgent;
+        const res = await api('/sources/m3u/parse', { method: 'POST', body: JSON.stringify(parseBody) });
+        if (!res || !res.ok || !res.data || !res.data.length) { container.innerHTML = '<p style="color:var(--error);text-align:center;padding:16px;">该节目源暂无频道</p>'; return; }
 
         const channels = res.data;
         const channelListContent = document.getElementById('channelListContent');
@@ -307,7 +357,7 @@
 
         document.getElementById('channelListContainer').style.display = 'block';
         document.getElementById('importBtn').style.display = 'inline-flex';
-      } catch (e) { toast('加载频道失败', 'error'); }
+      } catch (e) { container.innerHTML = '<p style="color:var(--error);text-align:center;padding:16px;">加载频道失败: ' + esc(e.message || '网络异常') + '</p>'; }
     }
 
     async function doImportChannels() {
@@ -315,9 +365,9 @@
       if (checkboxes.length === 0) { toast('请选择要导入的频道', 'error'); return; }
 
       const totalCount = checkboxes.length;
-      const sourceId = document.getElementById('importSourceSelect').value;
+      const sourceId = document.getElementById('importSourceId')?.value || document.getElementById('importSourceSelect')?.value;
       const proxyMode = document.getElementById('sourceProxyMode').value;
-      let sourcePlayerType = 'auto';
+      let sourcePlayerType = document.getElementById('sourcePlayerType')?.value || 'auto';
 
       const formArea = document.getElementById('importFormArea');
       const progressArea = document.getElementById('importProgressArea');
@@ -331,25 +381,22 @@
       if (progressTitle) progressTitle.textContent = '正在导入...';
       if (progressSub) progressSub.textContent = '共 ' + totalCount + ' 个频道待导入';
       if (progressSteps) progressSteps.innerHTML = `
-        <div class="import-progress-step active" id="importStep1"><span class="step-dot"></span>获取节目源配置</div>
-        <div class="import-progress-step" id="importStep2"><span class="step-dot"></span>组装频道数据</div>
-        <div class="import-progress-step" id="importStep3"><span class="step-dot"></span>提交到服务器</div>
-        <div class="import-progress-step" id="importStep4"><span class="step-dot"></span>完成</div>
+        <div class="import-progress-step active" id="importStep1"><span class="step-dot"></span>组装频道数据</div>
+        <div class="import-progress-step" id="importStep2"><span class="step-dot"></span>提交到服务器</div>
+        <div class="import-progress-step" id="importStep3"><span class="step-dot"></span>完成</div>
       `;
       const footer = document.getElementById('modalFooter');
       if (footer) footer.style.display = 'none';
 
       function setStep(stepNum) {
-        for (let i = 1; i <= 4; i++) {
+        for (let i = 1; i <= 3; i++) {
           const el = document.getElementById('importStep' + i);
           if (el) { el.classList.remove('active', 'completed'); if (i < stepNum) el.classList.add('completed'); else if (i === stepNum) el.classList.add('active'); }
         }
-        if (progressBar) progressBar.style.width = Math.round((stepNum - 1) / 3 * 100) + '%';
+        if (progressBar) progressBar.style.width = Math.round((stepNum - 1) / 2 * 100) + '%';
       }
 
-      try { setStep(1); const sourceRes = await api('/sources/m3u/' + sourceId); if (sourceRes && sourceRes.ok && sourceRes.data) sourcePlayerType = sourceRes.data.defaultPlayerType || 'auto'; } catch (e) {}
-
-      setStep(2);
+      setStep(1);
       const channelsToImport = Array.from(checkboxes).map(cb => {
         let channelUrl = cb.dataset.url;
         if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
@@ -360,11 +407,11 @@
       });
 
       if (progressSub) progressSub.textContent = '共 ' + totalCount + ' 个频道待导入 · 数据已就绪';
-      setStep(3);
+      setStep(2);
       try {
         const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport }) });
         if (res && res.ok) {
-          setStep(4); if (progressBar) progressBar.style.width = '100%'; if (progressTitle) progressTitle.textContent = '导入完成';
+          setStep(3); if (progressBar) progressBar.style.width = '100%'; if (progressTitle) progressTitle.textContent = '导入完成';
           const d = res.data || {}; const parts = [];
           if (d.created) parts.push('新增 ' + d.created + ' 个'); if (d.updated) parts.push('更新 ' + d.updated + ' 个');
           if (progressSub) progressSub.textContent = parts.length ? parts.join('，') : ('成功导入 ' + totalCount + ' 个频道');
