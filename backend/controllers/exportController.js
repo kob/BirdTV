@@ -504,12 +504,15 @@ class ExportController {
 
       let m3uContent = fs.readFileSync(filePath, 'utf8');
 
-      // Generate auth token for the link
+      // Generate auth token for the link, TTL aligned with link expiration
+      const linkRemainingMs = Math.max(0, new Date(linkRecord.expiresAt).getTime() - Date.now());
+      // Add 5 minutes buffer to avoid edge-case failure during active playback
+      const tokenTtlMs = linkRemainingMs + 5 * 60 * 1000;
       const authToken = tokenService.generateToken({
         linkId: linkRecord.id,
         shortCode: linkRecord.shortCode,
         ip: req.ip,
-        ttl: 24 * 3600 * 1000 // 24 hours
+        ttl: tokenTtlMs
       });
       const encodedToken = tokenService.encodeToken(authToken);
 
