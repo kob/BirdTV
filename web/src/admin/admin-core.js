@@ -336,7 +336,7 @@
     async function loadDashboard() {
       try {
         const [channelsRes, sourcesRes, healthRes, settingsRes, usersRes] = await Promise.all([
-          api('/channels').catch(() => ({ ok: false })),
+          api('/channels?limit=99999').catch(() => ({ ok: false })),
           api('/sources/m3u').catch(() => ({ ok: false })),
           fetch('/health').then(r => r.json()).catch(() => null),
           api('/settings').catch(() => ({ ok: false })),

@@ -124,7 +124,7 @@
 
     async function loadCurrentChannelsJson() {
       try {
-        const res = await api('/channels');
+        const res = await api('/channels?limit=99999');
         if (res && res.ok && Array.isArray(res.data)) {
           document.getElementById('testJsonInput').value = JSON.stringify(res.data, null, 2);
           toast('已加载当前频道数据', 'success');
@@ -167,7 +167,7 @@
     }
 
     function exportTestJson() {
-      api('/channels').then(res => {
+      api('/channels?limit=99999').then(res => {
         if (res && res.ok && Array.isArray(res.data)) {
           document.getElementById('testJsonInput').value = JSON.stringify(res.data, null, 2);
           toast('已导出所有频道数据', 'success');

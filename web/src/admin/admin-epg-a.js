@@ -281,7 +281,7 @@
     async function showImportFromChannelsModal() {
       try {
         // 加载频道列表
-        const res = await api('/channels');
+        const res = await api('/channels?limit=99999');
         if (res && res.ok && Array.isArray(res.data)) {
           allChannels = res.data;
           

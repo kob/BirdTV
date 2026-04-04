@@ -89,7 +89,7 @@
       
       try {
         // 获取该分组下的所有频道并设为未分组
-        const res = await api('/channels');
+        const res = await api('/channels?limit=99999');
         if (res && res.ok && Array.isArray(res.data)) {
           const channelsInGroup = res.data.filter(ch => ch.group === groupName);
           if (channelsInGroup.length > 0) {

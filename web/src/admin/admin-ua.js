@@ -161,7 +161,7 @@
 
       try {
         // 获取所有频道
-        const channelsRes = await api('/channels?search=');
+        const channelsRes = await api('/channels?limit=99999');
         const channels = (channelsRes && channelsRes.ok && Array.isArray(channelsRes.data)) ? channelsRes.data : [];
 
         // 获取设置中的频道 UA 映射
