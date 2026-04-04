@@ -314,7 +314,7 @@
 
       const channelsToImport = Array.from(checkboxes).map(cb => {
         let channelUrl = cb.dataset.url;
-        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
+        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
         const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', streamType: cb.dataset.streamtype || 'auto', playerType: cb.dataset.playertype || 'auto', userAgent: cb.dataset.useragent || '', proxyMode };
         if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d) channel.drm = d; } catch (e) {} }
         if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
@@ -424,7 +424,7 @@
       setStep(1);
       const channelsToImport = Array.from(checkboxes).map(cb => {
         let channelUrl = cb.dataset.url;
-        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
+        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
         const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', proxyMode, playerType: cb.dataset.playertype || sourcePlayerType, streamType: cb.dataset.streamtype || 'auto', userAgent: cb.dataset.useragent || '', sourceId };
         if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d) channel.drm = d; } catch (e) {} }
         if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }

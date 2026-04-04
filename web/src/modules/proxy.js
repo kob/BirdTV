@@ -164,7 +164,7 @@ export function getProxyUrl(url, userAgent = null) {
 
         if (tempMode === 'direct') return url;
 
-        let proxyUrl = `/m3u-proxy?url=${encodedUrl}`;
+        let proxyUrl = `${window.location.origin}/m3u-proxy?url=${encodedUrl}`;
         if (effectiveUserAgent) {
             proxyUrl += `&ua=${encodeURIComponent(effectiveUserAgent)}`;
         }
