@@ -734,9 +734,22 @@ export async function playSource(source, elements) {
                 const isExternalProxy = urlObj.origin !== window.location.origin;
                 const isDashStream = isLikelyDashUrl(actualUrl);
                 const pm = getTempProxyMode();
-                if (isExternalProxy && (!isDashStream || pm !== 'm3u-proxy')) {
+                const channelProxyMode = String(source?.sourceProxyMode || source?.proxyMode || '').trim().toLowerCase();
+                if (isExternalProxy && channelProxyMode !== 'proxy') {
+                    // 频道未明确要求走代理时，解包外部代理URL
+                    if (!isDashStream || pm !== 'm3u-proxy') {
+                        const urlParam = urlObj.searchParams.get('url');
+                        if (urlParam) actualUrl = decodeURIComponent(urlParam);
+                    }
+                } else if (isExternalProxy && channelProxyMode === 'proxy') {
+                    // 频道明确要求走代理，将外部代理URL重新包装为当前域名的代理URL
                     const urlParam = urlObj.searchParams.get('url');
-                    if (urlParam) actualUrl = decodeURIComponent(urlParam);
+                    if (urlParam) {
+                        const uaParam = urlObj.searchParams.get('ua');
+                        let rebuilt = `${window.location.origin}/m3u-proxy?url=${urlParam}`;
+                        if (uaParam) rebuilt += `&ua=${uaParam}`;
+                        actualUrl = rebuilt;
+                    }
                 }
             } catch (e) { /* ignore */ }
         }

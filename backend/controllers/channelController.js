@@ -38,13 +38,18 @@ class ChannelController {
           if (source) {
             return {
               ...channel,
-              sourceDefaultPlayerType: source.defaultPlayerType,
-              sourceProxyMode: source.proxyMode,
+              sourceDefaultPlayerType: source.defaultPlayerType || channel.defaultPlayerType,
+              sourceProxyMode: source.proxyMode || channel.proxyMode,
               sourceName: source.name
             };
           }
         }
-        return channel;
+        // 独立导入的频道（无 sourceId），将自身 proxyMode 映射为 sourceProxyMode
+        return {
+          ...channel,
+          sourceDefaultPlayerType: channel.playerType || channel.defaultPlayerType || undefined,
+          sourceProxyMode: channel.proxyMode || undefined
+        };
       });
 
       res.json({
