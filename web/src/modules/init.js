@@ -161,8 +161,16 @@ async function init() {
         const headers = token ? { "Authorization": "Bearer " + token } : {};
 
         let backendM3uUrl = "", backendEpgUrl = "", matchedM3uSource = null;
+
+        // 并行请求：settings、m3u sources、epg sources
         try {
-            const settingsRes = await fetch("/api/settings", { headers });
+            const [settingsRes, m3uRes, epgRes] = await Promise.all([
+                fetch("/api/settings", { headers }).catch(() => ({ ok: false })),
+                fetch("/api/sources/m3u", { headers }).catch(() => ({ ok: false })),
+                fetch("/api/sources/epg", { headers }).catch(() => ({ ok: false }))
+            ]);
+
+            // 处理 settings
             if (settingsRes.ok) {
                 const settingsResult = await settingsRes.json();
                 if (settingsResult.ok && settingsResult.data) {
@@ -170,10 +178,8 @@ async function init() {
                     backendEpgUrl = (settingsResult.data.defaultEpgSource || "").trim();
                 }
             }
-        } catch {}
 
-        try {
-            const m3uRes = await fetch("/api/sources/m3u", { headers });
+            // 处理 m3u sources
             if (m3uRes.ok) {
                 const result = await m3uRes.json();
                 const m3uSources = (result.ok && Array.isArray(result.data)) ? result.data : [];
@@ -183,28 +189,40 @@ async function init() {
                     matchedM3uSource = m3uSources.find(s => s.url === backendM3uUrl) || m3uSources[0] || null;
                 }
             }
-        } catch {}
 
-        try {
-            const epgRes = await fetch("/api/sources/epg", { headers });
-            if (epgRes.ok) { const result = await epgRes.json(); if (result.ok && result.data?.length > 0 && !backendEpgUrl) backendEpgUrl = result.data.find(s => s.enabled !== false && s.url)?.url.trim() || ""; }
-        } catch {}
+            // 处理 epg sources
+            if (epgRes.ok) {
+                const result = await epgRes.json();
+                if (result.ok && result.data?.length > 0 && !backendEpgUrl) {
+                    backendEpgUrl = result.data.find(s => s.enabled !== false && s.url)?.url.trim() || "";
+                }
+            }
+        } catch (e) {
+            console.error("并行请求失败:", e);
+        }
 
         // EPG 加载
         let autoEpgUrl = (localStorage.getItem(AUTO_EPG_URL_KEY) || "").trim();
         if (!autoEpgUrl && backendEpgUrl) { autoEpgUrl = backendEpgUrl; localStorage.setItem(AUTO_EPG_URL_KEY, autoEpgUrl); }
-        if (autoEpgUrl) { elements.epgUrlInput.value = autoEpgUrl; await loadEpgData(elements, autoEpgUrl, false); }
+        const epgLoadPromise = autoEpgUrl
+            ? (() => { elements.epgUrlInput.value = autoEpgUrl; return loadEpgData(elements, autoEpgUrl, false); })()
+            : Promise.resolve();
 
         // M3U 加载
         let autoM3uUrl = (localStorage.getItem(AUTO_M3U_URL_KEY) || "").trim();
         if (!autoM3uUrl && backendM3uUrl) { autoM3uUrl = backendM3uUrl; localStorage.setItem(AUTO_M3U_URL_KEY, autoM3uUrl); }
         if (autoM3uUrl) {
             elements.m3uUrlInput.value = autoM3uUrl;
-            await importFromM3UUrl(autoM3uUrl, elements, {
-                showStatus: true, persistAutoUrl: false,
-                forcedStreamType: getSelectedM3UImportType(elements.m3uImportTypeSelect),
-                sourceInfo: matchedM3uSource ? { sourceId: matchedM3uSource.id, sourceDefaultPlayerType: matchedM3uSource.defaultPlayerType, sourceProxyMode: matchedM3uSource.proxyMode, sourceName: matchedM3uSource.name } : null
-            });
+
+            // 并行加载 EPG 和 M3U
+            await Promise.all([
+                epgLoadPromise,
+                importFromM3UUrl(autoM3uUrl, elements, {
+                    showStatus: true, persistAutoUrl: false,
+                    forcedStreamType: getSelectedM3UImportType(elements.m3uImportTypeSelect),
+                    sourceInfo: matchedM3uSource ? { sourceId: matchedM3uSource.id, sourceDefaultPlayerType: matchedM3uSource.defaultPlayerType, sourceProxyMode: matchedM3uSource.proxyMode, sourceName: matchedM3uSource.name } : null
+                })
+            ]);
             return;
         }
     } catch (e) { console.warn("后端源同步失败:", e); }

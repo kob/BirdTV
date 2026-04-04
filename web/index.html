@@ -6,6 +6,15 @@
     <title>BirdTV Player</title>
     <link rel="icon" href="/assets/favicon-Cp3VK451.ico" sizes="any">
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+    <!-- 预加载关键 CDN 资源 -->
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.6.18/shaka-player.compiled.min.js" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" as="script">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js" as="script">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js" as="script">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.6.18/controls.min.css">
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.6.18/shaka-player.compiled.min.js" onerror="handleScriptError('Shaka Player')"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.6.18/shaka-player.ui.min.js" onerror="handleScriptError('Shaka Player UI')"></script>
