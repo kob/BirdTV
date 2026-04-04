@@ -340,6 +340,37 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
                     return;
                 }
             } else if (shouldStartDashViaProxy) {
+                // HTTPS 页面 + HTTP 源：先尝试升级为 HTTPS 直连，失败再走代理
+                if (isHttpsPage && isHttpSource && !shouldForceDashProxyByRedirect) {
+                    httpsUpgradeUrl = playbackDirectUrl.replace(/^http:\/\//i, 'https://');
+                    console.log(`${labelPrefix}代理模式下 HTTPS 页面检测到 HTTP 源，先尝试 HTTPS 升级直连: ${httpsUpgradeUrl}`);
+                    pushDiagnosticEvent(null, {
+                        type: 'dash-https-upgrade',
+                        level: 'info',
+                        player: 'shaka',
+                        channel: source?.name || '',
+                        url: playbackDirectUrl,
+                        message: `代理模式 HTTPS 页面 HTTP 源，尝试 HTTPS 升级: ${httpsUpgradeUrl}`
+                    });
+                    try {
+                        await loadShakaWithTimeout(httpsUpgradeUrl, `${labelPrefix}DASH HTTPS 升级直连`, requestId, directTimeoutMs);
+                        return;
+                    } catch (httpsUpgradeError) {
+                        console.warn(`${labelPrefix}HTTPS 升级直连失败 (code: ${httpsUpgradeError.code || '-'}): ${httpsUpgradeError.message}，回退到代理模式`);
+                        pushDiagnosticEvent(null, {
+                            type: 'dash-https-upgrade-fail',
+                            level: 'warn',
+                            player: 'shaka',
+                            channel: source?.name || '',
+                            url: httpsUpgradeUrl,
+                            code: toDiagnosticErrorCode(httpsUpgradeError),
+                            message: `HTTPS 升级失败，回退代理: ${httpsUpgradeError.message || httpsUpgradeError}`
+                        });
+                        await resetShakaPipelineForRetry();
+                        assertActivePlayRequest(requestId);
+                        applyShakaDrmConfigForSource(source);
+                    }
+                }
                 const dashLoadLabel = currentProxyMode === 'm3u-proxy'
                     ? `${labelPrefix}DASH 代理`
                     : `${labelPrefix}DASH 代理`;
