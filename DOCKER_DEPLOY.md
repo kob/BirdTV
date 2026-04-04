@@ -676,16 +676,18 @@ https://birdtv-<random-string>.apps.<region>.hana.ondemand.com
 | `HOST` | `0.0.0.0` | 监听地址 | 否 |
 | `PORT` | `8771` | 监听端口 | 否 |
 | `NODE_ENV` | `production` | 运行环境 | 否 |
+| `LOG_LEVEL` | `info` | 日志级别 | 否 |
 
 ### 认证配置
 
 | 变量名 | 默认值 | 说明 | 必填 |
 |--------|--------|------|------|
 | `AUTH_ENABLED` | `true` | 是否启用认证 | 否 |
-| `AUTH_JWT_SECRET` | `change-me` | JWT 密钥 (生产环境必须修改) | 是 |
+| `AUTH_JWT_SECRET` | `change-me-in-production` | JWT 密钥 (生产环境必须修改) | 是 |
 | `AUTH_TOKEN_EXPIRE_DAYS` | `7` | Token 有效期 (天) | 否 |
 | `AUTH_DEFAULT_ADMIN` | `admin` | 默认管理员用户名 | 否 |
 | `AUTH_DEFAULT_PASSWORD` | `admin123` | 默认管理员密码 | 否 |
+| `SECRET_KEY` | `birdtv-secret-key-2024` | Token 签名密钥 (非 JWT 模式) | 否 |
 
 ### Redis 配置 (可选)
 
@@ -695,16 +697,24 @@ https://birdtv-<random-string>.apps.<region>.hana.ondemand.com
 | `AUTH_REDIS_PORT` | `6379` | Redis 端口 | 否 |
 | `AUTH_REDIS_PASSWORD` | - | Redis 密码 | 否 |
 | `AUTH_REDIS_DB` | `0` | Redis 数据库编号 | 否 |
+| `REDIS_DATA_PREFIX` | `birdtv:storage:` | 数据存储 key 前缀 | 否 |
+| `REDIS_PREFIX` | `birdtv` | 认证模块 key 前缀 | 否 |
+| `BIRDTV_SYSTEM_ID` | `default` | 系统标识 (多实例隔离) | 否 |
+| `SERVER_ID` | `default` | 服务器标识 (日志区分) | 否 |
 
-> **注意**: 不配置 Redis 时，系统使用内存存储 (重启后数据丢失)
+> **注意**: 不配置 Redis 时，系统使用内存存储 (重启后数据丢失)。多实例共享 Redis 时请设置不同的前缀。
 
-### 代理配置
+### 代理与缓存配置
 
 | 变量名 | 默认值 | 说明 | 必填 |
 |--------|--------|------|------|
-| `M3U_PROXY_TIMEOUT_MS` | `40000` | 代理超时时间 (毫秒) | 否 |
-| `M3U_PROXY_REDIRECT_LIMIT` | `3` | 最大重定向次数 | 否 |
-| `M3U_PROXY_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent | 否 |
+| `BIRDTV_TIMEOUT_MS` | `40000` | 代理请求超时 (毫秒) | 否 |
+| `BIRDTV_REDIRECT_LIMIT` | `3` | 最大重定向次数 | 否 |
+| `BIRDTV_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent | 否 |
+| `BIRDTV_CACHE_M3U_TTL_MS` | `600000` | M3U 缓存过期 (毫秒) | 否 |
+| `BIRDTV_CACHE_EPG_TTL_MS` | `3600000` | EPG 缓存过期 (毫秒) | 否 |
+
+> **兼容性**: 旧版变量名 `M3U_PROXY_TIMEOUT_MS`、`M3U_PROXY_REDIRECT_LIMIT`、`M3U_PROXY_DEFAULT_UA` 仍可使用。
 
 ---
 

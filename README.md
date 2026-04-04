@@ -96,27 +96,28 @@ pm2 save
 
 - **镜像地址**: `ghcr.io/kob/birdtv:latest`
 - **基础镜像**: node:20-alpine
-- **包含组件**: BirdTV + Kvrocks (Redis 兼容数据库)
+- **架构支持**: linux/amd64, linux/arm64
 
 ### 使用 Docker Compose（推荐）
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-repo/birdtv.git
+git clone https://github.com/kob/birdtv.git
 cd birdtv
 
 # 2. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，修改关键配置（尤其是 AUTH_JWT_SECRET）
+vim .env
 
-# 3. 启动服务
-docker-compose up -d
+# 3. 启动服务（包含 BirdTV + Kvrocks）
+docker compose up -d
 
 # 4. 查看日志
-docker-compose logs -f birdtv
+docker compose logs -f birdtv
 ```
 
-### 使用 Docker 命令
+### 使用 Docker 命令（不依赖 Kvrocks）
 
 ```bash
 docker run -d \
@@ -131,68 +132,135 @@ docker run -d \
   ghcr.io/kob/birdtv:latest
 ```
 
+> **注意**: 不挂载 Kvrocks 时，系统使用内存存储，重启后数据丢失。推荐使用 Docker Compose（内含 Kvrocks 容器实现持久化）。
+
 ## 📦 部署场景
 
-      <h3 id="ubuntu-服务器">1. Ubuntu 服务器</h3>
+### 1. Ubuntu / Debian 服务器
 
 ```bash
 # 安装 Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
+newgrp docker
 
-# 启动服务（包含 BirdTV + Kvrocks）
-docker-compose up -d
+# 克隆项目
+git clone https://github.com/kob/birdtv.git
+cd birdtv
+
+# 配置环境变量
+cp .env.example .env
+# 修改 AUTH_JWT_SECRET 为随机密钥
+sed -i "s/change-me-in-production/$(openssl rand -hex 32)/" .env
+
+# 启动服务
+docker compose up -d
 
 # 查看服务状态
-docker-compose ps
+docker compose ps
 
 # 查看日志
-docker-compose logs -f birdtv
-docker-compose logs -f kvrocks
+docker compose logs -f birdtv
 
 # 配置防火墙
 sudo ufw allow 8771/tcp
-sudo ufw allow 6666/tcp
 ```
 
-> **说明**: Ubuntu 部署自动包含 Kvrocks Redis 服务，默认端口 6666。BirdTV 会自动连接到本地 Kvrocks 进行数据存储。
+> **说明**: Docker Compose 自动启动 BirdTV + Kvrocks 两个容器。Kvrocks 是 Redis 兼容数据库，数据持久化在 Docker Volume 中。
+
+#### Nginx 反向代理 + HTTPS
+
+```nginx
+# /etc/nginx/sites-available/birdtv
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8771;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/birdtv /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d your-domain.com
+```
 
 ### 2. NAS 部署（Synology / QNAP）
 
-**Synology 群晖**：
-- 打开 Container Manager
-- 创建项目，粘贴 docker-compose.yml 配置
-- 点击部署
-- 确保端口 8771 和 6666 未被占用
+**Synology 群晖 (DSM 7.2+)**：
+1. 打开 Container Manager → 项目
+2. 点击"新建"，选择"创建 docker-compose.yml"
+3. 项目名称填 `birdtv`
+4. 粘贴项目中的 `docker-compose.yml` 内容
+5. 根据需要修改端口映射和环境变量
+6. 点击"完成"部署
+7. 访问 `http://nas-ip:8771`
 
-**QNAP 威联通**：
-- 打开 Container Station
-- 创建应用程序，粘贴 YAML 配置
-- 点击创建
-- 查看两个容器状态：birdtv 和 birdtv-kvrocks
+**QNAP 威联通 (QuTS hero)**：
+1. 打开 Container Station → 应用程序
+2. 点击"创建"，粘贴 YAML 配置
+3. 确保端口 8771 未被占用
+4. 点击"创建"后查看容器状态
 
-> **说明**: NAS 部署包含 BirdTV 和 Kvrocks 两个容器，数据分别存储在各自的卷中。
+> **说明**: NAS 部署默认使用 Docker Volume 持久化数据。如需使用内建 Redis/Kvrocks，在 docker-compose.yml 中取消对应服务的注释。
 
 ### 3. 软路由部署（OpenWrt / iStoreOS）
 
 ```bash
-# OpenWrt
+# SSH 连接到路由器
+ssh root@192.168.1.1
+
+# 安装 Docker（需要 entware 或 opkg 源支持）
 opkg update
 opkg install docker dockerd docker-compose
-/etc/init.d/dockerd start
+/etc/init.d/dockerd start && /etc/init.d/dockerd enable
 
-# 启动 BirdTV + Kvrocks
-docker-compose up -d
+# 创建工作目录
+mkdir -p /root/birdtv && cd /root/birdtv
 
-# 检查容器状态
-docker ps
+# 创建 docker-compose.yml（单容器模式，节省内存）
+cat > docker-compose.yml << 'EOF'
+version: "3.8"
+services:
+  birdtv:
+    image: ghcr.io/kob/birdtv:latest
+    container_name: birdtv
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - AUTH_ENABLED=true
+      - AUTH_JWT_SECRET=请替换为随机密钥
+      - AUTH_DEFAULT_ADMIN=admin
+      - AUTH_DEFAULT_PASSWORD=admin123
+    volumes:
+      - ./data:/app/data
+EOF
 
-# iStoreOS
-# 使用图形界面 Container Station 创建容器
-# 确保有足够的内存（建议 512MB 以上）
+# 启动
+docker compose up -d
 ```
 
-> **说明**: 软路由部署包含完整的 Redis 支持，建议设备内存至少 512MB。Kvrocks 比 Redis 更节省内存，适合嵌入式设备。
+> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+。如内存充足（1GB+），可在 compose 中追加 Kvrocks 服务实现数据持久化。
 
 ### 4. Railway
 
@@ -201,72 +269,52 @@ npm install -g @railway/cli
 railway login
 railway init
 
-# 创建 BirdTV + Redis 服务
+# 创建 BirdTV 服务（从 Dockerfile 构建）
 railway up
+
+# 或直接使用 Docker 镜像
+railway variables set RAILWAY_CONTAINER_IMAGE=ghcr.io/kob/birdtv:latest
 
 # 设置环境变量
 railway variables set AUTH_ENABLED=true
 railway variables set AUTH_JWT_SECRET=$(openssl rand -hex 32)
-railway variables set AUTH_REDIS_HOST=redis
-railway variables set AUTH_REDIS_PORT=6379
+railway variables set PORT=8771
 
 # 部署
 railway up
+
+# 获取公网域名
+railway domain
 ```
 
-**docker-compose.yml 配置**：
-```yaml
-version: "3.8"
-services:
-  birdtv:
-    image: ghcr.io/kob/birdtv:latest
-    environment:
-      - AUTH_REDIS_HOST=redis
-      - AUTH_REDIS_PORT=6379
-  redis:
-    image: redis:7-alpine
-```
+> **说明**: Railway 自动分配 HTTPS 域名。免费套餐 $5/月，512MB 内存。Railway 不支持 Redis 侧车，数据使用内存存储。
 
 ### 5. Google IDX
 
-**使用 Docker Compose（推荐）**：
 ```bash
-# 克隆项目
-git clone https://github.com/your-repo/birdtv.git
-cd birdtv
+# 在 IDX 终端中执行
 
-# 启动 BirdTV + Kvrocks
-docker-compose up -d
+# 克隆项目并启动
+git clone https://github.com/kob/birdtv.git
+cd birdtv
+cp .env.example .env
+
+# 启动服务（含 Kvrocks）
+docker compose up -d
 
 # 查看日志
-docker-compose logs -f
-
-# IDX 会自动创建端口转发
+docker compose logs -f birdtv
 ```
 
-**使用 Docker 命令**：
-```bash
-# 启动 Kvrocks
-docker run -d \
-  --name kvrocks \
-  -p 6666:6666 \
-  apache/kvrocks:2.11.0
-
-# 启动 BirdTV
-docker run -d \
-  --name birdtv \
-  -p 8771:8771 \
-  -e AUTH_ENABLED=true \
-  -e AUTH_JWT_SECRET=secret \
-  -e AUTH_REDIS_HOST=host.docker.internal \
-  -e AUTH_REDIS_PORT=6666 \
-  -v birdtv-data:/app/data \
-  ghcr.io/kob/birdtv:latest
-```
+> **说明**: IDX 自动创建端口转发，在 IDE 右上角 "Web Preview" → "Port 8771" 即可访问。
 
 ### 6. Hugging Face Spaces
 
-创建 `docker-compose.yml`：
+1. 访问 [Hugging Face Spaces](https://huggingface.co/new-space)，创建新 Space
+2. SDK 选择 **Docker**，Space 名称填 `birdtv`
+
+在仓库中创建 `docker-compose.yml`：
+
 ```yaml
 version: "3.8"
 services:
@@ -296,40 +344,62 @@ volumes:
   redis-data:
 ```
 
-在 Space Settings 中添加环境变量：
-- `AUTH_JWT_SECRET`: 随机生成的密钥
+在 Space Settings → Variables and secrets 中添加：
+- `AUTH_JWT_SECRET`: 随机密钥（`openssl rand -hex 32`）
 
-### 7. SAP BTP
+提交后自动构建部署，访问 `https://huggingface.co/spaces/your-username/birdtv`。
 
-**创建 Redis 服务**：
+### 7. SAP BTP (Cloud Foundry)
+
 ```bash
+# 安装 CF CLI
+brew install cloudfoundry/tap/cf-cli  # macOS
+# 或参考 https://docs.cloudfoundry.org/cf-cli/install-go-cli.html
+
+# 登录
+cf login -a https://api.<region>.hana.ondemand.com -u <user> -p <pass> -o <org> -s <space>
+
 # 创建 Redis 服务实例
 cf create-service redis cloud redis-birdtv
 
-# 创建 BirdTV 应用
+# 推送应用
 cf push birdtv \
   --docker-image ghcr.io/kob/birdtv:latest \
-  --docker-username <github-username> \
+  --docker-username <github-user> \
   --docker-password <github-pat> \
-  -m 512M \
-  -k 1G \
+  -m 512M -k 1G \
   --no-start
-```
 
-**绑定 Redis 服务**：
-```bash
-# 绑定 Redis 服务
+# 绑定 Redis
 cf bind-service birdtv redis-birdtv
 
 # 设置环境变量
-cf set-env birdtv AUTH_REDIS_HOST $(cf service redis-birdtv | grep credentials | jq -r '.hostname')
-cf set-env birdtv AUTH_REDIS_PORT $(cf service redis-birdtv | grep credentials | jq -r '.port')
 cf set-env birdtv AUTH_ENABLED true
 cf set-env birdtv AUTH_JWT_SECRET $(openssl rand -hex 32)
+cf set-env birdtv AUTH_REDIS_HOST $(cf env birdtv | grep VCAP_SERVICES -A5 | jq -r '.redis[0].credentials.hostname')
+cf set-env birdtv AUTH_REDIS_PORT $(cf env birdtv | grep VCAP_SERVICES -A5 | jq -r '.redis[0].credentials.port')
+cf set-env birdtv PORT 8080
 
-# 重启应用
-cf restart birdtv
+# 启动
+cf restage birdtv
+
+# 查看日志
+cf logs birdtv --recent
 ```
+
+> **说明**: BTP 自动分配 HTTPS 路由。端口必须设为 `8080`（CF 默认暴露端口）。
+
+### 8. CloudBase 云开发
+
+1. 登录 [腾讯云 CloudBase](https://console.cloud.tencent.com/tcb)，创建环境
+2. 在环境设置中开启 **云托管**
+3. 上传 Docker 镜像到腾讯云容器镜像服务 (TCR)
+4. 创建云托管服务，选择镜像 `ghcr.io/kob/birdtv:latest`
+5. 设置环境变量：
+   - `AUTH_ENABLED=true`
+   - `AUTH_JWT_SECRET=<随机密钥>`
+   - `PORT=8771`
+6. 部署后 CloudBase 自动分配 HTTPS 域名
 
 ## 📁 项目结构
 
@@ -371,16 +441,18 @@ BirdTV/
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `8771` | 监听端口 |
 | `NODE_ENV` | `production` | 运行环境 |
+| `LOG_LEVEL` | `info` | 日志级别 |
 
 ### 认证配置
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `AUTH_ENABLED` | `true` | 是否启用认证 |
-| `AUTH_JWT_SECRET` | `change-me` | JWT 密钥（生产环境必须修改） |
+| `AUTH_JWT_SECRET` | `change-me-in-production` | JWT 密钥（生产环境必须修改） |
 | `AUTH_TOKEN_EXPIRE_DAYS` | `7` | Token 有效期（天） |
 | `AUTH_DEFAULT_ADMIN` | `admin` | 默认管理员用户名 |
 | `AUTH_DEFAULT_PASSWORD` | `admin123` | 默认管理员密码 |
+| `SECRET_KEY` | `birdtv-secret-key-2024` | Token 签名密钥（非 JWT 模式） |
 
 ### Redis 配置（可选）
 
@@ -393,13 +465,54 @@ BirdTV/
 
 > **注意**: 不配置 Redis 时，系统使用内存存储（重启后数据丢失）
 
+### Redis 数据隔离（多实例部署）
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `REDIS_DATA_PREFIX` | `birdtv:storage:` | 数据存储 key 前缀 |
+| `REDIS_PREFIX` | `birdtv` | 认证模块 key 前缀 |
+| `BIRDTV_SYSTEM_ID` | `default` | 系统标识（与 REDIS_PREFIX 组合隔离认证数据） |
+| `SERVER_ID` | `default` | 服务器标识（用于日志区分） |
+
+> **多实例示例**: 两台服务器共享同一 Redis 时，分别设置 `REDIS_DATA_PREFIX=birdtv:storage:svr1:` 和 `REDIS_DATA_PREFIX=birdtv:storage:svr2:`
+
+### 静态资源与数据目录
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `BIRDTV_STATIC_ROOT` | `./web` | 前端静态文件根目录 |
+| `BIRDTV_DATA_DIR` | `./data` | 数据存储目录 |
+| `BIRDTV_CACHE_ROOT` | `./files/cache` | 缓存文件目录 |
+
 ### 代理配置
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `M3U_PROXY_TIMEOUT_MS` | `40000` | 代理超时时间（毫秒） |
-| `M3U_PROXY_REDIRECT_LIMIT` | `3` | 最大重定向次数 |
-| `M3U_PROXY_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent |
+| `BIRDTV_TIMEOUT_MS` | `40000` | 代理请求超时时间（毫秒） |
+| `BIRDTV_REDIRECT_LIMIT` | `3` | 最大重定向跟随次数 |
+| `BIRDTV_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent |
+| `BIRDTV_REMOTE_BASE_URL` | - | 远程 M3U 源地址 |
+
+### 缓存配置
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `BIRDTV_CACHE_M3U_TTL_MS` | `600000` | M3U 缓存过期时间（毫秒） |
+| `BIRDTV_CACHE_EPG_TTL_MS` | `3600000` | EPG 缓存过期时间（毫秒） |
+
+### 安全配置
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `BIRDTV_ALLOWED_HOSTS` | - | 代理目标主机白名单（逗号分隔，留空不限制） |
+| `BIRDTV_UPSTREAM_PROXY` | - | 上游 HTTP/HTTPS 代理地址 |
+
+### API 服务器配置
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `API_SERVER_PORT` | `8771` | API 服务器端口（通常与主服务共用） |
+| `API_CORS_ORIGIN` | `*` | CORS 允许的源（逗号分隔） |
 
 ## 📖 API 文档
 
@@ -610,6 +723,17 @@ docker run --rm \
 1. 尝试切换播放器类型（自动 → HLS → Shaka → 原生）
 2. 调整代理模式（自动 → 直连 → 代理）
 3. 检查源地址是否有效
+
+### HTTPS 页面播放 HTTP 源失败（混合内容）
+
+**症状**: 在 HTTPS 部署的站点上，播放 HTTP 的直播源（尤其是 MPD/DASH）时加载失败。
+
+**说明**: 系统已内置 HTTP→HTTPS 自动升级机制。当检测到页面为 HTTPS 且源地址为 HTTP 时，会自动将源地址升级为 HTTPS 尝试直连播放，失败则回退到代理模式。此机制覆盖所有代理模式（直连/自动/代理）下的 DASH/MPD 源，以及非直连模式下的其他流类型。
+
+**解决方法**:
+1. 确认源站是否支持 HTTPS 访问（系统会自动尝试）
+2. 如源站不支持 HTTPS，将代理模式设为"代理"以走同源代理
+3. 检查浏览器控制台的 `dash-https-upgrade` 诊断日志了解升级过程
 
 ### 端口被占用
 
