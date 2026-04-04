@@ -723,37 +723,6 @@ export async function playSource(source, elements) {
     try {
         let actualUrl = originalUrl;
 
-        // 智能代理URL解包
-        if (actualUrl.includes('/m3u-proxy?url=')) {
-            try {
-                let urlToParse = actualUrl;
-                if (!urlToParse.startsWith('http://') && !urlToParse.startsWith('https://')) {
-                    urlToParse = urlToParse.startsWith('/') ? window.location.origin + urlToParse : window.location.origin + '/' + urlToParse;
-                }
-                const urlObj = new URL(urlToParse);
-                const isExternalProxy = urlObj.origin !== window.location.origin;
-                const isDashStream = isLikelyDashUrl(actualUrl);
-                const pm = getTempProxyMode();
-                const channelProxyMode = String(source?.sourceProxyMode || source?.proxyMode || '').trim().toLowerCase();
-                if (isExternalProxy && channelProxyMode !== 'proxy') {
-                    // 频道未明确要求走代理时，解包外部代理URL
-                    if (!isDashStream || pm !== 'm3u-proxy') {
-                        const urlParam = urlObj.searchParams.get('url');
-                        if (urlParam) actualUrl = decodeURIComponent(urlParam);
-                    }
-                } else if (isExternalProxy && channelProxyMode === 'proxy') {
-                    // 频道明确要求走代理，将外部代理URL重新包装为当前域名的代理URL
-                    const urlParam = urlObj.searchParams.get('url');
-                    if (urlParam) {
-                        const uaParam = urlObj.searchParams.get('ua');
-                        let rebuilt = `${window.location.origin}/m3u-proxy?url=${urlParam}`;
-                        if (uaParam) rebuilt += `&ua=${uaParam}`;
-                        actualUrl = rebuilt;
-                    }
-                }
-            } catch (e) { /* ignore */ }
-        }
-
         pushDiagnosticEvent(elements, {
             type: 'play-url-prepare',
             level: 'info',
@@ -769,9 +738,10 @@ export async function playSource(source, elements) {
             }
         });
 
-        // 混合内容保护
+        // 混合内容保护（代理URL无需处理）
         const isDirectMode = getTempProxyMode() === 'direct';
-        if (window.location.protocol === 'https:' && actualUrl.startsWith('http://') && !isDirectMode) {
+        const isProxyUrl = String(actualUrl || '').includes('/m3u-proxy?url=');
+        if (!isProxyUrl && window.location.protocol === 'https:' && actualUrl.startsWith('http://') && !isDirectMode) {
             const httpsUrl = actualUrl.replace('http://', 'https://');
             pushDiagnosticEvent(elements, {
                 type: 'mixed-content-probe',

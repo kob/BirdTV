@@ -56,12 +56,14 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     }
 
     const effectiveUserAgent = getEffectiveUserAgent();
-    const unwrappedSourceUrl = unwrapProxySourceUrl(url);
+    // 判断传入的 URL 是否已经是代理 URL，如果是则直接使用，不再解包重算
+    const isAlreadyProxyUrl = String(url || '').includes('/m3u-proxy?url=');
+    const unwrappedSourceUrl = isAlreadyProxyUrl ? url : unwrapProxySourceUrl(url);
     const manualLineLocked = !!(source?.manualLineLocked);
-    const genericProxyUrl = /^https?:/i.test(String(unwrappedSourceUrl || '')) ? toSameOriginM3UProxyUrl(unwrappedSourceUrl, effectiveUserAgent) : null;
-    const tvIillSameOriginUrl = toTvIillSameOriginUrl(unwrappedSourceUrl, effectiveUserAgent);
+    const genericProxyUrl = isAlreadyProxyUrl ? url : (/^https?:/i.test(String(unwrappedSourceUrl || '')) ? toSameOriginM3UProxyUrl(unwrappedSourceUrl, effectiveUserAgent) : null);
+    const tvIillSameOriginUrl = isAlreadyProxyUrl ? null : toTvIillSameOriginUrl(unwrappedSourceUrl, effectiveUserAgent);
     const corsRestricted = isCorsRestricted(unwrappedSourceUrl);
-    const useProxy = shouldUseProxy(unwrappedSourceUrl, false, source);
+    const useProxy = isAlreadyProxyUrl || shouldUseProxy(unwrappedSourceUrl, false, source);
     
     // 直连模式优化：跳过不必要的 proxy URL 生成
     const isDirectMode = !useProxy;
