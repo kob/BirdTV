@@ -42,7 +42,8 @@ class SettingsController {
 
   async getChannelUA(req, res) {
     try {
-      const channelId = req.query.channelId;
+      const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
+      const channelId = _q.get ? _q.get('channelId') : _q.channelId;
       if (!channelId) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: '缺少 channelId' }));
@@ -76,7 +77,8 @@ class SettingsController {
 
   async getEffectiveUA(req, res) {
     try {
-      const channelId = req.query.channelId || null;
+      const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
+      const channelId = (_q.get ? _q.get('channelId') : _q.channelId) || null;
       const ua = await this.uaManager.getEffectiveUA(channelId);
       res.json({ ok: true, userAgent: ua });
     } catch (error) {

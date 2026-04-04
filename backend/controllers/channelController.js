@@ -10,11 +10,12 @@ class ChannelController {
 
   async getChannels(req, res) {
     try {
-      // 支持分页参数
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 50;
+      // 支持分页参数（兼容 URLSearchParams 和普通对象两种格式）
+      const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
+      const page = parseInt(_q.get ? _q.get('page') : _q.page) || 1;
+      const limit = parseInt(_q.get ? _q.get('limit') : _q.limit) || 50;
       const offset = (page - 1) * limit;
-      const group = req.query.group || null; // 支持按分组筛选
+      const group = (_q.get ? _q.get('group') : _q.group) || null;
 
       let channels = await this.storage.getChannels();
       const sources = await this.storage.getSources();
