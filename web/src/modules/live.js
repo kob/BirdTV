@@ -225,7 +225,8 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
     const corsRestricted = isCorsRestricted(playbackDirectUrl);
     const useProxyMode = shouldUseProxy(playbackDirectUrl, false, source);
     const proxyUrl = gPU(playbackDirectUrl, getEffectiveUserAgent());
-    const preserveInputProxyUrl = wrappedProxyInput && currentProxyMode === 'm3u-proxy';
+    // 当输入已经是代理 URL 时，始终保留原始代理 URL（避免解包后直连）
+    const preserveInputProxyUrl = wrappedProxyInput && (currentProxyMode === 'm3u-proxy' || currentProxyMode === 'auto');
     const proxyPlaybackUrl = preserveInputProxyUrl ? actualUrl : proxyUrl;
 
     const directTimeoutMs = SHAKA_LOAD_TIMEOUT_MS;
@@ -355,7 +356,9 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
             if (isDirectMode) {
                 await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
             } else {
-                await loadShakaWithTimeout(proxyUrl, `${labelPrefix}代理`, requestId, directTimeoutMs);
+                // 优先使用输入代理 URL（如果已包含），避免重新包装导致域名变化
+                const effectiveProxyUrl = wrappedProxyInput ? actualUrl : proxyUrl;
+                await loadShakaWithTimeout(effectiveProxyUrl, `${labelPrefix}代理`, requestId, directTimeoutMs);
             }
         }
     } catch (directError) {
@@ -563,7 +566,9 @@ function getPlaybackEngineDecision(source) {
     }
 
     const targetUrl = String(source.url || '');
-    const detectedUrl = unwrapProxySourceUrl(targetUrl) || targetUrl;
+    // 如果 URL 已经是代理 URL，不解包——直接用原始 URL 做类型检测
+    const isProxyInputUrl = String(targetUrl || '').includes('/m3u-proxy?url=');
+    const detectedUrl = isProxyInputUrl ? targetUrl : (unwrapProxySourceUrl(targetUrl) || targetUrl);
     const lower = String(detectedUrl || '').toLowerCase();
     const isDash = isLikelyDashUrl(detectedUrl);
     const drmPresent = hasDrmInfo(source);
@@ -722,6 +727,11 @@ export async function playSource(source, elements) {
 
     try {
         let actualUrl = originalUrl;
+        // 如果 URL 已经是代理 URL，强制标记 source 为代理模式，确保下游不再解包
+        const inputIsProxyUrl = String(actualUrl || '').includes('/m3u-proxy?url=');
+        if (inputIsProxyUrl && !source.sourceProxyMode) {
+            source.sourceProxyMode = 'proxy';
+        }
 
         pushDiagnosticEvent(elements, {
             type: 'play-url-prepare',
