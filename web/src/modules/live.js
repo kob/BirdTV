@@ -791,6 +791,9 @@ export async function playSource(source, elements) {
 
         updateStatus(elements, `正在初始化播放器: ${source.name}`, "加载中");
 
+        // 调试日志：显示实际传给播放器的 URL
+        console.log(`[playSource] channel=${source.name} playerType=${playerTypeCode} actualUrl=${actualUrl?.substring(0, 150)} isProxy=${String(actualUrl || '').includes('/m3u-proxy?url=')}`);
+
         // 更新右侧当前播放信息
         updateCurrentInfo(elements, { ...source, url: actualUrl, playerType: playerTypeCode });
 
