@@ -30,6 +30,15 @@ docker-compose logs -f birdtv
 ### 使用 Docker 命令
 
 ```bash
+# 1. 启动 Kvrocks (Redis 兼容数据库)
+docker run -d \
+  --name kvrocks \
+  --restart unless-stopped \
+  -p 6666:6666 \
+  -v kvrocks-data:/var/lib/kvrocks \
+  apache/kvrocks:2.11.0
+
+# 2. 启动 BirdTV
 docker run -d \
   --name birdtv \
   --restart unless-stopped \
@@ -38,9 +47,18 @@ docker run -d \
   -e AUTH_JWT_SECRET=your-secret-key \
   -e AUTH_DEFAULT_ADMIN=admin \
   -e AUTH_DEFAULT_PASSWORD=admin123 \
+  -e AUTH_REDIS_HOST=host.docker.internal \
+  -e AUTH_REDIS_PORT=6666 \
   -v birdtv-data:/app/data \
+  --link kvrocks:kvrocks \
   ghcr.io/kob/birdtv:latest
+
+# 3. 查看日志
+docker logs -f birdtv
+docker logs -f kvrocks
 ```
+
+> **注意**: 单独运行需要确保 Kvrocks 先启动并健康。推荐使用 Docker Compose 自动管理依赖关系。
 
 ---
 
@@ -84,13 +102,23 @@ systemctl enable docker
 #### 1.2 使用 Docker 命令
 
 ```bash
-# 拉取镜像
+# 1. 拉取镜像
 docker pull ghcr.io/kob/birdtv:latest
+docker pull apache/kvrocks:2.11.0
 
-# 创建数据卷
+# 2. 创建数据卷
 docker volume create birdtv-data
+docker volume create kvrocks-data
 
-# 运行容器
+# 3. 启动 Kvrocks
+docker run -d \
+  --name kvrocks \
+  --restart unless-stopped \
+  -p 6666:6666 \
+  -v kvrocks-data:/var/lib/kvrocks \
+  apache/kvrocks:2.11.0
+
+# 4. 运行 BirdTV 容器
 docker run -d \
   --name birdtv \
   --restart unless-stopped \
@@ -99,10 +127,13 @@ docker run -d \
   -e AUTH_JWT_SECRET=$(openssl rand -hex 32) \
   -e AUTH_DEFAULT_ADMIN=admin \
   -e AUTH_DEFAULT_PASSWORD=$(openssl rand -base64 12) \
+  -e AUTH_REDIS_HOST=host.docker.internal \
+  -e AUTH_REDIS_PORT=6666 \
   -v birdtv-data:/app/data \
+  --link kvrocks:kvrocks \
   ghcr.io/kob/birdtv:latest
 
-# 查看运行状态
+# 5. 查看运行状态
 docker ps
 docker logs -f birdtv
 ```
@@ -425,17 +456,28 @@ docker logs -f birdtv
 #### 5.3 IDX 后台运行
 
 ```bash
-# 使用 nohup 保持容器运行
+# 1. 启动 Kvrocks
+nohup docker run -d \
+  --name kvrocks \
+  -p 6666:6666 \
+  -v kvrocks-data:/var/lib/kvrocks \
+  apache/kvrocks:2.11.0 > kvrocks.log 2>&1 &
+
+# 2. 启动 BirdTV
 nohup docker run -d \
   --name birdtv \
   -p 8771:8771 \
   -e AUTH_ENABLED=true \
   -e AUTH_JWT_SECRET=secret \
+  -e AUTH_REDIS_HOST=host.docker.internal \
+  -e AUTH_REDIS_PORT=6666 \
   -v birdtv-data:/app/data \
+  --link kvrocks:kvrocks \
   ghcr.io/kob/birdtv:latest > birdtv.log 2>&1 &
 
-# 监控日志
+# 3. 监控日志
 tail -f birdtv.log
+tail -f kvrocks.log
 ```
 
 ---
@@ -452,28 +494,47 @@ tail -f birdtv.log
    - SDK: Docker
    - Public/Private: 根据需求选择
 
-#### 6.2 创建 Dockerfile
+#### 6.2 创建 docker-compose.yml
 
-在 Space 仓库中创建 `Dockerfile`:
+在 Space 仓库中创建 `docker-compose.yml`:
 
-```dockerfile
-FROM ghcr.io/kob/birdtv:latest
+```yaml
+version: "3.8"
 
-ENV PORT=8771
-ENV HOST=0.0.0.0
+services:
+  birdtv:
+    image: ghcr.io/kob/birdtv:latest
+    ports:
+      - "7860:8771"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8771
+      - AUTH_ENABLED=true
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET}
+      - AUTH_REDIS_HOST=redis
+      - AUTH_REDIS_PORT=6379
+    depends_on:
+      - redis
+    volumes:
+      - data:/app/data
 
-EXPOSE 8771
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
 
-CMD ["node", "birdtv.js"]
+volumes:
+  data:
+  redis-data:
 ```
 
 #### 6.3 配置 Secrets
 
 在 Space 设置中添加 Secrets:
-- `AUTH_ENABLED=true`
-- `AUTH_JWT_SECRET=your-secret-key-here`
-- `AUTH_DEFAULT_ADMIN=admin`
-- `AUTH_DEFAULT_PASSWORD=admin123`
+- `AUTH_JWT_SECRET=your-secret-key-here` (随机生成)
+- `AUTH_ENABLED=true` (可选，默认为 true)
+- `AUTH_DEFAULT_ADMIN=admin` (可选)
+- `AUTH_DEFAULT_PASSWORD=admin123` (可选)
 
 #### 6.4 创建 README.md
 
@@ -528,6 +589,9 @@ cf login -a https://api.<region>.hana.ondemand.com \
   -o <org> \
   -s <space>
 
+# 创建 Redis 服务实例
+cf create-service redis cloud redis-birdtv
+
 # 推送应用
 cf push birdtv \
   --docker-image ghcr.io/kob/birdtv:latest \
@@ -535,11 +599,17 @@ cf push birdtv \
   --docker-password <github-pat> \
   -m 512M \
   -k 1G \
-  --random-route
+  --random-route \
+  --no-start
+
+# 绑定 Redis 服务
+cf bind-service birdtv redis-birdtv
 
 # 配置环境变量
 cf set-env birdtv AUTH_ENABLED true
 cf set-env birdtv AUTH_JWT_SECRET your-secret-key
+cf set-env birdtv AUTH_REDIS_HOST $(cf service redis-birdtv | grep credentials | jq -r '.hostname')
+cf set-env birdtv AUTH_REDIS_PORT $(cf service redis-birdtv | grep credentials | jq -r '.port')
 cf set-env birdtv AUTH_DEFAULT_ADMIN admin
 cf set-env birdtv AUTH_DEFAULT_PASSWORD admin123
 cf set-env birdtv PORT 8080

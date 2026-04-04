@@ -133,19 +133,29 @@ docker run -d \
 
 ## 📦 部署场景
 
-### 1. Ubuntu 服务器
+      <h3 id="ubuntu-服务器">1. Ubuntu 服务器</h3>
 
 ```bash
 # 安装 Docker
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 
-# 启动服务
+# 启动服务（包含 BirdTV + Kvrocks）
 docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f birdtv
+docker-compose logs -f kvrocks
 
 # 配置防火墙
 sudo ufw allow 8771/tcp
+sudo ufw allow 6666/tcp
 ```
+
+> **说明**: Ubuntu 部署自动包含 Kvrocks Redis 服务，默认端口 6666。BirdTV 会自动连接到本地 Kvrocks 进行数据存储。
 
 ### 2. NAS 部署（Synology / QNAP）
 
@@ -153,11 +163,15 @@ sudo ufw allow 8771/tcp
 - 打开 Container Manager
 - 创建项目，粘贴 docker-compose.yml 配置
 - 点击部署
+- 确保端口 8771 和 6666 未被占用
 
 **QNAP 威联通**：
 - 打开 Container Station
 - 创建应用程序，粘贴 YAML 配置
 - 点击创建
+- 查看两个容器状态：birdtv 和 birdtv-kvrocks
+
+> **说明**: NAS 部署包含 BirdTV 和 Kvrocks 两个容器，数据分别存储在各自的卷中。
 
 ### 3. 软路由部署（OpenWrt / iStoreOS）
 
@@ -166,11 +180,19 @@ sudo ufw allow 8771/tcp
 opkg update
 opkg install docker dockerd docker-compose
 /etc/init.d/dockerd start
+
+# 启动 BirdTV + Kvrocks
 docker-compose up -d
+
+# 检查容器状态
+docker ps
 
 # iStoreOS
 # 使用图形界面 Container Station 创建容器
+# 确保有足够的内存（建议 512MB 以上）
 ```
+
+> **说明**: 软路由部署包含完整的 Redis 支持，建议设备内存至少 512MB。Kvrocks 比 Redis 更节省内存，适合嵌入式设备。
 
 ### 4. Railway
 
@@ -178,44 +200,135 @@ docker-compose up -d
 npm install -g @railway/cli
 railway login
 railway init
+
+# 创建 BirdTV + Redis 服务
 railway up
+
+# 设置环境变量
 railway variables set AUTH_ENABLED=true
 railway variables set AUTH_JWT_SECRET=$(openssl rand -hex 32)
+railway variables set AUTH_REDIS_HOST=redis
+railway variables set AUTH_REDIS_PORT=6379
+
+# 部署
+railway up
+```
+
+**docker-compose.yml 配置**：
+```yaml
+version: "3.8"
+services:
+  birdtv:
+    image: ghcr.io/kob/birdtv:latest
+    environment:
+      - AUTH_REDIS_HOST=redis
+      - AUTH_REDIS_PORT=6379
+  redis:
+    image: redis:7-alpine
 ```
 
 ### 5. Google IDX
 
+**使用 Docker Compose（推荐）**：
 ```bash
+# 克隆项目
+git clone https://github.com/your-repo/birdtv.git
+cd birdtv
+
+# 启动 BirdTV + Kvrocks
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# IDX 会自动创建端口转发
+```
+
+**使用 Docker 命令**：
+```bash
+# 启动 Kvrocks
+docker run -d \
+  --name kvrocks \
+  -p 6666:6666 \
+  apache/kvrocks:2.11.0
+
+# 启动 BirdTV
 docker run -d \
   --name birdtv \
   -p 8771:8771 \
   -e AUTH_ENABLED=true \
   -e AUTH_JWT_SECRET=secret \
+  -e AUTH_REDIS_HOST=host.docker.internal \
+  -e AUTH_REDIS_PORT=6666 \
   -v birdtv-data:/app/data \
   ghcr.io/kob/birdtv:latest
 ```
 
 ### 6. Hugging Face Spaces
 
-创建 Dockerfile：
-```dockerfile
-FROM ghcr.io/kob/birdtv:latest
-ENV PORT=8771
-ENV HOST=0.0.0.0
-EXPOSE 8771
-CMD ["node", "birdtv.js"]
+创建 `docker-compose.yml`：
+```yaml
+version: "3.8"
+services:
+  birdtv:
+    image: ghcr.io/kob/birdtv:latest
+    ports:
+      - "7860:8771"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8771
+      - AUTH_ENABLED=true
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET}
+      - AUTH_REDIS_HOST=redis
+      - AUTH_REDIS_PORT=6379
+    depends_on:
+      - redis
+    volumes:
+      - data:/app/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+
+volumes:
+  data:
+  redis-data:
 ```
+
+在 Space Settings 中添加环境变量：
+- `AUTH_JWT_SECRET`: 随机生成的密钥
 
 ### 7. SAP BTP
 
+**创建 Redis 服务**：
 ```bash
-cf login -a https://api.<region>.hana.ondemand.com
+# 创建 Redis 服务实例
+cf create-service redis cloud redis-birdtv
+
+# 创建 BirdTV 应用
 cf push birdtv \
   --docker-image ghcr.io/kob/birdtv:latest \
   --docker-username <github-username> \
   --docker-password <github-pat> \
   -m 512M \
-  -k 1G
+  -k 1G \
+  --no-start
+```
+
+**绑定 Redis 服务**：
+```bash
+# 绑定 Redis 服务
+cf bind-service birdtv redis-birdtv
+
+# 设置环境变量
+cf set-env birdtv AUTH_REDIS_HOST $(cf service redis-birdtv | grep credentials | jq -r '.hostname')
+cf set-env birdtv AUTH_REDIS_PORT $(cf service redis-birdtv | grep credentials | jq -r '.port')
+cf set-env birdtv AUTH_ENABLED true
+cf set-env birdtv AUTH_JWT_SECRET $(openssl rand -hex 32)
+
+# 重启应用
+cf restart birdtv
 ```
 
 ## 📁 项目结构
