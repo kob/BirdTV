@@ -1,4 +1,4 @@
-ji/**
+/**
  * 设置控制器
  */
 const UAManager = require('../managers/uaManager');
