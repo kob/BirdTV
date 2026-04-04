@@ -77,6 +77,7 @@ export function getElements() {
         openAdminButton: document.getElementById("openAdminButton"),
         openAdminTopButton: document.getElementById("openAdminTopButton"),
         openMobileButton: document.getElementById("openMobileButton"),
+        switchToMobileButton: document.getElementById("switchToMobileButton"),
         focusCurrentButton: document.getElementById("focusCurrentButton"),
         playerTypeDesc: document.getElementById("playerTypeDesc"),
         sidebarToggleButton: document.getElementById("sidebarToggleButton"),

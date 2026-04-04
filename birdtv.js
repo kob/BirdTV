@@ -86,6 +86,115 @@ const serverState = {
 
 // ==================== 工具函数 ====================
 
+/**
+ * 检测用户设备类型
+ * @param {string} userAgent - User-Agent 字符串
+ * @returns {boolean} - 是否为移动设备
+ */
+function isMobileDevice(userAgent) {
+  if (!userAgent) return false;
+
+  const mobileRegex = /Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated|Opera Mini|Opera Mobi/i;
+  return mobileRegex.test(userAgent);
+}
+
+/**
+ * 解析 Cookie 并获取指定值
+ * @param {string} cookieHeader - Cookie 头字符串
+ * @param {string} name - Cookie 名称
+ * @returns {string|null} - Cookie 值或 null
+ */
+function getCookie(cookieHeader, name) {
+  if (!cookieHeader) return null;
+
+  const cookies = cookieHeader.split(';').map(c => c.trim());
+  for (const cookie of cookies) {
+    const [key, value] = cookie.split('=');
+    if (key === name) {
+      return value || null;
+    }
+  }
+  return null;
+}
+
+/**
+ * 处理设备检测和自动重定向
+ * @param {Object} req - 请求对象
+ * @param {Object} res - 响应对象
+ * @param {string} pathname - 请求路径
+ * @param {URL} url - 解析后的 URL 对象
+ * @returns {boolean|string} - 返回 true 表示已处理（已重定向），false 表示未处理，或返回新的 pathname
+ */
+function handleDeviceDetection(req, res, pathname, url) {
+  // 跳过非 HTML 请求和 API 请求
+  if (!pathname.match(/\.(html|\/)$/) || pathname.startsWith('/api/')) {
+    return false;
+  }
+
+  // 获取用户偏好（从 Cookie 或 URL 参数）
+  const forceDevice = getCookie(req.headers.cookie, 'birdtv_device') || url.searchParams.get('device');
+
+  // 如果用户强制指定了设备类型，尊重用户选择
+  if (forceDevice === 'desktop') {
+    // 如果当前在 mobile.html，且用户强制桌面版，重定向到对应页面
+    if (pathname === '/mobile.html') {
+      const targetPath = url.searchParams.get('redirect') || '/index.html';
+      res.writeHead(302, {
+        'Location': targetPath
+      });
+      res.end();
+      return true;
+    }
+    return false;
+  }
+
+  if (forceDevice === 'mobile') {
+    // 如果用户强制移动版，重定向到 mobile.html
+    if (pathname === '/' || pathname === '/index.html') {
+      const targetPath = '/mobile.html';
+      // 保留查询参数
+      const queryString = url.searchParams.toString();
+      const fullTargetPath = queryString ? `${targetPath}?${queryString}` : targetPath;
+
+      res.writeHead(302, {
+        'Location': fullTargetPath
+      });
+      res.end();
+      return true;
+    }
+    return false;
+  }
+
+  // 没有用户偏好，自动检测设备类型
+  const isMobile = isMobileDevice(req.headers['user-agent']);
+
+  // 移动设备访问根路径或 index.html，重定向到 mobile.html
+  if (isMobile && (pathname === '/' || pathname === '/index.html')) {
+    const targetPath = '/mobile.html';
+    // 保留查询参数
+    const queryString = url.searchParams.toString();
+    const fullTargetPath = queryString ? `${targetPath}?${queryString}` : targetPath;
+
+    res.writeHead(302, {
+      'Location': fullTargetPath
+    });
+    res.end();
+    return true;
+  }
+
+  // 桌面设备访问 mobile.html，重定向到 index.html
+  if (!isMobile && pathname === '/mobile.html') {
+    const targetPath = url.searchParams.get('redirect') || '/index.html';
+    res.writeHead(302, {
+      'Location': targetPath
+    });
+    res.end();
+    return true;
+  }
+
+  return false;
+}
+
 function parseNumber(value, fallback) {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -1880,6 +1989,13 @@ function createAppServer(configInput = {}) {
         return;
       }
 
+      // 设备检测和重定向（在静态文件处理之前）
+      const deviceMiddlewareResult = handleDeviceDetection(req, res, pathname, url);
+      if (deviceMiddlewareResult) {
+        return; // 已处理重定向
+      }
+      pathname = deviceMiddlewareResult === false ? pathname : deviceMiddlewareResult || pathname;
+
       // 静态文件
       let filePath = pathname === '/' ? '/index.html' : pathname;
       filePath = path.join(config.staticRoot, decodeURIComponent(filePath));
@@ -1974,7 +2090,7 @@ async function startServer(configInput = {}) {
   };
 
   // 启动定时任务调度器
-  const scheduler = new SchedulerService(storage, sourceController);
+  const scheduler = new SchedulerService(storage, sourceController, exportController);
   await scheduler.start();
   serverState.scheduler = scheduler;
 

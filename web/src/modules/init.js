@@ -627,6 +627,14 @@ function bindEvents(elements) {
     elements.openAdminTopButton?.addEventListener("click", () => { window.location.href = '/admin.html'; });
     elements.openMobileButton?.addEventListener("click", () => { window.location.href = '/mobile.html'; });
 
+    // 切换到移动版
+    elements.switchToMobileButton?.addEventListener("click", () => {
+        // 设置 Cookie 保存用户偏好（移动版）
+        document.cookie = 'birdtv_device=mobile; path=/; max-age=31536000';
+        // 重定向到移动版
+        window.location.href = '/mobile.html';
+    });
+
     // 定位当前频道
     elements.focusCurrentButton?.addEventListener("click", () => {
         const current = elements.playlist ? elements.playlist.querySelector('.playlist-item.active') : null;

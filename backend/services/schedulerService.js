@@ -5,9 +5,10 @@ const crypto = require('crypto');
  * 支持标准 5 段 cron 表达式，使用 setTimeout 精确调度
  */
 class SchedulerService {
-  constructor(storageService, sourceController) {
+  constructor(storageService, sourceController, exportController) {
     this.storage = storageService;
     this.sourceController = sourceController;
+    this.exportController = exportController;
     this.timers = new Map(); // taskId -> { timeout, nextRun }
     this.running = false;
   }
@@ -61,33 +62,52 @@ class SchedulerService {
    * 创建定时任务
    */
   async createTask(data) {
-    const { sourceId, cron, name, enabled = true } = data;
+    const { type = 'import', sourceId, cron, name, enabled = true, exportConfig } = data;
 
-    if (!sourceId || !cron) {
-      throw new Error('sourceId 和 cron 为必填项');
+    if (!type || !cron) {
+      throw new Error('type 和 cron 为必填项');
     }
     if (!isValidCron(cron)) {
       throw new Error('cron 表达式格式无效');
     }
 
-    // 验证节目源存在
-    const sources = await this.storage.getSources();
-    const source = (sources.m3u || []).find(s => s.id === sourceId || s._id === sourceId);
-    if (!source) {
-      throw new Error('节目源不存在');
+    let taskName = name;
+    let taskData = { type };
+
+    if (type === 'import') {
+      if (!sourceId) {
+        throw new Error('导入任务需要指定节目源');
+      }
+      // 验证节目源存在
+      const sources = await this.storage.getSources();
+      const source = (sources.m3u || []).find(s => s.id === sourceId || s._id === sourceId);
+      if (!source) {
+        throw new Error('节目源不存在');
+      }
+      taskData.sourceId = sourceId;
+      taskData.sourceName = source.name;
+      taskName = taskName || `定时导入 - ${source.name}`;
+    } else if (type === 'export') {
+      if (!exportConfig) {
+        throw new Error('导出任务需要指定导出配置');
+      }
+      if (!exportConfig.groups || exportConfig.groups.length === 0) {
+        throw new Error('导出任务需要指定至少一个分组');
+      }
+      taskData.exportConfig = exportConfig;
+      taskName = taskName || `定时导出 - ${exportConfig.filename || 'channels.m3u'}`;
     }
 
     const task = {
       id: crypto.randomBytes(8).toString('hex'),
-      sourceId,
-      sourceName: source.name,
-      name: name || `定时导入 - ${source.name}`,
+      name: taskName,
       cron,
       enabled,
       lastRunAt: null,
       lastResult: null,
       nextRunAt: getNextCronDate(cron).toISOString(),
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      ...taskData
     };
 
     const tasks = await this.getTasks();
@@ -203,6 +223,32 @@ class SchedulerService {
     const startTime = Date.now();
 
     try {
+      if (task.type === 'import') {
+        return await this._executeImportTask(task);
+      } else if (task.type === 'export') {
+        return await this._executeExportTask(task);
+      } else {
+        throw new Error(`未知任务类型: ${task.type}`);
+      }
+    } catch (error) {
+      const result = {
+        success: false,
+        error: error.message,
+        duration: Date.now() - startTime
+      };
+      await this._updateTaskResult(task.id, result);
+      console.error(`[Scheduler] 任务失败: ${task.name}`, error.message);
+      return result;
+    }
+  }
+
+  /**
+   * 执行导入任务
+   */
+  async _executeImportTask(task) {
+    const startTime = Date.now();
+
+    try {
       const sources = await this.storage.getSources();
       const source = (sources.m3u || []).find(s => s.id === task.sourceId || s._id === task.sourceId);
       if (!source) {
@@ -221,7 +267,7 @@ class SchedulerService {
 
       // 更新任务状态
       await this._updateTaskResult(task.id, result);
-      console.log(`[Scheduler] 任务完成: ${task.name}, 导入 ${imported.length} 个频道, 耗时 ${result.duration}ms`);
+      console.log(`[Scheduler] 导入任务完成: ${task.name}, 导入 ${imported.length} 个频道, 耗时 ${result.duration}ms`);
       return result;
     } catch (error) {
       const result = {
@@ -230,7 +276,73 @@ class SchedulerService {
         duration: Date.now() - startTime
       };
       await this._updateTaskResult(task.id, result);
-      console.error(`[Scheduler] 任务失败: ${task.name}`, error.message);
+      console.error(`[Scheduler] 导入任务失败: ${task.name}`, error.message);
+      return result;
+    }
+  }
+
+  /**
+   * 执行导出任务
+   */
+  async _executeExportTask(task) {
+    const startTime = Date.now();
+
+    try {
+      const { groups, filename, description } = task.exportConfig;
+
+      // 获取所有频道
+      const allChannels = await this.storage.getChannels();
+
+      // 根据分组过滤频道
+      const exportedChannels = allChannels.filter(channel => {
+        return groups.includes(channel.group || '未分组');
+      });
+
+      if (exportedChannels.length === 0) {
+        throw new Error('没有找到符合条件的频道');
+      }
+
+      // 构造导出请求对象
+      const exportRequest = {
+        body: {
+          channelIds: exportedChannels.map(ch => ch.id),
+          description: description || `${task.name} - ${new Date().toLocaleString()}`,
+          useShortLink: false,
+          filename: filename || `${task.name}.m3u`
+        },
+        user: { username: 'scheduler' },
+        protocol: 'http',
+        get: () => 'localhost:8771'
+      };
+
+      // 构造响应对象
+      const responseObj = {
+        json: (data) => { exportRequest._result = data; },
+        status: () => responseObj
+      };
+
+      // 调用导出控制器
+      await this.exportController.exportChannels(exportRequest, responseObj);
+
+      const result = {
+        success: true,
+        exported: exportedChannels.length,
+        filename: filename || `${task.name}.m3u`,
+        duration: Date.now() - startTime
+      };
+
+      // 更新任务状态
+      await this._updateTaskResult(task.id, result);
+      console.log(`[Scheduler] 导出任务完成: ${task.name}, 导出 ${exportedChannels.length} 个频道, 耗时 ${result.duration}ms`);
+      return result;
+    } catch (error) {
+      const result = {
+        success: false,
+        error: error.message,
+        duration: Date.now() - startTime
+      };
+      await this._updateTaskResult(task.id, result);
+      console.error(`[Scheduler] 导出任务失败: ${task.name}`, error.message);
       return result;
     }
   }

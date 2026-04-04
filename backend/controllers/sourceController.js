@@ -726,9 +726,8 @@ class SourceController {
         .filter(c => c.sourceId === sourceId)
         .map(c => c.id);
       if (existingIds.length > 0) {
-        for (const cid of existingIds) {
-          await this.storage.deleteChannel(cid);
-        }
+        // 优化：使用批量删除，只读写文件一次
+        await this.storage.batchDeleteChannels(existingIds);
         console.log(`[SourceController] 已清理源 ${sourceId} 的 ${existingIds.length} 个旧频道`);
       }
 

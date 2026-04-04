@@ -320,24 +320,16 @@ class ChannelController {
         }));
       }
 
-      const results = [];
-      for (const id of ids) {
-        try {
-          const deleted = await this.storage.deleteChannel(id);
-          results.push({ success: deleted, id });
-        } catch (error) {
-          results.push({ success: false, error: error.message, id });
-        }
-      }
+      // 优化：使用批量删除方法，只读写文件一次
+      const result = await this.storage.batchDeleteChannels(ids);
 
-      const successCount = results.filter(r => r.success).length;
       res.json({
         ok: true,
         data: {
           total: ids.length,
-          success: successCount,
-          failed: ids.length - successCount,
-          results
+          success: result.deletedCount,
+          failed: ids.length - result.deletedCount,
+          results: result.results
         }
       });
     } catch (error) {
@@ -373,26 +365,31 @@ class ChannelController {
         }));
       }
 
+      // 优化：只读取一次所有频道，批量更新，只写入一次
+      const allChannels = await this.storage.getChannels();
+      const idsSet = new Set(ids);
       const results = [];
-      for (const id of ids) {
-        try {
-          const channels = await this.storage.getChannels();
-          const index = channels.findIndex(c => c.id === id);
+      let updatedCount = 0;
 
-          if (index === -1) {
-            results.push({ success: false, error: '频道不存在', id });
-            continue;
+      // 批量更新频道
+      for (const channel of allChannels) {
+        if (idsSet.has(channel.id)) {
+          try {
+            const channelObj = new Channel(channel);
+            channelObj.update(data);
+            channelObj.updatedAt = new Date().toISOString();
+            // 更新数组中的对象（原地修改）
+            Object.assign(channel, channelObj.toJSON());
+            results.push({ success: true, id: channel.id });
+            updatedCount++;
+          } catch (error) {
+            results.push({ success: false, error: error.message, id: channel.id });
           }
-
-          const channel = new Channel(channels[index]);
-          channel.update(data);
-
-          await this.storage.saveChannel(channel.toJSON());
-          results.push({ success: true, id });
-        } catch (error) {
-          results.push({ success: false, error: error.message, id });
         }
       }
+
+      // 一次性写入所有频道（避免循环中多次读写文件）
+      await this.storage._set('channels', this.storage.channelsFile, allChannels);
 
       const successCount = results.filter(r => r.success).length;
       res.json({
@@ -401,6 +398,7 @@ class ChannelController {
           total: ids.length,
           success: successCount,
           failed: ids.length - successCount,
+          updated: updatedCount,
           results
         }
       });

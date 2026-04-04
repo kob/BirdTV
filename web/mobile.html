@@ -1018,9 +1018,12 @@
                 }
             });
 
-            // 设置按钮
+            // 设置按钮 - 切换到桌面版
             document.getElementById('settingsBtn').addEventListener('click', () => {
-                showToast('设置功能开发中');
+                // 设置 Cookie 保存用户偏好（桌面版）
+                document.cookie = 'birdtv_device=desktop; path=/; max-age=31536000';
+                // 重定向到桌面版
+                window.location.href = '/index.html';
             });
         });
 

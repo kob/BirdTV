@@ -211,6 +211,34 @@ class StorageService {
     return true;
   }
 
+  /**
+   * 批量删除频道（优化版本：只读写文件一次）
+   */
+  async batchDeleteChannels(channelIds) {
+    const channels = await this.getChannels();
+    const idsSet = new Set(channelIds);
+    const newChannels = channels.filter(c => !idsSet.has(c.id));
+
+    const deletedCount = channels.length - newChannels.length;
+
+    if (deletedCount === 0) {
+      return {
+        deletedCount: 0,
+        results: channelIds.map(id => ({ success: false, id }))
+      };
+    }
+
+    await this._set('channels', this.channelsFile, newChannels);
+
+    return {
+      deletedCount,
+      results: channelIds.map(id => ({
+        success: channels.some(c => c.id === id),
+        id
+      }))
+    };
+  }
+
   // ========== 源配置管理 ==========
 
   /**

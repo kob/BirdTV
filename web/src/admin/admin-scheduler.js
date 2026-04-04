@@ -1,5 +1,6 @@
     // ========== 定时任务 ==========
     let schedulerSourceCache = [];
+    let schedulerGroupCache = [];
 
     async function loadSchedulerTasks() {
       const tbody = document.getElementById('schedulerTableBody');
@@ -28,10 +29,14 @@
 
         emptyEl.style.display = 'none';
         tbody.innerHTML = tasks.map(t => {
+          const taskType = t.type || 'import';
+          const typeLabel = taskType === 'export' ? '导出' : '导入';
+          const typeBadge = `<span style="background:${taskType === 'export' ? '#9c27b0' : '#2196f3'};color:#fff;padding:2px 8px;border-radius:4px;font-size:11px;">${typeLabel}</span>`;
+
           const lastRun = t.lastRunAt
             ? `<span style="font-size:12px;">${new Date(t.lastRunAt).toLocaleString()}</span>` +
               (t.lastResult ? (t.lastResult.success
-                ? `<br><span style="color:#4caf50;font-size:12px;">导入 ${t.lastResult.imported} 个频道 · ${t.lastResult.duration}ms</span>`
+                ? `<br><span style="color:#4caf50;font-size:12px;">${taskType === 'export' ? '导出' : '导入'} ${taskType === 'export' ? t.lastResult.exported : t.lastResult.imported} 个频道 · ${t.lastResult.duration}ms</span>`
                 : `<br><span style="color:#f44336;font-size:12px;">失败: ${esc(t.lastResult.error)}</span>`)
               : '')
             : '<span style="color:var(--muted);font-size:12px;">尚未执行</span>';
@@ -41,8 +46,8 @@
             : '<span style="color:var(--muted);font-size:12px;">-</span>';
 
           return `<tr>
-            <td><b>${esc(t.name)}</b></td>
-            <td style="font-size:13px;">${esc(t.sourceName || t.sourceId)}</td>
+            <td><b>${esc(t.name)}</b><br>${typeBadge}</td>
+            <td style="font-size:13px;">${taskType === 'export' ? (t.exportConfig?.groups || []).join(', ') : esc(t.sourceName || t.sourceId)}</td>
             <td><code style="background:rgba(146,187,255,0.1);padding:2px 8px;border-radius:4px;font-size:12px;">${esc(t.cron)}</code><br><span style="font-size:11px;color:var(--muted);">${esc(describeCronLocal(t.cron))}</span></td>
             <td>
               <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
@@ -118,6 +123,16 @@
         }
       }
 
+      // 加载分组列表
+      if (!schedulerGroupCache.length) {
+        try {
+          const grpRes = await api('/channels/groups');
+          schedulerGroupCache = (grpRes && grpRes.ok && grpRes.data) ? grpRes.data : [];
+        } catch {
+          schedulerGroupCache = [];
+        }
+      }
+
       let task = null;
       if (editId) {
         try {
@@ -128,6 +143,10 @@
 
       const sourceOptions = schedulerSourceCache.map(s =>
         `<option value="${s.id}" ${task && task.sourceId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`
+      ).join('');
+
+      const groupOptions = schedulerGroupCache.map(g =>
+        `<option value="${esc(g)}" ${task && task.exportConfig && task.exportConfig.groups.includes(g) ? 'selected' : ''}>${esc(g)}</option>`
       ).join('');
 
       const cronPresets = [
@@ -142,17 +161,37 @@
         `<button class="btn btn-sm" type="button" onclick="document.getElementById('taskCron').value='${p.value}';document.getElementById('cronDesc').textContent='${esc(p.label)}'" style="margin:2px;">${p.label}</button>`
       ).join('');
 
+      const taskType = task?.type || 'import';
+
       showModal(editId ? '编辑定时任务' : '新建定时任务', `
+        <div class="form-group">
+          <label>任务类型 *</label>
+          <select id="taskType" style="width:100%;padding:8px 12px;" onchange="toggleTaskType(this.value)">
+            <option value="import" ${taskType === 'import' ? 'selected' : ''}>导入频道</option>
+            <option value="export" ${taskType === 'export' ? 'selected' : ''}>导出频道</option>
+          </select>
+        </div>
         <div class="form-group">
           <label>任务名称</label>
           <input type="text" id="taskName" placeholder="例如：每日更新频道" value="${task ? esc(task.name) : ''}" style="width:100%;padding:8px 12px;">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="sourceGroup">
           <label>节目源 *</label>
           <select id="taskSource" style="width:100%;padding:8px 12px;">
             <option value="">-- 请选择节目源 --</option>
             ${sourceOptions}
           </select>
+        </div>
+        <div class="form-group" id="exportGroup" style="display:none;">
+          <label>选择分组 *</label>
+          <select id="taskGroups" multiple style="width:100%;padding:8px 12px;height:120px;">
+            ${groupOptions}
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px;">按住 Ctrl/Cmd 多选</div>
+        </div>
+        <div class="form-group" id="exportFilenameGroup" style="display:none;">
+          <label>导出文件名</label>
+          <input type="text" id="taskFilename" placeholder="例如：channels.m3u" value="${task && task.exportConfig?.filename || ''}" style="width:100%;padding:8px 12px;">
         </div>
         <div class="form-group">
           <label>执行周期 (Cron 表达式) *</label>
@@ -165,27 +204,68 @@
         <button class="btn" onclick="closeModal()">取消</button>
         <button class="btn btn-primary" onclick="saveSchedulerTask('${editId || ''}')">${editId ? '保存' : '创建'}</button>
       `);
+
+      // 初始化任务类型
+      if (task) {
+        toggleTaskType(task.type);
+      }
+    }
+
+    function toggleTaskType(type) {
+      const sourceGroup = document.getElementById('sourceGroup');
+      const exportGroup = document.getElementById('exportGroup');
+      const exportFilenameGroup = document.getElementById('exportFilenameGroup');
+
+      if (type === 'import') {
+        sourceGroup.style.display = 'block';
+        exportGroup.style.display = 'none';
+        exportFilenameGroup.style.display = 'none';
+      } else if (type === 'export') {
+        sourceGroup.style.display = 'none';
+        exportGroup.style.display = 'block';
+        exportFilenameGroup.style.display = 'block';
+      }
     }
 
     async function saveSchedulerTask(editId) {
       const name = document.getElementById('taskName').value.trim();
+      const type = document.getElementById('taskType').value;
       const sourceId = document.getElementById('taskSource').value;
       const cron = document.getElementById('taskCron').value.trim();
 
-      if (!sourceId) { toast('请选择节目源', 'error'); return; }
       if (!cron) { toast('请填写 cron 表达式', 'error'); return; }
+
+      let data = { type, name: name || undefined, cron };
+
+      if (type === 'import') {
+        if (!sourceId) { toast('请选择节目源', 'error'); return; }
+        data.sourceId = sourceId;
+      } else if (type === 'export') {
+        const groupsSelect = document.getElementById('taskGroups');
+        const selectedGroups = Array.from(groupsSelect.selectedOptions).map(opt => opt.value);
+
+        if (selectedGroups.length === 0) { toast('请选择至少一个分组', 'error'); return; }
+
+        const filename = document.getElementById('taskFilename').value.trim();
+        if (!filename) { toast('请填写导出文件名', 'error'); return; }
+
+        data.exportConfig = {
+          groups: selectedGroups,
+          filename: filename
+        };
+      }
 
       try {
         let res;
         if (editId) {
           res = await api('/scheduler/tasks/' + editId, {
             method: 'PUT',
-            body: JSON.stringify({ name: name || undefined, sourceId, cron })
+            body: JSON.stringify(data)
           });
         } else {
           res = await api('/scheduler/tasks', {
             method: 'POST',
-            body: JSON.stringify({ name: name || undefined, sourceId, cron })
+            body: JSON.stringify(data)
           });
         }
 
