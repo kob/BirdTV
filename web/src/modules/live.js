@@ -225,8 +225,7 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
     const corsRestricted = isCorsRestricted(playbackDirectUrl);
     const useProxyMode = shouldUseProxy(playbackDirectUrl, false, source);
     const proxyUrl = gPU(playbackDirectUrl, getEffectiveUserAgent());
-    // 当输入已经是代理 URL 时，始终保留原始代理 URL（避免解包后直连）
-    const preserveInputProxyUrl = wrappedProxyInput && (currentProxyMode === 'm3u-proxy' || currentProxyMode === 'auto');
+    const preserveInputProxyUrl = wrappedProxyInput && currentProxyMode === 'm3u-proxy';
     const proxyPlaybackUrl = preserveInputProxyUrl ? actualUrl : proxyUrl;
 
     const directTimeoutMs = SHAKA_LOAD_TIMEOUT_MS;
@@ -356,9 +355,7 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
             if (isDirectMode) {
                 await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
             } else {
-                // 优先使用输入代理 URL（如果已包含），避免重新包装导致域名变化
-                const effectiveProxyUrl = wrappedProxyInput ? actualUrl : proxyUrl;
-                await loadShakaWithTimeout(effectiveProxyUrl, `${labelPrefix}代理`, requestId, directTimeoutMs);
+                await loadShakaWithTimeout(proxyUrl, `${labelPrefix}代理`, requestId, directTimeoutMs);
             }
         }
     } catch (directError) {
@@ -566,9 +563,7 @@ function getPlaybackEngineDecision(source) {
     }
 
     const targetUrl = String(source.url || '');
-    // 如果 URL 已经是代理 URL，不解包——直接用原始 URL 做类型检测
-    const isProxyInputUrl = String(targetUrl || '').includes('/m3u-proxy?url=');
-    const detectedUrl = isProxyInputUrl ? targetUrl : (unwrapProxySourceUrl(targetUrl) || targetUrl);
+    const detectedUrl = unwrapProxySourceUrl(targetUrl) || targetUrl;
     const lower = String(detectedUrl || '').toLowerCase();
     const isDash = isLikelyDashUrl(detectedUrl);
     const drmPresent = hasDrmInfo(source);
@@ -727,10 +722,23 @@ export async function playSource(source, elements) {
 
     try {
         let actualUrl = originalUrl;
-        // 如果 URL 已经是代理 URL，强制标记 source 为代理模式，确保下游不再解包
-        const inputIsProxyUrl = String(actualUrl || '').includes('/m3u-proxy?url=');
-        if (inputIsProxyUrl && !source.sourceProxyMode) {
-            source.sourceProxyMode = 'proxy';
+
+        // 智能代理URL解包
+        if (actualUrl.includes('/m3u-proxy?url=')) {
+            try {
+                let urlToParse = actualUrl;
+                if (!urlToParse.startsWith('http://') && !urlToParse.startsWith('https://')) {
+                    urlToParse = urlToParse.startsWith('/') ? window.location.origin + urlToParse : window.location.origin + '/' + urlToParse;
+                }
+                const urlObj = new URL(urlToParse);
+                const isExternalProxy = urlObj.origin !== window.location.origin;
+                const isDashStream = isLikelyDashUrl(actualUrl);
+                const pm = getTempProxyMode();
+                if (isExternalProxy && (!isDashStream || pm !== 'm3u-proxy')) {
+                    const urlParam = urlObj.searchParams.get('url');
+                    if (urlParam) actualUrl = decodeURIComponent(urlParam);
+                }
+            } catch (e) { /* ignore */ }
         }
 
         pushDiagnosticEvent(elements, {
@@ -748,10 +756,9 @@ export async function playSource(source, elements) {
             }
         });
 
-        // 混合内容保护（代理URL无需处理）
+        // 混合内容保护
         const isDirectMode = getTempProxyMode() === 'direct';
-        const isProxyUrl = String(actualUrl || '').includes('/m3u-proxy?url=');
-        if (!isProxyUrl && window.location.protocol === 'https:' && actualUrl.startsWith('http://') && !isDirectMode) {
+        if (window.location.protocol === 'https:' && actualUrl.startsWith('http://') && !isDirectMode) {
             const httpsUrl = actualUrl.replace('http://', 'https://');
             pushDiagnosticEvent(elements, {
                 type: 'mixed-content-probe',
@@ -790,9 +797,6 @@ export async function playSource(source, elements) {
         }
 
         updateStatus(elements, `正在初始化播放器: ${source.name}`, "加载中");
-
-        // 调试日志：显示实际传给播放器的 URL
-        console.log(`[playSource] channel=${source.name} playerType=${playerTypeCode} actualUrl=${actualUrl?.substring(0, 150)} isProxy=${String(actualUrl || '').includes('/m3u-proxy?url=')}`);
 
         // 更新右侧当前播放信息
         updateCurrentInfo(elements, { ...source, url: actualUrl, playerType: playerTypeCode });

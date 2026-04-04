@@ -41,9 +41,8 @@ export async function initMpegtsPlayer(url = '', source = null, elements = {}) {
         // 不清空 src，让 mpegts.js 直接 attach
     }
 
-    const isAlreadyProxyUrl = String(url || '').includes('/m3u-proxy?url=');
-    const useProxy = isAlreadyProxyUrl || shouldUseProxy(url, true, source);
-    const finalUrl = isAlreadyProxyUrl ? url : (useProxy ? getProxyUrl(url, getEffectiveUserAgent()) : url);
+    const useProxy = shouldUseProxy(url, true, source);
+    const finalUrl = useProxy ? getProxyUrl(url, getEffectiveUserAgent()) : url;
     
     // 优化配置：针对直播优化
     const mpegtsConfig = {

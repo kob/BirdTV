@@ -32,10 +32,6 @@ export function canUseNativeHlsPlayback() {
 export async function initArtPlayer(url = '', source = null, elements = {}) {
     if (!window.Artplayer) { console.error('ArtPlayer not loaded'); return null; }
 
-    // 强制保护：如果 URL 已经是代理 URL，确保不再被任何下游逻辑解包
-    const _isProxy = String(url || '').includes('/m3u-proxy?url=');
-    console.log('[ArtPlayer] initArtPlayer called, url:', url?.substring(0, 120), 'isProxy:', _isProxy, 'sourceProxyMode:', source?.sourceProxyMode);
-
     const startTime = performance.now();
     const container = document.getElementById('artplayer-container');
     if (!container) { console.error('artplayer-container not found'); return null; }
@@ -60,14 +56,12 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     }
 
     const effectiveUserAgent = getEffectiveUserAgent();
-    // 判断传入的 URL 是否已经是代理 URL，如果是则直接使用，不再解包重算
-    const isAlreadyProxyUrl = String(url || '').includes('/m3u-proxy?url=');
-    const unwrappedSourceUrl = isAlreadyProxyUrl ? url : unwrapProxySourceUrl(url);
+    const unwrappedSourceUrl = unwrapProxySourceUrl(url);
     const manualLineLocked = !!(source?.manualLineLocked);
-    const genericProxyUrl = isAlreadyProxyUrl ? url : (/^https?:/i.test(String(unwrappedSourceUrl || '')) ? toSameOriginM3UProxyUrl(unwrappedSourceUrl, effectiveUserAgent) : null);
-    const tvIillSameOriginUrl = isAlreadyProxyUrl ? null : toTvIillSameOriginUrl(unwrappedSourceUrl, effectiveUserAgent);
+    const genericProxyUrl = /^https?:/i.test(String(unwrappedSourceUrl || '')) ? toSameOriginM3UProxyUrl(unwrappedSourceUrl, effectiveUserAgent) : null;
+    const tvIillSameOriginUrl = toTvIillSameOriginUrl(unwrappedSourceUrl, effectiveUserAgent);
     const corsRestricted = isCorsRestricted(unwrappedSourceUrl);
-    const useProxy = isAlreadyProxyUrl || shouldUseProxy(unwrappedSourceUrl, false, source);
+    const useProxy = shouldUseProxy(unwrappedSourceUrl, false, source);
     
     // 直连模式优化：跳过不必要的 proxy URL 生成
     const isDirectMode = !useProxy;
@@ -142,17 +136,6 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
                 if (useProxy) {
                     finalUrl = tvIillSameOriginUrl || genericProxyUrl || url;
                 }
-
-                // 强制保护：如果原始 url 是代理 URL 但 finalUrl 不是，恢复为原始代理 URL
-                if (isAlreadyProxyUrl && !String(finalUrl || '').includes('/m3u-proxy?url=')) {
-                    console.warn('[ArtPlayer] finalUrl 不是代理 URL，强制恢复为原始代理 URL', {
-                        originalUrl: url?.substring(0, 80),
-                        wrongFinalUrl: finalUrl?.substring(0, 80)
-                    });
-                    finalUrl = url;
-                }
-
-                console.log('[ArtPlayer] HLS loadSource finalUrl:', finalUrl?.substring(0, 120));
 
                 if (Hls && Hls.isSupported()) {
                     // 复用 HLS.js 实例（如果已存在且配置相同）

@@ -77,14 +77,6 @@ export function isLikelyHlsStreamUrl(urlLower) {
 }
 
 export function shouldUseProxy(url, preferDirectLan = false, source = null) {
-    // tv.iill.top 域名强制直连（避免 Cloudflare Bot 检测）
-    try {
-        const urlObj = new URL(url);
-        if (String(urlObj.hostname || '').toLowerCase().endsWith('tv.iill.top')) {
-            return false;
-        }
-    } catch {}
-
     // 检查源的代理模式设置
     if (source && source.sourceProxyMode) {
         const sourceProxyMode = String(source.sourceProxyMode).trim().toLowerCase();
@@ -144,14 +136,6 @@ export function getProxyUrl(url, userAgent = null) {
     if (!url || typeof url !== 'string') return url;
     if (url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('file:')) return url;
 
-    // tv.iill.top 域名强制直连（避免 Cloudflare Bot 检测）
-    try {
-        const urlObj = new URL(url);
-        if (String(urlObj.hostname || '').toLowerCase().endsWith('tv.iill.top')) {
-            return url;
-        }
-    } catch {}
-
     const unwrapped = unwrapProxySourceUrl(url);
     if (String(unwrapped || '') !== String(url || '')) {
         return toSameOriginM3UProxyUrl(unwrapped, userAgent);
@@ -164,7 +148,7 @@ export function getProxyUrl(url, userAgent = null) {
 
         if (tempMode === 'direct') return url;
 
-        let proxyUrl = `${window.location.origin}/m3u-proxy?url=${encodedUrl}`;
+        let proxyUrl = `/m3u-proxy?url=${encodedUrl}`;
         if (effectiveUserAgent) {
             proxyUrl += `&ua=${encodeURIComponent(effectiveUserAgent)}`;
         }
@@ -177,15 +161,6 @@ export function getProxyUrl(url, userAgent = null) {
 
 export function toSameOriginM3UProxyUrl(m3uUrl, userAgent = null) {
     if (!m3uUrl) return null;
-
-    // tv.iill.top 域名强制直连（避免 Cloudflare Bot 检测）
-    try {
-        const urlObj = new URL(m3uUrl);
-        if (String(urlObj.hostname || '').toLowerCase().endsWith('tv.iill.top')) {
-            return m3uUrl;
-        }
-    } catch {}
-
     let proxyUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(m3uUrl)}`;
     if (userAgent && userAgent.trim()) {
         proxyUrl += `&ua=${encodeURIComponent(userAgent.trim())}`;
@@ -194,8 +169,16 @@ export function toSameOriginM3UProxyUrl(m3uUrl, userAgent = null) {
 }
 
 export function toTvIillSameOriginUrl(url, userAgent = null) {
-    // tv.iill.top 域名强制直连，不再生成代理 URL
-    return url;
+    if (!url || typeof url !== 'string') return null;
+    try {
+        const parsed = new URL(url);
+        const host = String(parsed.hostname || '').toLowerCase();
+        if (host !== 'tv.iill.top') return null;
+        let proxyUrl = `/m3u-proxy?url=${encodeURIComponent(parsed.toString())}`;
+        const effectiveUserAgent = String(userAgent || '').trim();
+        if (effectiveUserAgent) proxyUrl += `&ua=${encodeURIComponent(effectiveUserAgent)}`;
+        return proxyUrl;
+    } catch { return null; }
 }
 
 export function unwrapProxySourceUrl(url) {
