@@ -10,7 +10,7 @@
       if (empty) empty.style.display = 'none';
       if (pagination) pagination.style.display = 'none';
       try {
-        const res = await api('/channels');
+        const res = await api('/channels?limit=99999');
         let rows = (res && res.ok && Array.isArray(res.data)) ? res.data : [];
         
         // 填充源名称下拉选项
@@ -204,9 +204,9 @@
       const proxyMode = document.getElementById('chProxyMode').value;
       let url = document.getElementById('chUrl').value.trim();
 
-      // 如果代理方式是 proxy 或 auto，将 URL 转换为相对代理地址（不含域名，导出时再拼接）
+      // 如果代理方式是 proxy 或 auto，将 URL 转换为代理地址
       if (proxyMode === 'proxy' || proxyMode === 'auto') {
-        url = `/m3u-proxy?url=${encodeURIComponent(url)}`;
+        url = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(url)}`;
       }
 
       const data = {
