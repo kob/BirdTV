@@ -461,6 +461,14 @@ function shouldRewriteM3u(payload, remoteUrl) {
 }
 
 function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = null) {
+  // tv.iill.top 域名强制直连，不生成代理 URL
+  try {
+    const urlObj = new URL(targetUrl);
+    if (String(urlObj.hostname || '').toLowerCase().endsWith('tv.iill.top')) {
+      return targetUrl;
+    }
+  } catch {}
+
   let out = `/m3u-proxy?url=${encodeURIComponent(targetUrl)}`;
   if (userAgent) {
     out += `&ua=${encodeURIComponent(String(userAgent))}`;
