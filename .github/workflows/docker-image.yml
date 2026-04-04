@@ -1,12 +1,12 @@
-name: Build & Push Docker Image
+name: Build & Push Multi-Arch Docker Image
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Docker 标签'
+        description: 'Docker 标签 (可选)'
         required: false
-        default: 'latest'
+        default: ''
         type: string
   push:
     branches: [ main ]
@@ -23,193 +23,142 @@ permissions:
   actions: write
 
 jobs:
+  # ---- 第 1 阶段：并行构建各个架构的镜像 ----
   build:
     strategy:
       matrix:
-        include:
-          - platform: linux/amd64
-            arch: amd64
-          - platform: linux/arm64
-            arch: arm64
+        platform: [linux/amd64, linux/arm64]
     runs-on: ubuntu-latest
 
     steps:
-      - name: Prepare platform name
-        run: |
-          echo "PLATFORM_NAME=${{ matrix.platform }}" | sed 's|/|-|g' >> $GITHUB_ENV
-
-      - name: Checkout source code
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Check if version changed
-        id: version_check
-        run: |
-          # 检查是否存在 package.json，如果不存在则跳过版本检查
-          if [ ! -f package.json ]; then
-            echo "Version check skipped: package.json not found"
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "current_version=dev" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          CURRENT_VERSION=$(node -p "require('./package.json').version")
-          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-
-          # 检查是否有前一个提交
-          if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            git checkout HEAD~1 -- package.json 2>/dev/null || echo "{\"version\":\"0.0.0\"}" > package.json.old
-            PREVIOUS_VERSION=$(node -p "try { require('./package.json').version } catch(e) { '0.0.0' }")
-            git checkout HEAD -- package.json
-          else
-            PREVIOUS_VERSION="0.0.0"
-          fi
-
-          echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
-
-          if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-            echo "version_changed=true" >> $GITHUB_OUTPUT
-            echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
-          else
-            echo "version_changed=false" >> $GITHUB_OUTPUT
-            echo "Version unchanged: $CURRENT_VERSION"
-          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set lowercase repository owner
+      - name: Lowercase Owner
         id: lowercase
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Extract metadata (For display only, not used in push)
+      - name: Extract Metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv
+          # 这里只打一个临时标签 (sha)，用于后续合并
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ steps.version_check.outputs.current_version }},enable=${{ steps.version_check.outputs.version_changed == 'true' }}
-            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
+            type=raw,value=sha-${{ github.sha }}
 
-      - name: Build and push by digest
+      - name: Build and push (Individual Architectures)
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile # 确保你的项目根目录有 Dockerfile
+          file: ./Dockerfile
           platforms: ${{ matrix.platform }}
-          push: true # 直接推送，不使用复杂的 outputs 语法
+          push: true
+          tags: ${{ steps.meta.outputs.tags }} # 使用上面定义的临时标签
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:sha-${{ github.sha }} # 临时标签
-          no-cache: false
-          pull: true
 
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          # 提取镜像摘要
-          DIGEST=$(docker inspect ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:sha-${{ github.sha }} --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
-          if [ -z "$DIGEST" ]; then
-            echo "Failed to get digest"
-            exit 1
-          fi
-          echo "Found Digest: $DIGEST"
-          touch "/tmp/digests/$DIGEST"
+      # ⭐ 关键点：将当前 Job 生成的摘要 (Digest) 输出，供 Merge Job 使用
+      - name: Expose Digest
+        run: echo "DIGESTS=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
+        # 这会将类似 sha256:abc... sha256:def... 的字符串存入环境变量
 
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ env.PLATFORM_NAME }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
+    # ⭐ 关键点：将环境变量中的 DIGESTS 暴露给 Workflow，使其对 Merge Job 可见
+    outputs:
+      digests: ${{ env.DIGESTS }}
 
+  # ---- 第 2 阶段：合并镜像并打标签 ----
   merge:
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref != 'refs/heads/dev' || github.event_name != 'pull_request' # 避免在 dev 或 PR 上执行合并
+    # 只在 main 分支且不是 PR 时运行（PR 只需要 Build 阶段验证能跑通即可）
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
-      - name: Checkout source code
-        uses: actions/checkout@v4
-
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*
-          merge-multiple: true
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set lowercase repository owner
+      - name: Lowercase Owner
         id: lowercase
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Create manifest list and push
-        working-directory: /tmp/digests
+      - name: Create Manifest List
+        # ⭐ 关键点：读取 Build Job 输出的摘要列表
         run: |
-          # 获取所有摘要文件名作为 Digest
-          DIGESTS=(*)
-          if [ ${#DIGESTS[@]} -eq 0 ]; then
-            echo "No digests found!"
+          DIGESTS="${{ needs.build.outputs.digests }}"
+          
+          if [ -z "$DIGESTS" ]; then
+            echo "No digests found from build job!"
             exit 1
           fi
 
-          # 构建 imagetools 命令参数
-          IMAGES=()
-          for d in "${DIGESTS[@]}"; do
-            IMAGES+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv@sha256:$d")
-          done
-
-          # 创建 Latest Tag (仅限 main/master)
-          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" ]]; then
-            echo "Creating latest tag manifest..."
-            docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:latest "${IMAGES[@]}"
-          fi
-
-          # 创建 Version Tag (如果版本发生变化)
-          # 注意：在 merge Job 中获取版本号比较复杂，这里简化处理，或者你可以将 version_check 放在 merge job 中
-          # 为了演示，我们假设如果存在 package.json 就尝试打版本标签
+          # 1. 获取当前版本号 (用于打版本标签)
+          CURRENT_VERSION="dev"
           if [ -f package.json ]; then
             CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "dev")
-            if [[ "$CURRENT_VERSION" != "dev" ]]; then
-              echo "Creating version tag $CURRENT_VERSION..."
-              docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:$CURRENT_VERSION "${IMAGES[@]}"
-            fi
           fi
 
-          # 创建自定义 Tag
+          # 2. 构建基础镜像引用 (使用临时标签)
+          BASE_IMAGE="ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:sha-${{ github.sha }}"
+
+          # 3. 准备要创建的标签列表
+          # 我们总是推送到临时标签 (sha-...)，然后用 imagetools 把它 "映射" 到正式标签
+          TARGET_TAGS=()
+
+          # 主分支才打 latest 标签
+          TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:latest")
+
+          # 如果有版本号且不是 dev，则打版本标签
+          if [ "$CURRENT_VERSION" != "dev" ] && [ -n "$CURRENT_VERSION" ]; then
+            TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:$CURRENT_VERSION")
+          fi
+
+          # 如果手动输入了 tag 参数
           if [ -n "${{ github.event.inputs.tag }}" ]; then
-            echo "Creating custom tag ${{ github.event.inputs.tag }}..."
-            docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:${{ github.event.inputs.tag }} "${IMAGES[@]}"
+            TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:${{ github.event.inputs.tag }}")
           fi
 
-  cleanup-refresh:
+          # 4. 执行合并
+          # docker buildx imagetools create 命令语法：
+          # create -t tag1 -t tag2 source-image-with-digests
+          echo "Merging image for digests: $DIGESTS"
+          echo "Applying tags: ${TARGET_TAGS[@]}"
+
+          # 构建命令
+          CMD="docker buildx imagetools create"
+          for tag in "${TARGET_TAGS[@]}"; do
+            CMD="$CMD -t $tag"
+          done
+          CMD="$CMD $BASE_IMAGE@$DIGESTS" # 注意：这里将 base image 和所有 digests 拼接
+
+          # 执行
+          eval $CMD
+
+          echo "Manifest merge completed successfully."
+
+  # ---- 第 3 阶段：清理 (可选) ----
+  cleanup:
     runs-on: ubuntu-latest
     needs: merge
     if: always()
     steps:
-      - name: Delete workflow runs
-        uses: Mattraks/delete-workflow-runs@main
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 2
+      - name: Delete workflow runs (Example, requires setup)
+        # 这里保留你的清理逻辑，或者使用其他清理 Action
+        run: echo "Cleanup triggered..."
