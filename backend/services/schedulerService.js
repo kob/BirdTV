@@ -1,4 +1,4 @@
-concdst crypto = require('crypto');
+const crypto = require('crypto');
 
 /**
  * 定时导入调度服务
