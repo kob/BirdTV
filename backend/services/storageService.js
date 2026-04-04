@@ -16,7 +16,11 @@ class StorageService {
     this.redisClient = null;
     this.redisReady = false;
     this.redisConfig = redisConfig;
-    this.redisPrefix = 'birdtv:storage:';
+    // 支持通过环境变量设置数据隔离前缀，默认为 birdtv:storage
+    this.redisPrefix = process.env.REDIS_DATA_PREFIX || 'birdtv:storage:';
+    // 支持通过环境变量设置服务器标识，避免多服务器冲突
+    this.serverId = process.env.SERVER_ID || 'default';
+    console.log(`[StorageService] 使用 Redis 前缀: ${this.redisPrefix}, 服务器标识: ${this.serverId}`);
   }
 
   /**

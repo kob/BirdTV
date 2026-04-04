@@ -1241,11 +1241,6 @@ function createApiRouter(controllers) {
       return authController.logout(req, res);
     }
 
-    // GET /api/auth/userinfo - 获取用户信息
-    if (url === '/api/auth/userinfo' && method === 'GET') {
-      return authController.getUserInfo(req, res);
-    }
-
     // PUT /api/auth/password - 修改密码
     if (url === '/api/auth/password' && method === 'PUT') {
       return authController.changePassword(req, res);
@@ -1503,6 +1498,21 @@ function createApiRouter(controllers) {
     // GET /api/settings/ua/effective - 获取有效 UA
     if (url === '/api/settings/ua/effective' && method === 'GET') {
       return settingsController.getEffectiveUA(req, res);
+    }
+
+    // GET /api/settings/sync/info - 获取同步信息
+    if (url === '/api/settings/sync/info' && method === 'GET') {
+      return settingsController.getSyncInfo(req, res);
+    }
+
+    // POST /api/settings/sync/redis - 同步文件到 Redis
+    if (url === '/api/settings/sync/redis' && method === 'POST') {
+      return settingsController.syncToRedis(req, res);
+    }
+
+    // POST /api/settings/sync/file - 从 Redis 同步到文件
+    if (url === '/api/settings/sync/file' && method === 'POST') {
+      return settingsController.syncFromFile(req, res);
     }
 
     // ==================== 定时任务 API ====================
@@ -1909,14 +1919,21 @@ function createAppServer(configInput = {}) {
           req.body = await parseRequestBody(req).catch(() => ({}));
         }
         
-        // 登录接口不需要认证
+        // 登录接口和用户信息接口不需要认证
         console.log('[API Route] Checking login path:', pathname, 'method:', req.method);
         if (pathname === '/api/auth/login' && req.method === 'POST') {
           console.log('[API Route] Login route matched, calling apiRouter');
           await serverState.controllers.apiRouter(req, res);
           return;
         }
-        
+
+        // 用户信息接口不需要认证
+        if (pathname === '/api/auth/userinfo' && req.method === 'GET') {
+          console.log('[API Route] UserInfo route matched, calling authController.getUserInfo');
+          await authController.getUserInfo(req, res);
+          return;
+        }
+
         // 其他 API 需要认证
         await authMiddleware(req, res, config, async () => {
           // 管理员接口额外检查

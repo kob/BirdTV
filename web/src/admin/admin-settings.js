@@ -45,3 +45,80 @@
       }
     }
 
+    // ========== 数据同步 ==========
+    
+    async function loadSyncInfo() {
+      try {
+        const res = await api('/settings/sync/info');
+        if (res && res.ok) {
+          const data = res.data;
+          document.getElementById('redisPrefix').textContent = data.redisPrefix || '未知';
+          document.getElementById('serverId').textContent = data.serverId || '未知';
+        }
+      } catch (e) {
+        document.getElementById('redisPrefix').textContent = '未知';
+        document.getElementById('serverId').textContent = '未知';
+      }
+    }
+
+    async function syncToRedis() {
+      try {
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span style="font-size:14px;">⏳</span> 同步中...';
+        btn.disabled = true;
+
+        const res = await api('/settings/sync/redis', { method: 'POST' });
+
+        if (res && res.ok) {
+          toast(res.message || '同步成功', 'success');
+          console.log('[Sync] 同步结果:', res.data);
+        } else {
+          toast('同步失败：' + (res?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('[Sync] 同步异常:', error);
+        toast('同步失败：' + error.message, 'error');
+      } finally {
+        const btn = event.target.closest('button');
+        btn.innerHTML = '<span style="font-size:14px;">📤</span> 同步到 Redis';
+        btn.disabled = false;
+      }
+    }
+
+    async function syncFromFile() {
+      try {
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span style="font-size:14px;">⏳</span> 同步中...';
+        btn.disabled = true;
+
+        const res = await api('/settings/sync/file', { method: 'POST' });
+
+        if (res && res.ok) {
+          toast(res.message || '同步成功', 'success');
+          console.log('[Sync] 同步结果:', res.data);
+          if (res.data.results) {
+            const results = res.data.results.map(r => 
+              r.success ? `${r.key} ✅` : `${r.key} ❌ ${r.reason}`
+            ).join(', ');
+            console.log('[Sync] 详细结果:', results);
+          }
+        } else {
+          toast('同步失败：' + (res?.message || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('[Sync] 同步异常:', error);
+        toast('同步失败：' + error.message, 'error');
+      } finally {
+        const btn = event.target.closest('button');
+        btn.innerHTML = '<span style="font-size:14px;">📥</span> 从 Redis 同步到文件';
+        btn.disabled = false;
+      }
+    }
+
+    // 页面加载时显示同步信息
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSyncInfo();
+    });
+

@@ -147,6 +147,108 @@ class SettingsController {
       }));
     }
   }
+
+  // ─── 数据同步 API ───
+
+  /**
+   * 获取同步信息
+   */
+  async getSyncInfo(req, res) {
+    try {
+      res.json({
+        ok: true,
+        data: {
+          redisPrefix: this.storage.redisPrefix,
+          redisReady: this.storage.redisReady,
+          serverId: process.env.SERVER_ID || 'default'
+        }
+      });
+    } catch (error) {
+      console.error('[SettingsController] getSyncInfo error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '获取同步信息失败'
+      }));
+    }
+  }
+
+  /**
+   * 同步文件到 Redis
+   */
+  async syncToRedis(req, res) {
+    try {
+      const result = await this.storage._syncFilesToRedis();
+      res.json({
+        ok: true,
+        message: '数据同步到 Redis 成功',
+        data: {
+          redisPrefix: this.storage.redisPrefix,
+          serverId: process.env.SERVER_ID || 'default'
+        }
+      });
+    } catch (error) {
+      console.error('[SettingsController] syncToRedis error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '同步到 Redis 失败: ' + error.message
+      }));
+    }
+  }
+
+  /**
+   * 从 Redis 同步到文件
+   */
+  async syncFromFile(req, res) {
+    try {
+      const keys = ['channels', 'm3uSources', 'epgSources', 'settings'];
+      const results = [];
+
+      for (const key of keys) {
+        const redisKey = this.storage.redisPrefix + key;
+        const exists = await this.storage.redisClient.exists(redisKey);
+
+        if (exists) {
+          const data = await this.storage.redisClient.get(redisKey);
+          const parsedData = JSON.parse(data);
+
+          // 写入文件
+          const filePath = {
+            channels: this.storage.channelsFile,
+            m3uSources: this.storage.m3uSourcesFile,
+            epgSources: this.storage.epgSourcesFile,
+            settings: this.storage.settingsFile
+          }[key];
+
+          await this.storage._writeFile(filePath, parsedData);
+          results.push({ key, success: true });
+        } else {
+          results.push({ key, success: false, reason: 'Redis 中无数据' });
+        }
+      }
+
+      res.json({
+        ok: true,
+        message: '从 Redis 同步到文件成功',
+        data: {
+          redisPrefix: this.storage.redisPrefix,
+          serverId: process.env.SERVER_ID || 'default',
+          results
+        }
+      });
+    } catch (error) {
+      console.error('[SettingsController] syncFromFile error:', error);
+      res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({
+        ok: false,
+        error: 'server_error',
+        message: '从 Redis 同步失败: ' + error.message
+      }));
+    }
+  }
 }
 
 module.exports = SettingsController;
