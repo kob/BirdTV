@@ -716,32 +716,6 @@ https://birdtv-<random-string>.apps.<region>.hana.ondemand.com
 
 > **兼容性**: 旧版变量名 `M3U_PROXY_TIMEOUT_MS`、`M3U_PROXY_REDIRECT_LIMIT`、`M3U_PROXY_DEFAULT_UA` 仍可使用。
 
-### Cloudflare WAF 代理配置
-
-| 变量名 | 默认值 | 说明 | 必填 |
-|--------|--------|------|------|
-| `CLOUDFLARE_WORKER_URL` | 空 (禁用) | Cloudflare Worker 代理地址 | 否 |
-
-**使用场景**: 当遇到 Cloudflare WAF 拦截（403/520 错误）时，配置此选项启用自动重试机制。
-
-```bash
-# 示例: 启用 WAF 代理
-docker run -d \
-  -e CLOUDFLARE_WORKER_URL=https://your-worker.workers.dev \
-  ghcr.io/kob/birdtv:latest
-```
-
-> **详见**: [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md)
-
-### 性能与安全配置
-
-| 变量名 | 默认值 | 说明 | 必填 |
-|--------|--------|------|------|
-| `NODE_OPTIONS` | `--max-old-space-size=500` | Node.js 内存限制 (MB) | 否 |
-| `ULIMIT_CORE` | `0` | 禁止生成 core 文件 (0=禁止) | 否 |
-
-> **说明**: 这些配置用于优化容器性能和安全性，防止内存溢出和磁盘空间占用。
-
 ---
 
 ## 数据持久化
@@ -1062,4 +1036,4 @@ MIT License
 
 ---
 
-**最后更新**: 2026-04-05
+**最后更新**: 2026-04-04
