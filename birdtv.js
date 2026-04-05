@@ -2207,6 +2207,27 @@ module.exports = {
   getCacheTtlMs
 };
 
+// 全局未捕获异常处理
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] 未捕获的异常:', error);
+  console.error('[FATAL] 堆栈信息:', error.stack);
+  // 不立即退出，记录日志后继续运行
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] 未处理的 Promise 拒绝:', reason);
+  console.error('[FATAL] Promise:', promise);
+  // 不立即退出，记录日志后继续运行
+});
+
+// 内存警告
+if (process.on && typeof process.on === 'function') {
+  process.on('warning', (warning) => {
+    console.warn('[WARNING]', warning.name, warning.message);
+    console.warn('[WARNING] 堆栈:', warning.stack);
+  });
+}
+
 if (require.main === module) {
   startServer().catch(error => {
     console.error('启动失败:', error);
