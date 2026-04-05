@@ -28,6 +28,11 @@ services:
       - M3U_PROXY_TIMEOUT_MS=${M3U_PROXY_TIMEOUT_MS:-40000}
       - M3U_PROXY_REDIRECT_LIMIT=${M3U_PROXY_REDIRECT_LIMIT:-3}
       - M3U_PROXY_DEFAULT_UA=${M3U_PROXY_DEFAULT_UA:-okhttp/4.3}
+      # Cloudflare Worker (WAF 代理)
+      - CLOUDFLARE_WORKER_URL=${CLOUDFLARE_WORKER_URL:-}
+      # 性能与安全
+      - NODE_OPTIONS=--max-old-space-size=500
+      - ULIMIT_CORE=0
     volumes:
       - birdtv-data:/app/data
     depends_on:
