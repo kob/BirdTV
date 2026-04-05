@@ -13,11 +13,23 @@ class SourceController {
 
   /**
    * 使用原生 http/https 获取远程内容（替代 node-fetch，避免 ESM 兼容问题）
+   * 支持 Cloudflare WAF 自动重试（通过 CLOUDFLARE_WORKER_URL）
    */
-  _fetchContent(url, userAgent = null, timeoutMs = 30000) {
+  _fetchContent(url, userAgent = null, timeoutMs = 30000, _useWorkerProxy = false) {
+    const workerUrl = process.env.CLOUDFLARE_WORKER_URL;
+    const actualUseWorker = _useWorkerProxy && !!workerUrl;
+
     return new Promise((resolve, reject) => {
       let redirectCount = 0;
       const maxRedirects = 5;
+
+      // 如果启用了 Worker 代理，将 URL 包装为 Worker 请求
+      let targetUrl = url;
+      if (actualUseWorker && workerUrl) {
+        targetUrl = new URL(workerUrl);
+        targetUrl.searchParams.set('url', url);
+        if (userAgent) targetUrl.searchParams.set('ua', userAgent);
+      }
 
       const makeRequest = (currentUrl) => {
         const parsed = new URL(currentUrl);
@@ -35,8 +47,11 @@ class SourceController {
           }
         };
 
-        if (userAgent) {
+        // Worker 代理模式下不覆盖 User-Agent（已在 query 参数中传递）
+        if (userAgent && !actualUseWorker) {
           options.headers['User-Agent'] = userAgent;
+        } else if (!userAgent && !actualUseWorker) {
+          options.headers['User-Agent'] = process.env.DEFAULT_USER_AGENT || 'okhttp/4.12.0';
         }
 
         const req = lib.request(options, (res) => {
@@ -53,6 +68,22 @@ class SourceController {
             }
             makeRequest(location);
             return;
+          }
+
+          // 检测 Cloudflare WAF 拦截，尝试通过 Worker 重试
+          if ((res.statusCode === 403 || res.statusCode === 520) &&
+              !_useWorkerProxy && workerUrl) {
+            const isCloudflare =
+              res.headers['cf-mitigated'] === 'challenge' ||
+              String(res.headers['server'] || '').toLowerCase().includes('cloudflare');
+            if (isCloudflare) {
+              console.log(`[SourceController] WAF 拦截 (${res.statusCode})，尝试 Worker 代理重试: ${url}`);
+              res.resume();
+              this._fetchContent(url, userAgent, timeoutMs, true)
+                .then(resolve)
+                .catch(reject);
+              return;
+            }
           }
 
           if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -77,7 +108,7 @@ class SourceController {
         req.end();
       };
 
-      makeRequest(url);
+      makeRequest(targetUrl);
     });
   }
 
