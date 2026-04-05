@@ -62,9 +62,10 @@
     }
 
     async function syncToRedis() {
+      let btn, originalText;
       try {
-        const btn = event.target.closest('button');
-        const originalText = btn.innerHTML;
+        btn = event.target.closest('button');
+        originalText = btn.innerHTML;
         btn.innerHTML = '<span style="font-size:14px;">⏳</span> 同步中...';
         btn.disabled = true;
 
@@ -80,16 +81,18 @@
         console.error('[Sync] 同步异常:', error);
         toast('同步失败：' + error.message, 'error');
       } finally {
-        const btn = event.target.closest('button');
-        btn.innerHTML = '<span style="font-size:14px;">📤</span> 同步到 Redis';
-        btn.disabled = false;
+        if (btn) {
+          btn.innerHTML = '<span style="font-size:14px;">📤</span> 同步到 Redis';
+          btn.disabled = false;
+        }
       }
     }
 
     async function syncFromFile() {
+      let btn, originalText;
       try {
-        const btn = event.target.closest('button');
-        const originalText = btn.innerHTML;
+        btn = event.target.closest('button');
+        originalText = btn.innerHTML;
         btn.innerHTML = '<span style="font-size:14px;">⏳</span> 同步中...';
         btn.disabled = true;
 
@@ -111,9 +114,10 @@
         console.error('[Sync] 同步异常:', error);
         toast('同步失败：' + error.message, 'error');
       } finally {
-        const btn = event.target.closest('button');
-        btn.innerHTML = '<span style="font-size:14px;">📥</span> 从 Redis 同步到文件';
-        btn.disabled = false;
+        if (btn) {
+          btn.innerHTML = '<span style="font-size:14px;">📥</span> 从 Redis 同步到文件';
+          btn.disabled = false;
+        }
       }
     }
 
