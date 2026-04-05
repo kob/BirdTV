@@ -73,7 +73,8 @@ const DEFAULTS = {
   cacheEpgTtlMs: 30 * 60 * 1000,
   m3uRemoteBaseUrl: 'http://192.168.200.6:8881',
   defaultUserAgent: 'okhttp/4.3',
-  dataDir: path.resolve(__dirname, 'data')
+  dataDir: path.resolve(__dirname, 'data'),
+  cloudflareWorkerUrl: ''
 };
 
 const serverState = {
@@ -233,6 +234,7 @@ function getConfig(overrides = {}) {
     allowedHosts: parseAllowedHosts(overrides.allowedHosts || env.BIRDTV_ALLOWED_HOSTS || env.M3U_PROXY_ALLOWED_HOSTS || ''),
     defaultUserAgent: String(overrides.defaultUserAgent || env.BIRDTV_DEFAULT_UA || env.M3U_PROXY_DEFAULT_UA || DEFAULTS.defaultUserAgent),
     dataDir: path.resolve(overrides.dataDir || env.BIRDTV_DATA_DIR || env.M3U_PROXY_DATA_DIR || DEFAULTS.dataDir),
+    cloudflareWorkerUrl: String(overrides.cloudflareWorkerUrl || env.CLOUDFLARE_WORKER_URL || DEFAULTS.cloudflareWorkerUrl),
     // 授权配置
     authEnabled: String(overrides.authEnabled || env.AUTH_ENABLED || 'true'),
     jwtSecret: String(overrides.jwtSecret || env.AUTH_JWT_SECRET || 'default-secret'),
@@ -564,6 +566,15 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
       'Accept-Encoding': 'identity'
     };
 
+    // Cloudflare Worker 代理配置
+    let useWorkerProxy = false;
+    let workerRetry = false;
+
+    const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
+    if (workerUrl && workerRetry) {
+      useWorkerProxy = true;
+    }
+
     function shouldHeadFallbackToGet(statusCode) {
       return normalizedMethod === 'HEAD' && (statusCode < 200 || statusCode >= 400);
     }
@@ -581,6 +592,16 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
       } catch {
         reject(new Error('Invalid URL'));
         return;
+      }
+
+      // 使用 Cloudflare Worker 代理
+      if (useWorkerProxy && workerUrl) {
+        const workerTarget = new URL(workerUrl);
+        workerTarget.searchParams.set('url', target);
+        if (headers['User-Agent']) {
+          workerTarget.searchParams.set('ua', headers['User-Agent']);
+        }
+        parsed = workerTarget;
       }
 
       const lib = parsed.protocol === 'https:' ? https : http;
@@ -630,6 +651,22 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
             redirectCount
           });
           return;
+        }
+
+        // Cloudflare WAF 错误重试
+        if ((code === 403 || code === 520) && !workerRetry && workerUrl) {
+          const cfChallenge = resp.headers['cf-mitigated'] === 'challenge' ||
+                            String(resp.headers['server'] || '').toLowerCase().includes('cloudflare');
+          if (cfChallenge) {
+            console.log('[Cloudflare WAF] 检测到 WAF 拦截 (403/520)，尝试使用 Worker 代理重试', {
+              url: target,
+              statusCode: code
+            });
+            resp.resume();
+            workerRetry = true;
+            run(target, insecureTls, family, useProxy, forceGetForHeadFallback);
+            return;
+          }
         }
 
         const chunks = [];
