@@ -15,12 +15,15 @@ let authEnabled = false;
 // 内存存储持久化文件路径
 let memoryStorageFile = null;
 
-// Redis键前缀
+// Redis键前缀（支持环境变量配置多实例隔离）
+const _redisPrefix = process.env.REDIS_PREFIX || 'birdtv';
+const _systemId = process.env.BIRDTV_SYSTEM_ID || 'default';
+const _authPrefix = `${_redisPrefix}:${_systemId}:auth:`;
 const KEYS = {
-  USER_PREFIX: 'auth:user:',
-  TOKEN_PREFIX: 'auth:token:',
-  ROLE_PREFIX: 'auth:role:',
-  PERMISSION_PREFIX: 'auth:perm:'
+  USER_PREFIX: _authPrefix + 'user:',
+  TOKEN_PREFIX: _authPrefix + 'token:',
+  ROLE_PREFIX: _authPrefix + 'role:',
+  PERMISSION_PREFIX: _authPrefix + 'perm:'
 };
 
 // 默认角色
@@ -41,6 +44,7 @@ async function initAuth(config) {
     return;
   }
 
+  console.log(`[Auth] Redis 认证 key 前缀: ${_authPrefix} (REDIS_PREFIX=${_redisPrefix}, BIRDTV_SYSTEM_ID=${_systemId})`);
   jwtSecret = config.jwtSecret || 'default-secret-change-in-production';
   tokenExpireDays = parseInt(config.tokenExpireDays) || 7;
 
@@ -761,6 +765,7 @@ module.exports = {
   updateUser,
   deleteUser,
   changePassword,
+  KEYS,
   isEnabled: () => authEnabled,
   redisClient,
   memoryStorage

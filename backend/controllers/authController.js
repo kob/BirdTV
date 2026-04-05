@@ -139,7 +139,7 @@ class AuthController {
       const redisClient = this.auth.redisClient || null;
       
       if (redisClient) {
-        const data = await redisClient.get('auth:user:' + currentUser.username);
+        const data = await redisClient.get((this.auth.KEYS || { USER_PREFIX: 'auth:user:' }).USER_PREFIX + currentUser.username);
         if (data) {
           userData = JSON.parse(data);
         }
