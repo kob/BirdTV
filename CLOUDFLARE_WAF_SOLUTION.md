@@ -2,18 +2,7 @@
 
 ## 问题现象
 
-两个平台请求相同 URL 返回不同结果：
-
-### idxtv.kob8.dpdns.org
-- CF-Ray 节点：TPE (台湾)
-- 状态：520（源站连接失败）
-- 未触发 Cloudflare Challenge
-
-### tv.kob8.dpdns.org
-- CF-Ray 节点：SIN (新加坡)
-- 状态：403
-- 响应头包含：`cf-mitigated: challenge`
-- **触发了 Cloudflare Challenge/验证机制**
+https://tv.iill.top域名在某些平台访问被拦截
 
 ## 根本原因
 
@@ -108,17 +97,7 @@ npm run start
 3. **自动切换**：自动将请求通过 Cloudflare Worker 代理
 4. **成功返回**：通过 Worker 代理的请求绕过 WAF，返回正常内容
 
-## 验证
 
-测试请求是否正常：
-
-```bash
-# 请求一（应该成功）
-curl "https://idxtv.kob8.dpdns.org/m3u-proxy?url=https%3A%2F%2Ftv.iill.top%2Fm3u%2FMyTV&ua=okhttp%2F1.9.89"
-
-# 请求二（也应该成功）
-curl "https://tv.kob8.dpdns.org/m3u-proxy?url=https%3A%2F%2Ftv.iill.top%2Fm3u%2FMyTV&ua=okhttp%2F1.9.89"
-```
 
 ## 注意事项
 
