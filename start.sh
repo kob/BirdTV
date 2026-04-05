@@ -23,6 +23,7 @@ case "${1:-start}" in
         fi
         [ ! -d "node_modules" ] && echo "安装依赖..." && npm install --production
         echo "启动 BirdTV (端口 ${PORT})..."
+        ulimit -c 0
         nohup npx cross-env M3U_PROXY_STATIC_ROOT=web node birdtv.js > birdtv.log 2>&1 &
         sleep 1
         if pgrep -f "node.*birdtv\.js" >/dev/null 2>&1; then

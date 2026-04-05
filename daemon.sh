@@ -48,6 +48,8 @@ check_service() {
 
 # 启动服务
 start_service() {
+    # 禁止生成 core 文件
+    ulimit -c 0
     log "INFO" "正在启动 ${SERVICE_NAME}..."
 
     # 清理可能的僵尸进程

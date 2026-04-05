@@ -2,6 +2,12 @@
 
 现代化的 IPTV 播放器系统，包含完整的前端播放器、后台管理系统和移动端界面。支持 M3U 播放列表、频道管理、EPG 电子节目单、用户认证等功能。
 
+> **快速开始**：查看 [QUICK_START.md](./QUICK_START.md) 了解一键部署方案（PM2/Systemd/守护脚本）
+>
+> **服务稳定性**：查看 [SERVICE_STABILITY_SOLUTION.md](./SERVICE_STABILITY_SOLUTION.md) 解决服务自动停止问题
+>
+> **WAF 代理**：查看 [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md) 解决 Cloudflare 拦截问题
+
 ## ✨ 功能特性
 
 ### 📺 播放器
@@ -69,16 +75,22 @@ cp .env.example .env
 #### 4. 启动服务
 
 ```bash
-# 方式一：使用 npm 命令（推荐）
+# 方式一：使用 PM2（生产环境推荐）
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup  # 可选：开机自启
+
+# 方式二：使用 npm 命令
 npm run start:web:local
 
-# 方式二：直接启动
+# 方式三：直接启动
 node birdtv.js
 
-# 方式三：使用 PM2（生产环境）
-pm2 start birdtv.js --name birdtv
-pm2 save
+# 方式四：使用启动脚本
+bash start.sh start
 ```
+
+> **推荐**：生产环境使用 PM2，支持自动重启、日志管理、内存监控。详见 [QUICK_START.md](./QUICK_START.md)
 
 #### 5. 访问服务
 
@@ -407,27 +419,24 @@ cf logs birdtv --recent
 BirdTV/
 ├── backend/                    # 后端代码
 │   ├── controllers/           # API 控制器
-│   │   ├── authController.js  # 认证控制器
-│   │   ├── channelController.js # 频道控制器
-│   │   ├── settingsController.js # 设置控制器
-│   │   ├── sourceController.js # 源控制器
-│   │   └── exportController.js # 导出控制器
 │   ├── middleware/            # 中间件（认证、CORS）
 │   ├── services/              # 服务层（存储、Token）
 │   └── api-server.js         # API 服务器入口
 ├── web/                       # 前端代码
 │   ├── src/modules/          # 功能模块（20+ JS 模块）
 │   ├── assets/               # 静态资源（CSS、图片）
-│   ├── index.html            # 主页面
-│   ├── admin.html            # 后台管理页面
-│   ├── mobile.html           # 移动端页面
-│   └── login.html            # 登录页面
+│   └── *.html                # 各页面
 ├── data/                      # 数据目录（JSON 存储）
-├── files/cache/               # 缓存目录
 ├── birdtv.js                 # 主服务器入口
 ├── auth.js                   # 认证模块（JWT + bcrypt）
 ├── Dockerfile                # Docker 构建文件
 ├── docker-compose.yml        # Docker Compose 配置
+├── ecosystem.config.js       # PM2 配置
+├── daemon.sh                 # 守护进程脚本
+├── diagnose.sh               # 诊断工具
+├── deploy-service.sh         # 一键部署脚本
+├── start.sh                  # 启动脚本
+├── cloudflare-worker-unified.js  # Cloudflare Worker 代理
 ├── package.json              # 项目配置
 └── .env.example              # 环境变量示例
 ```
@@ -762,6 +771,47 @@ sudo systemctl start redis
 redis-cli ping  # 应返回 PONG
 ```
 
+### 服务频繁自动停止（SAP BAS 等环境）
+
+**症状**: 服务运行一段时间后自动退出。
+
+**解决方法**:
+1. 使用 PM2 进程管理器（推荐）：
+```bash
+pm2 start ecosystem.config.js
+pm2 save
+```
+2. 或使用 Systemd 服务：
+```bash
+sudo cp birdtv.service /etc/systemd/system/
+sudo systemctl enable --now birdtv
+```
+3. 或使用守护脚本：
+```bash
+bash daemon.sh start
+```
+4. 运行诊断工具定位问题：
+```bash
+bash diagnose.sh
+```
+> **详见**: [SERVICE_STABILITY_SOLUTION.md](./SERVICE_STABILITY_SOLUTION.md)
+
+### Cloudflare WAF 拦截导致 403/520 错误
+
+**症状**: 部分请求返回 403 或 520 错误。
+
+**解决方法**:
+1. 配置 Cloudflare Worker 作为代理：
+```bash
+# 编辑 .env 文件
+CLOUDFLARE_WORKER_URL=https://your-worker.workers.dev
+
+# 重启服务
+pm2 restart birdtv
+```
+2. 部署 Worker 脚本：使用 `cloudflare-worker-unified.js`
+> **详见**: [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md)
+
 ## 📊 数据模型
 
 ### Channel（频道）
@@ -899,5 +949,5 @@ MIT License
 
 ---
 
-**版本**: v3.4.5
-**更新日期**: 2026-04-04
+**版本**: v3.5.0
+**更新日期**: 2026-04-05

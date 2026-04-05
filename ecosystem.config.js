@@ -9,8 +9,10 @@ module.exports = {
       max_memory_restart: '500M',
       env: {
         NODE_ENV: 'production',
-        PORT: 8771
+        PORT: 8771,
+        NODE_OPTIONS: '--max-old-space-size=500'
       },
+      exec_mode: 'fork',
       error_file: './logs/pm2-error.log',
       out_file: './logs/pm2-out.log',
       log_file: './logs/pm2-combined.log',
