@@ -24,6 +24,11 @@ services:
       - AUTH_REDIS_PORT=${AUTH_REDIS_PORT:-6666}
       - AUTH_REDIS_PASSWORD=${AUTH_REDIS_PASSWORD:-}
       - AUTH_REDIS_DB=${AUTH_REDIS_DB:-0}
+      # 数据隔离（多实例部署时必须设置不同值）
+      - REDIS_DATA_PREFIX=${REDIS_DATA_PREFIX:-birdtv:storage:}
+      - REDIS_PREFIX=${REDIS_PREFIX:-birdtv}
+      - BIRDTV_SYSTEM_ID=${BIRDTV_SYSTEM_ID:-default}
+      - SERVER_ID=${SERVER_ID:-default}
       # 代理
       - M3U_PROXY_TIMEOUT_MS=${M3U_PROXY_TIMEOUT_MS:-40000}
       - M3U_PROXY_REDIRECT_LIMIT=${M3U_PROXY_REDIRECT_LIMIT:-3}

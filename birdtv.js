@@ -566,14 +566,10 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
       'Accept-Encoding': 'identity'
     };
 
-    // Cloudflare Worker 代理配置
-    let useWorkerProxy = false;
+    // Cloudflare Worker 代理配置（用于 WAF 重试）
     let workerRetry = false;
 
     const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
-    if (workerUrl && workerRetry) {
-      useWorkerProxy = true;
-    }
 
     function shouldHeadFallbackToGet(statusCode) {
       return normalizedMethod === 'HEAD' && (statusCode < 200 || statusCode >= 400);
@@ -594,8 +590,9 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         return;
       }
 
-      // 使用 Cloudflare Worker 代理
-      if (useWorkerProxy && workerUrl) {
+      // 使用 Cloudflare Worker 代理（仅在 WAF 重试时启用）
+      const useWorkerProxy = workerRetry && !!workerUrl;
+      if (useWorkerProxy) {
         const workerTarget = new URL(workerUrl);
         workerTarget.searchParams.set('url', target);
         if (headers['User-Agent']) {
