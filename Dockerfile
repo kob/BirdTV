@@ -1,5 +1,9 @@
+# 声明构建平台参数（BuildKit 多架构必需）
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
 # ==================== Stage 1: Build ====================
-FROM node:20-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:20-alpine AS builder
 
 # bcrypt 需要原生编译依赖
 RUN apk add --no-cache python3 make g++
@@ -11,7 +15,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ==================== Stage 2: Production ====================
-FROM node:20-alpine AS production
+FROM --platform=$TARGETPLATFORM node:20-alpine AS production
 
 RUN apk add --no-cache curl dumb-init && rm -rf /var/cache/apk/*
 

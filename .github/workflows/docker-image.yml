@@ -18,22 +18,20 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   packages: write
-  actions: write
 
 jobs:
-  # ---- 第 1 阶段：并行构建各个架构的镜像 ----
-  build:
-    strategy:
-      matrix:
-        platform: [linux/amd64, linux/arm64]
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -48,117 +46,29 @@ jobs:
         id: lowercase
         run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Extract Metadata
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv
-          # 这里只打一个临时标签 (sha)，用于后续合并
           tags: |
-            type=raw,value=sha-${{ github.sha }}
+            # PR: 仅 sha 标签
+            type=sha,prefix=
+            # main push: latest + 版本号
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # workflow_dispatch: 自定义 tag
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
 
-      - name: Build and push (Individual Architectures)
-        id: build
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          platforms: ${{ matrix.platform }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }} # 使用上面定义的临时标签
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      # ⭐ 关键点：将当前 Job 生成的摘要 (Digest) 输出，供 Merge Job 使用
-      - name: Expose Digest
-        run: echo "DIGESTS=${{ steps.build.outputs.digest }}" >> $GITHUB_ENV
-        # 这会将类似 sha256:abc... sha256:def... 的字符串存入环境变量
-
-    # ⭐ 关键点：将环境变量中的 DIGESTS 暴露给 Workflow，使其对 Merge Job 可见
-    outputs:
-      digests: ${{ env.DIGESTS }}
-
-  # ---- 第 2 阶段：合并镜像并打标签 ----
-  merge:
-    runs-on: ubuntu-latest
-    needs: build
-    # 只在 main 分支且不是 PR 时运行（PR 只需要 Build 阶段验证能跑通即可）
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Lowercase Owner
-        id: lowercase
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      - name: Create Manifest List
-        # ⭐ 关键点：读取 Build Job 输出的摘要列表
-        run: |
-          DIGESTS="${{ needs.build.outputs.digests }}"
-          
-          if [ -z "$DIGESTS" ]; then
-            echo "No digests found from build job!"
-            exit 1
-          fi
-
-          # 1. 获取当前版本号 (用于打版本标签)
-          CURRENT_VERSION="dev"
-          if [ -f package.json ]; then
-            CURRENT_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "dev")
-          fi
-
-          # 2. 构建基础镜像引用 (使用临时标签)
-          BASE_IMAGE="ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:sha-${{ github.sha }}"
-
-          # 3. 准备要创建的标签列表
-          # 我们总是推送到临时标签 (sha-...)，然后用 imagetools 把它 "映射" 到正式标签
-          TARGET_TAGS=()
-
-          # 主分支才打 latest 标签
-          TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:latest")
-
-          # 如果有版本号且不是 dev，则打版本标签
-          if [ "$CURRENT_VERSION" != "dev" ] && [ -n "$CURRENT_VERSION" ]; then
-            TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:$CURRENT_VERSION")
-          fi
-
-          # 如果手动输入了 tag 参数
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TARGET_TAGS+=("ghcr.io/${{ steps.lowercase.outputs.owner }}/birdtv:${{ github.event.inputs.tag }}")
-          fi
-
-          # 4. 执行合并
-          # docker buildx imagetools create 命令语法：
-          # create -t tag1 -t tag2 source-image-with-digests
-          echo "Merging image for digests: $DIGESTS"
-          echo "Applying tags: ${TARGET_TAGS[@]}"
-
-          # 构建命令
-          CMD="docker buildx imagetools create"
-          for tag in "${TARGET_TAGS[@]}"; do
-            CMD="$CMD -t $tag"
-          done
-          CMD="$CMD $BASE_IMAGE@$DIGESTS" # 注意：这里将 base image 和所有 digests 拼接
-
-          # 执行
-          eval $CMD
-
-          echo "Manifest merge completed successfully."
-
-  # ---- 第 3 阶段：清理 (可选) ----
-  cleanup:
-    runs-on: ubuntu-latest
-    needs: merge
-    if: always()
-    steps:
-      - name: Delete workflow runs (Example, requires setup)
-        # 这里保留你的清理逻辑，或者使用其他清理 Action
-        run: echo "Cleanup triggered..."
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
