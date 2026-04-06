@@ -452,22 +452,25 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
 
 // ─── 播放器清理 ───
 
-export function cleanupCurrentPlayer() {
+export async function cleanupCurrentPlayer() {
+    // 清理 ArtPlayer
     if (state.artPlayer) { try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ } state.artPlayer = null; }
+    // 清理 HLS.js
     if (state.hlsPlayer) { try { state.hlsPlayer.destroy(); } catch (e) { /* ignore */ } state.hlsPlayer = null; }
+    // 清理 MPEGTS
     if (state.mpegtsPlayer) { try { state.mpegtsPlayer.destroy(); } catch (e) { /* ignore */ } state.mpegtsPlayer = null; }
+    // 清理 Shaka Player - 完整卸载
     if (state.player) {
-        const videoEl = document.getElementById("video");
-        state._pendingCleanupDetach = state.player.detach().catch((e) => console.warn('Shaka detach (cleanup):', e));
+        try { await state.player.unload(); } catch (e) { /* ignore */ }
+        try { await state.player.detach(); } catch (e) { /* ignore */ }
     }
-    if (state.currentPlayerType === 'native') {
-        const videoEl = document.getElementById("video");
-        if (videoEl) { videoEl.src = ''; videoEl.load(); }
-    }
+    // 清理 video 元素
+    const videoEl = document.getElementById("video");
+    if (videoEl) { videoEl.src = ''; videoEl.load(); videoEl.style.display = ''; }
+    // 隐藏 ArtPlayer 容器
     const artCon = document.getElementById('artplayer-container');
     if (artCon) artCon.style.display = 'none';
-    const videoEl = document.getElementById("video");
-    if (videoEl) videoEl.style.display = '';
+    // 重置状态
     state.currentPlayerType = null;
 }
 
@@ -481,7 +484,7 @@ async function interruptCurrentPlayForSwitch() {
             } else { resolve(); }
         } catch (error) { console.warn('切台中断:', error); resolve(); }
     });
-    cleanupCurrentPlayer();
+    await cleanupCurrentPlayer();
     state.isLoadingSource = false;
     await Promise.race([cleanupPromise, new Promise(resolve => setTimeout(resolve, 1500))]);
 }
@@ -746,7 +749,7 @@ export async function playSource(source, elements) {
     state.globalAbortController = new AbortController();
 
     const playerType = targetPlayerType;
-    cleanupCurrentPlayer();
+    await cleanupCurrentPlayer();
 
     const originalUrl = source.url;
     let playerTypeCode = playerType;

@@ -116,7 +116,7 @@ export async function tryAlternativePlayers(elements, source, failedPlayerType, 
             pushDiagnosticEvent(elements, { type: "fallback-attempt", level: "warn", player: playerType, message: `尝试回退到 ${playerType}` });
             if (elements) elements.statusText.textContent = `尝试 ${playerType} 播放器...`;
 
-            cleanupCurrentPlayer();
+            await cleanupCurrentPlayer();
             const url = source.url;
 
             if (playerType === 'hls') {
