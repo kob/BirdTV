@@ -130,8 +130,7 @@ export async function tryAlternativePlayers(elements, source, failedPlayerType, 
                 await initMpegtsPlayer(url, source, elements);
             } else if (playerType === 'native') {
                 state.currentPlayerType = 'native';
-                const _artCon = document.getElementById('artplayer-container');
-                if (_artCon) _artCon.style.display = 'none';
+                if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
                 document.getElementById("video").style.display = '';
                 await ensureShakaDetached();
                 const { initNativeVideoPlayer } = await import('./native.js');
@@ -139,8 +138,6 @@ export async function tryAlternativePlayers(elements, source, failedPlayerType, 
             } else if (playerType === 'shaka') {
                 if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
                 if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }
-                const _artCon = document.getElementById('artplayer-container');
-                if (_artCon) _artCon.style.display = 'none';
                 document.getElementById("video").style.display = '';
                 state.currentPlayerType = 'shaka';
                 await ensureShakaAttached();

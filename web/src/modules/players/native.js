@@ -28,8 +28,6 @@ export async function initNativeVideoPlayer(url = '', source = null, elements = 
     if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }
 
     const videoEl = document.getElementById("video");
-    const _artCon = document.getElementById('artplayer-container');
-    if (_artCon) _artCon.style.display = 'none';
 
     videoEl.src = '';
     videoEl.load();

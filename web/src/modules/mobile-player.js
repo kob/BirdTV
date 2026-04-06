@@ -257,11 +257,8 @@ export async function closeMobilePlayer() {
     if (videoEl) {
         videoEl.src = '';
         videoEl.load();
+        videoEl.style.display = '';
     }
-
-    // 隐藏 ArtPlayer 容器
-    const artCon = document.getElementById('artplayer-container');
-    if (artCon) artCon.style.display = 'none';
 
     // 重置状态
     state.currentIndex = -1;
