@@ -113,11 +113,20 @@
         }
 
         .category-tabs {
-            display: flex;
+            display: none;
             gap: 8px;
             margin-bottom: 16px;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+
+        .category-tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .category-tabs.visible {
+            display: flex;
         }
 
         .category-tab {
@@ -527,11 +536,9 @@
 
     <!-- 主内容 -->
     <main class="main-content">
-        <!-- 分类标签 -->
+        <!-- 分类标签（仅在频道页面显示） -->
         <div class="category-tabs" id="categoryTabs">
             <button class="category-tab active" data-tab="all">全部</button>
-            <button class="category-tab" data-tab="favorites">收藏</button>
-            <button class="category-tab" data-tab="recent">最近</button>
         </div>
 
         <!-- 频道列表 -->
@@ -548,11 +555,11 @@
             <span class="nav-icon">🏠</span>
             <span>首页</span>
         </button>
-        <button class="nav-item" data-page="channels">
+        <button class="nav-item" data-page="channels" data-tab="all">
             <span class="nav-icon">📺</span>
             <span>频道</span>
         </button>
-        <button class="nav-item" data-page="favorites">
+        <button class="nav-item" data-page="channels" data-tab="favorites">
             <span class="nav-icon">⭐</span>
             <span>收藏</span>
         </button>
@@ -595,7 +602,7 @@
         let currentChannel = null;
         let currentTab = 'all';
         let currentPage = 1;
-        const PAGE_SIZE = 30; // 每页 30 个频道
+        const PAGE_SIZE = 500; // 频道页面每次加载 500 个（足够显示全部）
         let hasMore = true;
         let isLoading = false;
         let epgCache = new Map(); // EPG 缓存
@@ -699,26 +706,15 @@
                         return;
                     }
 
-                    const result = await apiRequest(`/api/channels?page=1&limit=${PAGE_SIZE}`);
+                    // 请求全部频道（limit=0 表示不限制）
+                    const result = await apiRequest('/api/channels?page=1&limit=0');
                     if (result.ok && result.data) {
                         allChannels = result.data;
                         channels = allChannels;
-                        hasMore = result.pagination?.hasMore || false;
+                        hasMore = false;
                         setCachedChannels(allChannels);
                     } else {
                         channels = [];
-                        hasMore = false;
-                    }
-                } else if (hasMore) {
-                    // 加载下一页
-                    const nextPage = currentPage + 1;
-                    const result = await apiRequest(`/api/channels?page=${nextPage}&limit=${PAGE_SIZE}`);
-                    if (result.ok && result.data) {
-                        channels = channels.concat(result.data);
-                        currentPage = nextPage;
-                        hasMore = result.pagination?.hasMore || false;
-                        allChannels = channels;
-                    } else {
                         hasMore = false;
                     }
                 }
@@ -827,40 +823,28 @@
             }
         }
 
-        // 加载分组信息并生成分类标签
+        // 分类标签容器
+        const categoryTabs = document.getElementById('categoryTabs');
+
+        // 加载分组信息并生成分类标签（仅在频道页面调用）
         async function loadGroups() {
             try {
                 const res = await apiRequest('/api/channels/groups');
                 if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
-                    const tabsContainer = document.getElementById('categoryTabs');
-                    // 移除已有的分组 tab（保留前3个固定 tab）
-                    tabsContainer.querySelectorAll('[data-tab^="group:"]').forEach(el => el.remove());
+                    // 移除已有的分组 tab（保留"全部"按钮）
+                    categoryTabs.querySelectorAll('[data-tab^="group:"]').forEach(el => el.remove());
                     // 添加分组 tab
                     res.data.forEach(group => {
                         const btn = document.createElement('button');
                         btn.className = 'category-tab';
                         btn.dataset.tab = 'group:' + group;
                         btn.textContent = group;
-                        tabsContainer.appendChild(btn);
+                        categoryTabs.appendChild(btn);
                     });
-                    // 重新绑定分组 tab 的点击事件
-                    bindTabEvents();
                 }
             } catch (e) {
                 console.warn('加载分组失败:', e);
             }
-        }
-
-        // 绑定分类标签点击事件
-        function bindTabEvents() {
-            document.querySelectorAll('.category-tab').forEach(tab => {
-                tab.onclick = () => {
-                    document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
-                    currentTab = tab.dataset.tab;
-                    renderChannels();
-                };
-            });
         }
 
         // 格式化时间显示
@@ -873,7 +857,7 @@
         // 渲染频道列表
         function renderChannels() {
             const channelList = document.getElementById('channelList');
-            let filtered = allChannels;
+            let filtered = [];
             let showDetails = false; // 是否显示台标和 EPG
 
             // 首页模式：随机显示 6 个频道
@@ -884,19 +868,28 @@
                     filtered = shuffled.slice(0, 6);
                     showDetails = true; // 首页显示台标和 EPG
                 }
-            } else if (currentTab === 'favorites') {
-                filtered = allChannels.filter(ch => ch.favorite);
-            } else if (currentTab === 'recent') {
-                // 取最后 20 个
-                filtered = allChannels.slice(-20);
-            } else if (currentTab.startsWith('group:')) {
-                // 按分组筛选
-                const groupName = currentTab.replace('group:', '');
-                filtered = allChannels.filter(ch => (ch.group || '未分组') === groupName);
+            } else if (currentNavPage === 'channels') {
+                // 频道页面：显示所有频道或按分组筛选
+                if (currentTab === 'all') {
+                    filtered = allChannels;
+                } else if (currentTab === 'favorites') {
+                    filtered = allChannels.filter(ch => ch.favorite);
+                } else if (currentTab === 'recent') {
+                    // 取最后 20 个
+                    filtered = allChannels.slice(-20);
+                } else if (currentTab.startsWith('group:')) {
+                    // 按分组筛选
+                    const groupName = currentTab.replace('group:', '');
+                    filtered = allChannels.filter(ch => (ch.group || '未分组') === groupName);
+                }
+                showDetails = false; // 频道页面不显示 EPG，提升性能
             }
 
             if (filtered.length === 0) {
-                channelList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">暂无频道</div>';
+                const emptyMsg = currentTab.startsWith('group:')
+                    ? '该分组暂无频道'
+                    : (currentTab === 'favorites' ? '暂无收藏频道' : '暂无频道');
+                channelList.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">${emptyMsg}</div>`;
                 return;
             }
 
@@ -975,13 +968,12 @@
                 }
             });
 
-            // 添加加载更多提示（仅在频道页面且还有更多时）
-            if (currentNavPage === 'channels' && hasMore && currentTab === 'all') {
-                const loadMore = document.createElement('div');
-                loadMore.id = 'loadMoreTrigger';
-                loadMore.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 20px; color: var(--text-muted);';
-                loadMore.innerHTML = '下拉加载更多...';
-                channelList.appendChild(loadMore);
+            // 添加频道计数提示
+            if (currentNavPage === 'channels') {
+                const countInfo = document.createElement('div');
+                countInfo.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 10px; color: var(--text-muted); font-size: 12px;';
+                countInfo.innerHTML = `共 ${filtered.length} 个频道`;
+                channelList.appendChild(countInfo);
             }
 
             // 仅首页触发图片懒加载
@@ -1081,12 +1073,20 @@
             loadChannels(true).then(() => {
                 // 加载完成后立即渲染首页随机6个频道
                 renderChannels();
-                // 加载分组信息
-                loadGroups();
             });
 
             // 无限滚动监听
             setupInfiniteScroll();
+
+            // 分类标签点击事件（使用事件委托）
+            categoryTabs.addEventListener('click', (e) => {
+                const tab = e.target.closest('.category-tab');
+                if (!tab) return;
+                document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentTab = tab.dataset.tab;
+                renderChannels();
+            });
 
             // 底部导航切换
             document.querySelectorAll('.nav-item').forEach(item => {
@@ -1095,26 +1095,34 @@
                     item.classList.add('active');
 
                     const page = item.dataset.page;
+                    const tab = item.dataset.tab;
                     currentNavPage = page;
 
-                    if (page === 'favorites') {
-                        currentTab = 'favorites';
-                        renderChannels();
-                    } else if (page === 'home') {
+                    // 控制分类标签显示/隐藏
+                    const tabsContainer = document.getElementById('categoryTabs');
+                    if (page === 'home') {
                         currentTab = 'all';
-                        // 首页直接渲染，使用随机 6 个频道
+                        tabsContainer.classList.remove('visible');
                         renderChannels();
                     } else if (page === 'channels') {
-                        currentTab = 'all';
-                        // 频道页面加载所有频道，重置分页
+                        currentTab = tab || 'all';
+                        tabsContainer.classList.add('visible');
+                        // 重置分类标签激活状态
+                        document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                        const activeTab = document.querySelector(`.category-tab[data-tab="${currentTab}"]`);
+                        if (activeTab) activeTab.classList.add('active');
+                        
                         if (allChannels.length === 0) {
-                            loadChannels(true);
+                            loadChannels(true).then(() => {
+                                renderChannels();
+                            });
                         } else {
                             renderChannels();
                         }
-                        // 设置加载更多触发器
-                        setupLoadMoreTrigger();
+                        // 加载分组信息（仅在频道页面加载）
+                        loadGroups();
                     } else if (page === 'profile') {
+                        tabsContainer.classList.remove('visible');
                         showToast('设置功能开发中');
                     }
                 });
