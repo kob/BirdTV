@@ -697,8 +697,13 @@
             try {
                 // 如果是重置或第一次加载，从缓存或 API 获取全部频道（仅基本信息）
                 if (reset || allChannels.length === 0) {
+                    // 强制刷新时清除旧缓存
+                    if (reset) {
+                        localStorage.removeItem('birdtv_channels');
+                    }
+
                     const cached = getCachedChannels();
-                    if (cached) {
+                    if (cached && !reset) {
                         allChannels = cached;
                         channels = allChannels;
                         hasMore = false;
@@ -706,8 +711,9 @@
                         return;
                     }
 
-                    // 请求全部频道（limit=0 表示不限制）
-                    const result = await apiRequest('/api/channels?page=1&limit=0');
+                    // 请求全部频道（limit=0 表示不限制），添加时间戳绕过缓存
+                    const timestamp = Date.now();
+                    const result = await apiRequest(`/api/channels?page=1&limit=0&_t=${timestamp}`);
                     if (result.ok && result.data) {
                         allChannels = result.data;
                         channels = allChannels;
