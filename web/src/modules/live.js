@@ -453,23 +453,39 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
 // ─── 播放器清理 ───
 
 export async function cleanupCurrentPlayer() {
+    // 先暂停 video（防止继续播放）
+    const videoEl = document.getElementById("video");
+    if (videoEl) {
+        try { videoEl.pause(); } catch(e) { /* ignore */ }
+    }
+
     // 清理 ArtPlayer
     if (state.artPlayer) { try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ } state.artPlayer = null; }
     // 清理 HLS.js
     if (state.hlsPlayer) { try { state.hlsPlayer.destroy(); } catch (e) { /* ignore */ } state.hlsPlayer = null; }
     // 清理 MPEGTS
-    if (state.mpegtsPlayer) { try { state.mpegtsPlayer.destroy(); } catch (e) { /* ignore */ } state.mpegtsPlayer = null; }
+    if (state.mpegtsPlayer) {
+        try { state.mpegtsPlayer.pause(); state.mpegtsPlayer.unload(); state.mpegtsPlayer.detachMediaElement(); state.mpegtsPlayer.destroy(); } catch (e) { /* ignore */ }
+        state.mpegtsPlayer = null;
+    }
     // 清理 Shaka Player - 完整卸载
     if (state.player) {
         try { await state.player.unload(); } catch (e) { /* ignore */ }
         try { await state.player.detach(); } catch (e) { /* ignore */ }
+        state.player = null;
     }
+
     // 清理 video 元素
-    const videoEl = document.getElementById("video");
-    if (videoEl) { videoEl.src = ''; videoEl.load(); videoEl.style.display = ''; }
-    // 隐藏 ArtPlayer 容器
+    if (videoEl) {
+        videoEl.removeAttribute('src');
+        videoEl.load();
+        videoEl.style.display = '';
+    }
+
+    // 隐藏并清空 ArtPlayer 容器
     const artCon = document.getElementById('artplayer-container');
-    if (artCon) artCon.style.display = 'none';
+    if (artCon) { artCon.style.display = 'none'; artCon.innerHTML = ''; }
+
     // 重置状态
     state.currentPlayerType = null;
 }
@@ -909,6 +925,14 @@ export async function playSource(source, elements) {
         if (requestId !== state.playRequestSeq || error.isCancelled) return;
         if (isBenignPlayInterruptedError(error)) return;
         console.error('播放失败:', error);
+        
+        // 播放失败时清理残留的播放器进程
+        try {
+            await cleanupCurrentPlayer();
+        } catch (cleanupError) {
+            console.warn('播放失败后清理残留进程出错:', cleanupError);
+        }
+        
         pushDiagnosticEvent(elements, {
             type: "play-error",
             level: "error",

@@ -249,6 +249,8 @@ export async function playMobileChannel(channel, onError) {
         
     } catch (error) {
         console.error('播放失败:', error);
+        // 播放失败时清理残留的播放器进程
+        try { await closeMobilePlayer(); } catch (e) { console.warn('[MobilePlayer] 失败清理出错:', e); }
         if (onError) {
             onError(error);
         }
@@ -270,6 +272,16 @@ export async function closeMobilePlayer() {
         state.globalAbortController = null;
     }
 
+    // 清理 video 元素（先暂停）
+    const videoEl = document.getElementById('mobilePlayer');
+    if (videoEl) {
+        videoEl.pause();
+        videoEl.src = '';
+        videoEl.load();
+        videoEl.style.display = '';
+        videoEl.removeAttribute('src');
+    }
+
     // 清理所有播放器实例（Shaka, HLS, MPEGTS, ArtPlayer）
     if (state.artPlayer) {
         try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ }
@@ -289,27 +301,24 @@ export async function closeMobilePlayer() {
         try {
             await state.player.unload();
             await state.player.detach();
+            state.player = null;
         } catch (error) {
             console.warn('Shaka 卸载失败:', error);
         }
     }
 
-    // 清理 video 元素
-    const videoEl = document.getElementById('mobilePlayer');
-    if (videoEl) {
-        videoEl.src = '';
-        videoEl.load();
-        videoEl.style.display = '';
-    }
-
     // 隐藏 ArtPlayer 容器
     const artCon = document.getElementById('artplayer-container');
-    if (artCon) artCon.style.display = 'none';
+    if (artCon) {
+        artCon.style.display = 'none';
+        artCon.innerHTML = '';
+    }
 
     // 重置状态
     state.currentIndex = -1;
     state.currentPlayerType = null;
     state.isLoadingSource = false;
+    state.currentUrl = null;
 
     console.log('[MobilePlayer] 播放器已关闭，资源已释放');
 }

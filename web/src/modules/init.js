@@ -760,6 +760,17 @@ function bindEvents(elements) {
             elements.configCenterModal.setAttribute("aria-hidden", "true");
         }
     });
+
+    // 页面关闭/隐藏时释放播放器资源（防止播放进程残留）
+    const cleanupOnPageExit = () => {
+        cleanupCurrentPlayer().catch(e => console.warn('页面关闭时清理失败:', e));
+    };
+    
+    window.addEventListener('beforeunload', cleanupOnPageExit);
+    window.addEventListener('pagehide', cleanupOnPageExit);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) cleanupOnPageExit();
+    });
 }
 
 // ES modules 自带 defer，DOM 已就绪，直接调用

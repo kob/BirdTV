@@ -1293,6 +1293,18 @@
                 }
             });
 
+            // 页面关闭/隐藏时释放播放器资源
+            window.addEventListener('beforeunload', () => {
+                closePlayer();
+            });
+
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) {
+                    // 页面隐藏时清理播放器
+                    closePlayer();
+                }
+            });
+
             // 设置按钮 - 切换到桌面版
             document.getElementById('settingsBtn').addEventListener('click', () => {
                 // 设置 Cookie 保存用户偏好（桌面版）
