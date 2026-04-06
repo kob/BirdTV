@@ -14,9 +14,14 @@ class ChannelController {
       const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
       const page = parseInt(_q.get ? _q.get('page') : _q.page) || 1;
       const limitRaw = _q.get ? _q.get('limit') : _q.limit;
-      const limit = limitRaw !== undefined && limitRaw !== null && limitRaw !== ''
-        ? parseInt(limitRaw) || 50
-        : 50;
+      // limit=0 表示无限制，否则默认50
+      let limit = 50;
+      if (limitRaw !== undefined && limitRaw !== null && limitRaw !== '') {
+        const parsed = parseInt(limitRaw);
+        if (!isNaN(parsed)) {
+          limit = parsed;
+        }
+      }
       const offset = (page - 1) * limit;
       const group = (_q.get ? _q.get('group') : _q.group) || null;
 
