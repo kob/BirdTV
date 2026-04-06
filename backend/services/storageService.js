@@ -50,6 +50,12 @@ class StorageService {
           this.redisReady = false;
         });
 
+        this.redisClient.on('end', () => {
+          console.warn('[StorageService] Redis 连接已断开，尝试重连...');
+          this.redisReady = false;
+          this._scheduleReconnect();
+        });
+
         await this.redisClient.connect();
         this.redisReady = true;
         console.log('[StorageService] Redis 连接成功，使用 Redis 存储');
@@ -79,6 +85,61 @@ class StorageService {
     }
 
     console.log('[StorageService] 数据存储初始化完成');
+  }
+
+  /**
+   * 调度重连（指数退避，最多重试 5 次）
+   */
+  _scheduleReconnect(attempt = 1) {
+    if (attempt > 5) {
+      console.warn('[StorageService] Redis 重连次数超限，停止重试，使用 JSON 文件存储');
+      return;
+    }
+    
+    const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000); // 1s, 2s, 4s, 8s, 16s (上限30s)
+    console.log(`[StorageService] ${delay/1000}秒后尝试第${attempt}次重连...`);
+    
+    setTimeout(() => this._attemptReconnect(attempt), delay);
+  }
+
+  /**
+   * 尝试重连
+   */
+  async _attemptReconnect(attempt = 1) {
+    if (!this.redisClient || !this.redisConfig?.host) return;
+    
+    try {
+      // 确保旧连接已关闭
+      try { await this.redisClient.quit(); } catch {}
+      
+      this.redisClient = Redis.createClient({
+        socket: {
+          host: this.redisConfig.host,
+          port: parseInt(this.redisConfig.port) || 6379,
+          reconnectStrategy: false // 我们自己处理重连
+        },
+        password: this.redisConfig.password || undefined,
+        database: parseInt(this.redisConfig.db) || 0
+      });
+
+      this.redisClient.on('error', (err) => {
+        console.warn('[StorageService] Redis 重连异常:', err.message);
+        this.redisReady = false;
+      });
+
+      this.redisClient.on('end', () => {
+        console.warn('[StorageService] Redis 重连后断开，尝试重新连接...');
+        this.redisReady = false;
+        this._scheduleReconnect(attempt + 1);
+      });
+
+      await this.redisClient.connect();
+      this.redisReady = true;
+      console.log('[StorageService] Redis 重连成功!');
+    } catch (error) {
+      console.warn(`[StorageService] Redis 第${attempt}次重连失败:`, error.message);
+      this._scheduleReconnect(attempt + 1);
+    }
   }
 
   /**
@@ -114,7 +175,7 @@ class StorageService {
    */
   async _get(key, filePath) {
     // 优先从 Redis 读取
-    if (this.redisReady) {
+    if (this.redisReady && this.redisClient?.isOpen) {
       try {
         const data = await this.redisClient.get(this.redisPrefix + key);
         if (data !== null) {
@@ -122,6 +183,8 @@ class StorageService {
         }
       } catch (error) {
         console.warn(`[StorageService] Redis 读取 ${key} 失败:`, error.message);
+        // 触发重连
+        this._scheduleReconnect();
       }
     }
     // 降级读取文件
@@ -134,11 +197,13 @@ class StorageService {
   async _set(key, filePath, data) {
     const jsonStr = JSON.stringify(data);
     // 写 Redis
-    if (this.redisReady) {
+    if (this.redisReady && this.redisClient?.isOpen) {
       try {
         await this.redisClient.set(this.redisPrefix + key, jsonStr);
       } catch (error) {
         console.warn(`[StorageService] Redis 写入 ${key} 失败:`, error.message);
+        // 触发重连
+        this._scheduleReconnect();
       }
     }
     // 写文件（备份）
