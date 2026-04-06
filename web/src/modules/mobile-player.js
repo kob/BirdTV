@@ -260,6 +260,10 @@ export async function closeMobilePlayer() {
         videoEl.style.display = '';
     }
 
+    // 隐藏 ArtPlayer 容器
+    const artCon = document.getElementById('artplayer-container');
+    if (artCon) artCon.style.display = 'none';
+
     // 重置状态
     state.currentIndex = -1;
     state.currentPlayerType = null;

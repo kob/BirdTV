@@ -467,6 +467,9 @@ export async function cleanupCurrentPlayer() {
     // 清理 video 元素
     const videoEl = document.getElementById("video");
     if (videoEl) { videoEl.src = ''; videoEl.load(); videoEl.style.display = ''; }
+    // 隐藏 ArtPlayer 容器
+    const artCon = document.getElementById('artplayer-container');
+    if (artCon) artCon.style.display = 'none';
     // 重置状态
     state.currentPlayerType = null;
 }
@@ -844,6 +847,8 @@ export async function playSource(source, elements) {
             await initMpegtsPlayer(actualUrl, source, elements);
         } else if (playerTypeCode === 'native') {
             if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
+            const _artCon = document.getElementById('artplayer-container');
+            if (_artCon) _artCon.style.display = 'none';
             document.getElementById("video").style.display = '';
             state.currentPlayerType = 'native';
             await ensureShakaDetached();
@@ -858,6 +863,8 @@ export async function playSource(source, elements) {
             });
         } else if (playerTypeCode === 'vlc') {
             if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
+            const _artCon = document.getElementById('artplayer-container');
+            if (_artCon) _artCon.style.display = 'none';
             const videoEl = document.getElementById("video");
             try { videoEl.pause(); } catch {}
             videoEl.removeAttribute('src'); videoEl.load(); videoEl.style.display = '';
@@ -868,6 +875,8 @@ export async function playSource(source, elements) {
         } else if (playerTypeCode === 'shaka') {
             if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
             if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }
+            const _artCon = document.getElementById('artplayer-container');
+            if (_artCon) _artCon.style.display = 'none';
             document.getElementById("video").style.display = '';
             state.currentPlayerType = 'shaka';
             await ensureShakaAttached();
@@ -878,6 +887,8 @@ export async function playSource(source, elements) {
             // auto 模式
             if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
             if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }
+            const _artCon = document.getElementById('artplayer-container');
+            if (_artCon) _artCon.style.display = 'none';
             document.getElementById("video").style.display = '';
             state.currentPlayerType = 'shaka';
             await ensureShakaAttached();

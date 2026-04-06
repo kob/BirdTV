@@ -577,6 +577,8 @@
         </div>
         <div class="player-video-container">
             <video id="mobilePlayer" controls playsinline></video>
+            <!-- ArtPlayer 容器，与其他播放器共享位置 -->
+            <div id="artplayer-container" style="position:absolute;inset:0;display:none;z-index:10;"></div>
         </div>
         <div class="player-bottom-bar">
             <button class="player-action-btn" id="playerFavoriteBtn">

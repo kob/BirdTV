@@ -33,9 +33,11 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     if (!window.Artplayer) { console.error('ArtPlayer not loaded'); return null; }
 
     const startTime = performance.now();
-    // 优先使用 video 元素，如果没有则尝试 artplayer-container
-    const videoEl = document.getElementById("video") || document.getElementById("mobilePlayer");
-    
+    // 获取容器：桌面端用 artplayer-container，移动端用 mobilePlayer 的父容器
+    const container = document.getElementById('artplayer-container') || 
+                      document.getElementById('mobilePlayer')?.parentElement;
+    if (!container) { console.error('artplayer container not found'); return null; }
+
     // 快速清理旧播放器
     if (state.artPlayer) {
         try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ }
@@ -46,8 +48,10 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
         state.hlsPlayer = null;
     }
 
-    // 使用现有的 video 元素，让 ArtPlayer 控制它
-    if (videoEl) videoEl.style.display = '';
+    // 隐藏原生 video，让 ArtPlayer 的容器显示
+    const videoEl = document.getElementById("video") || document.getElementById("mobilePlayer");
+    if (videoEl) videoEl.style.display = 'none';
+    container.style.display = 'block';
 
     const effectiveUserAgent = getEffectiveUserAgent();
     const unwrappedSourceUrl = unwrapProxySourceUrl(url);
@@ -98,7 +102,7 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     }
 
     state.artPlayer = new Artplayer({
-        element: videoEl,  // 使用现有的 video 元素
+        container,
         url,
         type: 'hls',
         volume: 1.0,

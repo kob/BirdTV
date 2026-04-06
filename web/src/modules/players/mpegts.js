@@ -32,6 +32,9 @@ export async function initMpegtsPlayer(url = '', source = null, elements = {}) {
         state.mpegtsPlayer = null;
     }
 
+    const _artCon = document.getElementById('artplayer-container');
+    if (_artCon) _artCon.style.display = 'none';
+    
     // 复用 video 元素
     if (videoEl) { 
         videoEl.style.display = ''; 
