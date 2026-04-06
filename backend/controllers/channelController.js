@@ -13,7 +13,10 @@ class ChannelController {
       // 支持分页参数（兼容 URLSearchParams 和普通对象两种格式）
       const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
       const page = parseInt(_q.get ? _q.get('page') : _q.page) || 1;
-      const limit = parseInt(_q.get ? _q.get('limit') : _q.limit) || 50;
+      const limitRaw = _q.get ? _q.get('limit') : _q.limit;
+      const limit = limitRaw !== undefined && limitRaw !== null && limitRaw !== ''
+        ? parseInt(limitRaw) || 50
+        : 50;
       const offset = (page - 1) * limit;
       const group = (_q.get ? _q.get('group') : _q.group) || null;
 
@@ -29,8 +32,8 @@ class ChannelController {
       // 计算总数
       const total = channels.length;
 
-      // 分页处理
-      const paginatedChannels = channels.slice(offset, offset + limit);
+      // 分页处理（limit=0 表示无限制，返回全部）
+      const paginatedChannels = limit === 0 ? channels : channels.slice(offset, offset + limit);
 
       // 为每个频道添加源的默认播放器和代理模式信息
       const enrichedChannels = paginatedChannels.map(channel => {
@@ -57,11 +60,11 @@ class ChannelController {
         ok: true,
         data: enrichedChannels,
         pagination: {
-          page,
+          page: limit === 0 ? 1 : page,
           limit,
           total,
-          totalPages: Math.ceil(total / limit),
-          hasMore: offset + limit < total
+          totalPages: limit === 0 ? 1 : Math.ceil(total / limit),
+          hasMore: limit === 0 ? false : offset + limit < total
         }
       });
     } catch (error) {
