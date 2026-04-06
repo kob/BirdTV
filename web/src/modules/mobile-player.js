@@ -214,25 +214,61 @@ export async function playMobileChannel(channel, onError) {
 }
 
 /**
- * 关闭播放器
+ * 关闭播放器 - 及时释放所有播放进程
  */
-export function closeMobilePlayer() {
+export async function closeMobilePlayer() {
     const playerContainer = document.getElementById('playerContainer');
     if (playerContainer) {
         playerContainer.classList.remove('active');
     }
-    
-    // 卸载 Shaka Player
+
+    // 中断任何进行中的请求
+    if (state.globalAbortController) {
+        state.globalAbortController.abort();
+        state.globalAbortController = null;
+    }
+
+    // 清理所有播放器实例（Shaka, HLS, MPEGTS, ArtPlayer）
+    if (state.artPlayer) {
+        try { state.artPlayer.destroy(true); } catch (e) { /* ignore */ }
+        state.artPlayer = null;
+    }
+    if (state.hlsPlayer) {
+        try { state.hlsPlayer.destroy(); } catch (e) { /* ignore */ }
+        state.hlsPlayer = null;
+    }
+    if (state.mpegtsPlayer) {
+        try { state.mpegtsPlayer.destroy(); } catch (e) { /* ignore */ }
+        state.mpegtsPlayer = null;
+    }
+
+    // 清理 Shaka Player
     if (state.player) {
         try {
-            state.player.unload();
+            await state.player.unload();
+            await state.player.detach();
         } catch (error) {
-            console.warn('卸载播放器失败:', error);
+            console.warn('Shaka 卸载失败:', error);
         }
     }
-    
-    // 重置 currentIndex
+
+    // 清理 video 元素
+    const videoEl = document.getElementById('mobilePlayer');
+    if (videoEl) {
+        videoEl.src = '';
+        videoEl.load();
+    }
+
+    // 隐藏 ArtPlayer 容器
+    const artCon = document.getElementById('artplayer-container');
+    if (artCon) artCon.style.display = 'none';
+
+    // 重置状态
     state.currentIndex = -1;
+    state.currentPlayerType = null;
+    state.isLoadingSource = false;
+
+    console.log('[MobilePlayer] 播放器已关闭，资源已释放');
 }
 
 /**

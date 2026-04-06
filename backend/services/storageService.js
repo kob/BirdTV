@@ -12,6 +12,11 @@ class StorageService {
     this.m3uSourcesFile = path.join(dataDir, 'm3u-sources.json');
     this.epgSourcesFile = path.join(dataDir, 'epg-sources.json');
     this.settingsFile = path.join(dataDir, 'settings.json');
+    // 新增：Model 文件路径（支持多实例隔离）
+    this.epgChannelsFile = path.join(dataDir, 'epg-channels.json');
+    this.exportsFile = path.join(dataDir, 'exports.json');
+    this.linksFile = path.join(dataDir, 'links.json');
+    this.exportDir = path.join(dataDir, 'exports');
 
     this.redisClient = null;
     this.redisReady = false;

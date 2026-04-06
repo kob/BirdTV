@@ -1031,9 +1031,9 @@
             });
         }
 
-        // 关闭播放器
-        function closePlayer() {
-            closeMobilePlayer();
+        // 关闭播放器 - 等待资源释放完成
+        async function closePlayer() {
+            await closeMobilePlayer();
         }
 
         // 切换收藏
@@ -1204,7 +1204,9 @@
             });
 
             // 播放器控制
-            document.getElementById('playerBackBtn').addEventListener('click', closePlayer);
+            document.getElementById('playerBackBtn').addEventListener('click', async () => {
+                await closePlayer();
+            });
             document.getElementById('playerFavoriteBtn').addEventListener('click', () => {
                 if (currentChannel) toggleFavorite(currentChannel);
             });
