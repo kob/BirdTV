@@ -349,6 +349,48 @@
             font-weight: 600;
         }
 
+        .player-control-bar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(20,20,20,0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .player-control-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .player-control-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .player-control-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            color: var(--text-main);
+            font-size: 13px;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0a0' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 30px;
+        }
+
+        .player-control-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
         .player-video-container {
             flex: 1;
             position: relative;
@@ -574,6 +616,31 @@
         <div class="player-top-bar">
             <button class="player-back-btn" id="playerBackBtn">↓</button>
             <span class="player-title-text" id="playerTitle">频道名称</span>
+        </div>
+        <!-- 播放器控制栏 -->
+        <div class="player-control-bar">
+            <div class="player-control-group">
+                <label class="player-control-label">播放器</label>
+                <select class="player-control-select" id="mobilePlayerType">
+                    <option value="auto">自动</option>
+                    <option value="native">原生</option>
+                    <option value="hls.js">HLS.js</option>
+                    <option value="mpegts">mpegts</option>
+                    <option value="shaka">Shaka</option>
+                    <option value="artplayer">ArtPlayer</option>
+                </select>
+            </div>
+            <div class="player-control-group">
+                <label class="player-control-label">UA</label>
+                <select class="player-control-select" id="mobileUaSelect">
+                    <option value="">默认</option>
+                    <option value="chrome">Chrome</option>
+                    <option value="safari">Safari</option>
+                    <option value="edge">Edge</option>
+                    <option value="firefox">Firefox</option>
+                    <option value="custom">自定义</option>
+                </select>
+            </div>
         </div>
         <div class="player-video-container">
             <video id="mobilePlayer" controls playsinline></video>

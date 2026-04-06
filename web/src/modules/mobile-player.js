@@ -7,6 +7,14 @@ import { state } from './state.js';
 import { initShakaPlayer } from './shaka-init.js';
 import { playSource } from './live.js';
 
+// UA 预设映射
+const UA_PRESETS = {
+    'chrome': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'safari': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    'edge': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    'firefox': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0'
+};
+
 /**
  * 获取移动端播放器所需的 DOM 元素
  */
@@ -52,9 +60,13 @@ export function getMobileElements() {
         widevineLicenseInput: { value: '' },
         playreadyLicenseInput: { value: '' },
         licenseHeadersInput: { value: '' },
-        userAgentInput: { value: '' },
+        userAgentInput: { value: document.getElementById('mobileUaSelect')?.value || '' },
         streamTypeSelect: { value: 'auto' },
         playerTypeSelect: { value: 'auto' },
+        stagePlayerTypeSelect: {
+            value: document.getElementById('mobilePlayerType')?.value || 'auto',
+            addEventListener: () => {}
+        },
         vlcLinkModeSelect: { value: 'proxy' },
         stagePlayerTypeSelect: { value: 'auto' },
         playbackModeSelect: { value: 'auto' },
@@ -177,8 +189,38 @@ export async function initMobilePlayer() {
  * @param {Function} onError - 错误回调
  */
 export async function playMobileChannel(channel, onError) {
+    // 播放前刷新选择器值
+    const playerTypeSelect = document.getElementById('mobilePlayerType');
+    const uaSelect = document.getElementById('mobileUaSelect');
+
     const elements = getMobileElements();
-    
+
+    // 同步选择器的值
+    if (playerTypeSelect) {
+        elements.stagePlayerTypeSelect.value = playerTypeSelect.value;
+    }
+
+    // 处理 UA 选择
+    let customUa = '';
+    if (uaSelect) {
+        const uaValue = uaSelect.value;
+        customUa = UA_PRESETS[uaValue] || '';
+    }
+
+    // 更新 channel 的 userAgent
+    if (customUa) {
+        channel.userAgent = customUa;
+    } else {
+        delete channel.userAgent;
+    }
+
+    // 更新 channel 的 playerType
+    if (playerTypeSelect && playerTypeSelect.value !== 'auto') {
+        channel.playerType = playerTypeSelect.value;
+    } else {
+        delete channel.playerType;
+    }
+
     try {
         // 更新 UI
         const playerTitle = document.getElementById('playerTitle');
