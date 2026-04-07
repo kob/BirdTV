@@ -7,13 +7,19 @@ import { state } from './state.js';
 import { initShakaPlayer } from './shaka-init.js';
 import { playSource } from './live.js';
 
-// UA 预设映射
-const UA_PRESETS = {
-    'chrome': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'safari': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-    'edge': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
-    'firefox': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0'
-};
+// UA 预设（与 admin-ua.js 保持一致）
+const UA_PRESETS = [
+    { name: "默认 (okhttp)", value: "okhttp" },
+    { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
+    { name: "MX Player", value: "MXPlayer/1.58.1" },
+    { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+    { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+    { name: "Safari iOS", value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1" },
+    { name: "Windows Chrome", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+    { name: "Firefox", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0" },
+    { name: "Edge", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36 Edg/120.0.2210.91" },
+    { name: "curl", value: "curl/8.4.0" }
+];
 
 /**
  * 获取移动端播放器所需的 DOM 元素
@@ -200,11 +206,10 @@ export async function playMobileChannel(channel, onError) {
         elements.stagePlayerTypeSelect.value = playerTypeSelect.value;
     }
 
-    // 处理 UA 选择
+    // 处理 UA 选择（select value 直接就是 UA 字符串）
     let customUa = '';
     if (uaSelect) {
-        const uaValue = uaSelect.value;
-        customUa = UA_PRESETS[uaValue] || '';
+        customUa = uaSelect.value || '';
     }
 
     // 更新 channel 的 userAgent

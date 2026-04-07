@@ -386,6 +386,11 @@
             padding-right: 30px;
         }
 
+        .player-control-select option {
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
         .player-control-select:focus {
             outline: none;
             border-color: var(--primary);
@@ -633,12 +638,7 @@
             <div class="player-control-group">
                 <label class="player-control-label">UA</label>
                 <select class="player-control-select" id="mobileUaSelect">
-                    <option value="">默认</option>
-                    <option value="chrome">Chrome</option>
-                    <option value="safari">Safari</option>
-                    <option value="edge">Edge</option>
-                    <option value="firefox">Firefox</option>
-                    <option value="custom">自定义</option>
+                    <option value="">加载中...</option>
                 </select>
             </div>
         </div>
@@ -1099,6 +1099,52 @@
             });
         }
 
+        // 填充 UA 下拉框（从后端预设 + localStorage 自定义）
+        function fillUaSelect() {
+            const uaSelect = document.getElementById('mobileUaSelect');
+            if (!uaSelect) return;
+
+            uaSelect.innerHTML = '';
+
+            const UA_PRESETS = [
+                { name: "默认 (okhttp)", value: "okhttp" },
+                { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
+                { name: "MX Player", value: "MXPlayer/1.58.1" },
+                { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+                { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+                { name: "Safari iOS", value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1" },
+                { name: "Windows Chrome", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+                { name: "Firefox", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0" },
+                { name: "Edge", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36 Edg/120.0.2210.91" },
+                { name: "curl", value: "curl/8.4.0" }
+            ];
+
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = '';
+            defaultOpt.textContent = '默认';
+            uaSelect.appendChild(defaultOpt);
+
+            UA_PRESETS.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.value;
+                opt.textContent = p.name;
+                uaSelect.appendChild(opt);
+            });
+
+            // 加载 localStorage 自定义 UA
+            try {
+                const customUas = JSON.parse(localStorage.getItem('tvplayer.customUas.v1') || '[]');
+                if (customUas.length > 0) {
+                    customUas.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.value || c;
+                        opt.textContent = (c.name || c.value || c).substring(0, 30);
+                        uaSelect.appendChild(opt);
+                    });
+                }
+            } catch {}
+        }
+
         // 播放控制栏：切换播放器/UA后自动重播当前频道
         function setupPlayerControlListeners() {
             const playerTypeSelect = document.getElementById('mobilePlayerType');
@@ -1165,6 +1211,9 @@
             if (!playerInitialized) {
                 console.warn('播放器初始化失败，将继续尝试播放');
             }
+
+            // 填充 UA 下拉框
+            fillUaSelect();
 
             // 先加载频道列表到缓存（后台加载）
             loadChannels(true).then(() => {
