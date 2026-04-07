@@ -22,6 +22,7 @@ import { formatPlaybackError, explainPlaybackError } from './errors.js';
 import { getEffectiveUserAgent } from './ua.js';
 import { getEffectiveVlcLinkMode, updateVlcLinkModeLabel } from './channels.js';
 import { updateFallbackCooldownText } from './players/fallback.js';
+import { initShakaPlayer } from './shaka-init.js';
 
 // ─── 辅助函数 ───
 
@@ -44,16 +45,23 @@ function assertActivePlayRequest(requestId) {
 // ─── Shaka 管道控制 ───
 
 export async function ensureShakaAttached() {
-    if (!state.player) return;
     if (state._pendingCleanupDetach) {
         await state._pendingCleanupDetach;
         state._pendingCleanupDetach = null;
     }
+    if (!state.player) {
+        const videoEl = document.getElementById("video");
+        if (!videoEl || !window.shaka) return false;
+        const statusText = document.getElementById("status-text");
+        const ok = await initShakaPlayer({ video: videoEl, video: videoEl, statusText });
+        if (!ok) { console.warn('[ensureShakaAttached] Shaka 重新初始化失败'); return false; }
+    }
     const videoEl = document.getElementById("video");
-    if (!videoEl) return;
-    if (state.player.getMediaElement() === videoEl) return;
+    if (!videoEl) return false;
+    if (state.player.getMediaElement() === videoEl) return true;
     if (videoEl.src) { videoEl.src = ''; videoEl.load(); }
     await state.player.attach(videoEl);
+    return true;
 }
 
 export async function ensureShakaDetached() {
@@ -895,7 +903,8 @@ export async function playSource(source, elements) {
             if (_artCon) _artCon.style.display = 'none';
             document.getElementById("video").style.display = '';
             state.currentPlayerType = 'shaka';
-            await ensureShakaAttached();
+            const attached = await ensureShakaAttached();
+            if (!attached) throw new Error('Shaka Player 初始化失败，无法播放 DASH 源');
             assertDrmConfigBeforeShaka(source, actualUrl);
             applyShakaDrmConfigForSource(source);
             await loadShakaWithSmartFallback(source, actualUrl, 'Shaka ', requestId);
@@ -907,7 +916,8 @@ export async function playSource(source, elements) {
             if (_artCon) _artCon.style.display = 'none';
             document.getElementById("video").style.display = '';
             state.currentPlayerType = 'shaka';
-            await ensureShakaAttached();
+            const attached = await ensureShakaAttached();
+            if (!attached) throw new Error('Shaka Player 初始化失败，无法播放 DASH 源');
             assertDrmConfigBeforeShaka(source, actualUrl);
             applyShakaDrmConfigForSource(source);
             try {

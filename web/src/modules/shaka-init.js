@@ -12,10 +12,14 @@ import { toSameOriginM3UProxyUrl } from './proxy.js';
 export async function initShakaPlayer(elements) {
     const startTime = performance.now();
     
-    if (!window.shaka) { if (elements.statusText) elements.statusText.textContent = '播放器库加载失败'; return; }
+    if (!window.shaka) {
+        console.warn('[shaka-init] window.shaka 未加载');
+        if (elements.statusText) elements.statusText.textContent = '播放器库加载失败';
+        return false;
+    }
 
     shaka.polyfill.installAll();
-    if (!shaka.Player.isBrowserSupported()) { if (elements.statusText) elements.statusText.textContent = '浏览器不支持 Shaka'; return; }
+    if (!shaka.Player.isBrowserSupported()) { if (elements.statusText) elements.statusText.textContent = '浏览器不支持 Shaka'; return false; }
 
     // 快速清理旧实例
     if (state.player) {
@@ -143,6 +147,8 @@ export async function initShakaPlayer(elements) {
         const playTime = performance.now() - startTime;
         console.log(`[Shaka] 开始播放，总耗时：${playTime.toFixed(0)}ms`);
     });
+
+    return true;
 }
 
 function rewriteShakaProxyRelativeUri(uri) {

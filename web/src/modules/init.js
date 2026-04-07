@@ -768,9 +768,6 @@ function bindEvents(elements) {
     
     window.addEventListener('beforeunload', cleanupOnPageExit);
     window.addEventListener('pagehide', cleanupOnPageExit);
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) cleanupOnPageExit();
-    });
 }
 
 // ES modules 自带 defer，DOM 已就绪，直接调用

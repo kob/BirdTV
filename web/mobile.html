@@ -1298,11 +1298,8 @@
                 closePlayer();
             });
 
-            document.addEventListener('visibilitychange', () => {
-                if (document.hidden) {
-                    // 页面隐藏时清理播放器
-                    closePlayer();
-                }
+            document.addEventListener('pagehide', () => {
+                closePlayer();
             });
 
             // 设置按钮 - 切换到桌面版
