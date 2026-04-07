@@ -15,10 +15,16 @@ let _channelUaCache = {};
 
 /**
  * 同步获取有效 User-Agent（兼容原有调用方式）
- * 使用优先级：state.channel.userAgent > 内存缓存 > localStorage > 默认值
+ * 使用优先级：source.userAgent > state.channel.userAgent > 内存缓存 > localStorage > 默认值
+ * @param {Object} [source] - 可选的频道源对象，优先从中读取 userAgent
  */
-export function getEffectiveUserAgent() {
+export function getEffectiveUserAgent(source) {
     try {
+        // 优先从传入的 source 对象读取
+        if (source && typeof source === 'object') {
+            const sourceUa = String(source.userAgent || "").trim();
+            if (sourceUa) return sourceUa;
+        }
         if (state.currentIndex >= 0 && state.currentIndex < state.channels.length) {
             const channel = state.channels[state.currentIndex];
             if (channel) {

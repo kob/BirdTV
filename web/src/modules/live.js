@@ -232,7 +232,7 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
     const playbackDirectUrl = isDash ? dashDirectUrl : directUrl;
     const corsRestricted = isCorsRestricted(playbackDirectUrl);
     const useProxyMode = shouldUseProxy(playbackDirectUrl, false, source);
-    const proxyUrl = gPU(playbackDirectUrl, getEffectiveUserAgent());
+    const proxyUrl = gPU(playbackDirectUrl, getEffectiveUserAgent(source));
     const preserveInputProxyUrl = wrappedProxyInput && currentProxyMode === 'm3u-proxy';
     const proxyPlaybackUrl = preserveInputProxyUrl ? actualUrl : proxyUrl;
 
@@ -587,7 +587,7 @@ function getPlaybackEngineDecision(source) {
 
     if (effectivePlayerType && effectivePlayerType !== 'auto') {
         // 将 artplayer/hlsjs 转换为 hls，使用 ArtPlayer 播放
-        let manual = (effectivePlayerType === 'art' || effectivePlayerType === 'artplayer' || effectivePlayerType === 'hlsjs') ? 'hls' : effectivePlayerType;
+        let manual = (effectivePlayerType === 'art' || effectivePlayerType === 'artplayer' || effectivePlayerType === 'hlsjs' || effectivePlayerType === 'hls.js') ? 'hls' : effectivePlayerType;
         if (effectivePlayerType === 'vlc-direct' || effectivePlayerType === 'vlc-proxy') {
             manual = 'vlc';
             // 根据源的代理模式或播放器类型设置 VLC 模式
@@ -717,7 +717,7 @@ function updateCurrentInfo(elements, source) {
 
     let actualPlayUrl = source.url || '';
     if (shouldUseProxy(source.url, false, source)) {
-        actualPlayUrl = getProxyUrl(source.url, getEffectiveUserAgent());
+        actualPlayUrl = getProxyUrl(source.url, getEffectiveUserAgent(source));
     }
     if (source.redirectFinalUrl) actualPlayUrl = source.redirectFinalUrl;
 

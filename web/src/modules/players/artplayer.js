@@ -53,7 +53,7 @@ export async function initArtPlayer(url = '', source = null, elements = {}) {
     if (videoEl) videoEl.style.display = 'none';
     container.style.display = 'block';
 
-    const effectiveUserAgent = getEffectiveUserAgent();
+    const effectiveUserAgent = getEffectiveUserAgent(source);
     const unwrappedSourceUrl = unwrapProxySourceUrl(url);
     const manualLineLocked = !!(source?.manualLineLocked);
     const genericProxyUrl = /^https?:/i.test(String(unwrappedSourceUrl || '')) ? toSameOriginM3UProxyUrl(unwrappedSourceUrl, effectiveUserAgent) : null;

@@ -1099,6 +1099,29 @@
             });
         }
 
+        // 播放控制栏：切换播放器/UA后自动重播当前频道
+        function setupPlayerControlListeners() {
+            const playerTypeSelect = document.getElementById('mobilePlayerType');
+            const uaSelect = document.getElementById('mobileUaSelect');
+            let changeTimer = null;
+
+            const replayCurrentChannel = () => {
+                if (changeTimer) clearTimeout(changeTimer);
+                changeTimer = setTimeout(async () => {
+                    if (currentChannel) {
+                        console.log('[MobilePlayer] 播放设置变更，重新播放:', currentChannel.name);
+                        try { await closeMobilePlayer(); } catch {}
+                        await playMobileChannel(currentChannel, (error) => {
+                            showToast('播放失败：' + error.message);
+                        });
+                    }
+                }, 300);
+            };
+
+            if (playerTypeSelect) playerTypeSelect.addEventListener('change', replayCurrentChannel);
+            if (uaSelect) uaSelect.addEventListener('change', replayCurrentChannel);
+        }
+
         // 关闭播放器 - 等待资源释放完成
         async function closePlayer() {
             await closeMobilePlayer();
@@ -1151,6 +1174,9 @@
 
             // 无限滚动监听
             setupInfiniteScroll();
+
+            // 播放控制栏监听（切换播放器/UA）
+            setupPlayerControlListeners();
 
             // 分类标签点击事件（使用事件委托）
             categoryTabs.addEventListener('click', (e) => {

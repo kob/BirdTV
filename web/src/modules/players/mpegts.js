@@ -42,7 +42,7 @@ export async function initMpegtsPlayer(url = '', source = null, elements = {}) {
     }
 
     const useProxy = shouldUseProxy(url, true, source);
-    const finalUrl = useProxy ? getProxyUrl(url, getEffectiveUserAgent()) : url;
+    const finalUrl = useProxy ? getProxyUrl(url, getEffectiveUserAgent(source)) : url;
     
     // 优化配置：针对直播优化
     const mpegtsConfig = {
