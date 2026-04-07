@@ -15,7 +15,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ==================== Stage 2: Production ====================
-FROM --platform=$TARGETPLATFORM node:20-alpine AS production
+FROM node:20-alpine AS production
 
 RUN apk add --no-cache curl dumb-init && rm -rf /var/cache/apk/*
 
