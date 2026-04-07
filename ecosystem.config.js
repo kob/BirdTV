@@ -8,7 +8,6 @@ module.exports = {
       watch: false,
       max_memory_restart: '500M',
       env: {
-        NODE_ENV: 'production',
         PORT: 8771,
         NODE_OPTIONS: '--max-old-space-size=500'
       },
@@ -27,10 +26,7 @@ module.exports = {
       wait_ready: true,
       listen_timeout: 10000,
       shutdown_with_message: true,
-      refork_on_change: false,
-      env_production: {
-        NODE_ENV: 'production'
-      }
+      refork_on_change: false
     }
   ]
 };

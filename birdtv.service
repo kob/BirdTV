@@ -10,9 +10,10 @@ User=root
 Group=root
 WorkingDirectory=/workspace/BirdTV
 
-# 环境变量
-Environment="NODE_ENV=production"
+# 环境变量（KVRocks 连接为必填项）
 Environment="PORT=8771"
+# Environment="AUTH_REDIS_HOST=localhost"
+# Environment="AUTH_REDIS_PORT=6666"
 
 # 启动命令
 ExecStart=/usr/bin/node /workspace/BirdTV/birdtv.js

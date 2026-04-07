@@ -6,9 +6,11 @@
 - **镜像大小**: 约 150MB
 - **基础镜像**: node:20-alpine
 - **架构支持**: linux/amd64, linux/arm64
-- **数据库**: KVRocks（Redis 兼容数据库，默认端口 6666）
+- **数据库**: KVRocks 2.11.0（Redis 兼容，**必须**配合使用）
 
 ## 快速开始
+
+> BirdTV **必须**连接 KVRocks 数据库，Docker Compose 已内置 KVRocks 容器，推荐使用。
 
 ### 使用 Docker Compose (推荐)
 
@@ -19,19 +21,20 @@ cd birdtv
 
 # 2. 配置环境变量
 cp .env.example .env
-# 编辑 .env 文件，修改关键配置（尤其是 AUTH_JWT_SECRET）
+# 编辑 .env 文件，修改 AUTH_JWT_SECRET（必须）
+# AUTH_REDIS_HOST 无需修改，Compose 内部自动连接
 
-# 3. 启动服务（BirdTV + KVRocks）
+# 3. 启动服务（BirdTV + KVRocks，自动管理依赖和健康检查）
 docker compose up -d
 
 # 4. 查看日志
 docker compose logs -f birdtv
 ```
 
-### 使用 Docker 命令
+### 使用 Docker 命令（需自行管理 KVRocks）
 
 ```bash
-# 1. 启动 KVRocks
+# 1. 先启动 KVRocks
 docker run -d \
   --name kvrocks \
   --restart unless-stopped \
@@ -59,7 +62,7 @@ docker logs -f birdtv
 docker logs -f kvrocks
 ```
 
-> **注意**: 单独运行需要确保 KVRocks 先启动并健康。推荐使用 Docker Compose 自动管理依赖关系。
+> **注意**: 独立 Docker 运行需要自行确保 KVRocks 先启动并健康。推荐使用 Docker Compose 自动管理依赖关系。
 
 ---
 
@@ -165,7 +168,7 @@ opkg install docker dockerd docker-compose
 # 创建工作目录
 mkdir -p /root/birdtv && cd /root/birdtv
 
-# 创建 docker-compose.yml（单容器模式，节省内存）
+# 创建 docker-compose.yml（含 KVRocks，约需 200MB 内存）
 cat > docker-compose.yml << 'EOF'
 version: "3.8"
 services:
@@ -174,20 +177,38 @@ services:
     container_name: birdtv
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      kvrocks:
+        condition: service_healthy
     environment:
       - AUTH_ENABLED=true
       - AUTH_JWT_SECRET=请替换为随机密钥
       - AUTH_DEFAULT_ADMIN=admin
       - AUTH_DEFAULT_PASSWORD=admin123
+      - AUTH_REDIS_HOST=127.0.0.1
+      - AUTH_REDIS_PORT=6666
     volumes:
       - ./data:/app/data
+
+  kvrocks:
+    image: apache/kvrocks:2.11.0
+    container_name: birdtv-kvrocks
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./kvrocks-data:/var/lib/kvrocks
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6666"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 EOF
 
 # 启动
 docker compose up -d
 ```
 
-> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+。如内存充足（1GB+），可在 compose 中追加 KVRocks 服务实现数据持久化。
+> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+（KVRocks 约占 50-100MB）。
 
 ---
 
@@ -198,13 +219,16 @@ npm install -g @railway/cli
 railway login
 railway init
 
+# 创建 Redis 插件（Redis 协议兼容 KVRocks）
+railway add --plugin redis
+
 # 创建 BirdTV 服务（从 Dockerfile 构建）
 railway up
 
 # 或直接使用 Docker 镜像
 railway variables set RAILWAY_CONTAINER_IMAGE=ghcr.io/kob/birdtv:latest
 
-# 设置环境变量
+# 设置环境变量（Redis 插件会自动注入连接信息）
 railway variables set AUTH_ENABLED=true
 railway variables set AUTH_JWT_SECRET=$(openssl rand -hex 32)
 railway variables set PORT=8771
@@ -216,7 +240,7 @@ railway up
 railway domain
 ```
 
-> **说明**: Railway 自动分配 HTTPS 域名。免费套餐 $5/月，512MB 内存。Railway 不支持 KVRocks 侧车，数据使用内存存储。
+> **说明**: Railway 自动分配 HTTPS 域名。需使用 Redis 插件提供存储（免费套餐 30MB Redis）。
 
 ---
 
@@ -330,13 +354,16 @@ cf logs birdtv --recent
 
 1. 登录 [腾讯云 CloudBase](https://console.cloud.tencent.com/tcb)，创建环境
 2. 在环境设置中开启 **云托管**
-3. 上传 Docker 镜像到腾讯云容器镜像服务 (TCR)
-4. 创建云托管服务，选择镜像 `ghcr.io/kob/birdtv:latest`
-5. 设置环境变量：
+3. 在 CloudBase 中创建 Redis 实例
+4. 上传 Docker 镜像到腾讯云容器镜像服务 (TCR)
+5. 创建云托管服务，选择镜像 `ghcr.io/kob/birdtv:latest`
+6. 设置环境变量：
    - `AUTH_ENABLED=true`
    - `AUTH_JWT_SECRET=<随机密钥>`
+   - `AUTH_REDIS_HOST=<Redis 内网地址>`
+   - `AUTH_REDIS_PORT=6379`
    - `PORT=8771`
-6. 部署后 CloudBase 自动分配 HTTPS 域名
+7. 部署后 CloudBase 自动分配 HTTPS 域名
 
 ---
 
@@ -361,13 +388,15 @@ cf logs birdtv --recent
 | `AUTH_DEFAULT_ADMIN` | `admin` | 默认管理员用户名 | 否 |
 | `AUTH_DEFAULT_PASSWORD` | `admin123` | 默认管理员密码 | 否 |
 
-### KVRocks / Redis 配置（可选）
+### KVRocks 配置（必填）
 
 | 变量名 | 默认值 | 说明 | 必填 |
 |--------|--------|------|------|
-| `AUTH_REDIS_HOST` | - | KVRocks/Redis 主机地址 | 否 |
-| `AUTH_REDIS_PORT` | `6379` | 端口（KVRocks 默认 6666） | 否 |
+| `AUTH_REDIS_HOST` | - | KVRocks 主机地址 | 是 |
+| `AUTH_REDIS_PORT` | `6666` | 端口 | 否 |
 | `AUTH_REDIS_PASSWORD` | - | 密码 | 否 |
+
+> **必填**: `AUTH_REDIS_HOST` 必须配置。Docker Compose 方式自动管理连接，无需手动设置。
 
 ### 多实例隔离
 
@@ -377,8 +406,6 @@ cf logs birdtv --recent
 | `REDIS_DATA_PREFIX` | `birdtv:storage:` | 数据存储 key 前缀 | 否 |
 | `REDIS_PREFIX` | `birdtv` | 认证模块 key 前缀 | 否 |
 | `SERVER_ID` | `default` | 服务器标识（日志区分） | 否 |
-
-> **注意**: 不配置 KVRocks/Redis 时，系统使用内存存储（重启后数据丢失）。推荐使用 KVRocks 实现数据持久化。
 
 ### 代理配置
 
