@@ -7,37 +7,32 @@ services:
     container_name: birdtv
     restart: unless-stopped
     ports:
-      - "${BIRDTV_PORT:-8771}:8771"
+      - "${PORT:-8771}:8771"
     environment:
       # 服务器
       - HOST=0.0.0.0
       - PORT=8771
-      - NODE_ENV=production
       # 认证
       - AUTH_ENABLED=${AUTH_ENABLED:-true}
       - AUTH_JWT_SECRET=${AUTH_JWT_SECRET:-change-me-in-production}
       - AUTH_TOKEN_EXPIRE_DAYS=${AUTH_TOKEN_EXPIRE_DAYS:-7}
       - AUTH_DEFAULT_ADMIN=${AUTH_DEFAULT_ADMIN:-admin}
       - AUTH_DEFAULT_PASSWORD=${AUTH_DEFAULT_PASSWORD:-admin123}
-      # Redis / Kvrocks
+      # KVRocks (Redis 兼容数据库)
       - AUTH_REDIS_HOST=kvrocks
       - AUTH_REDIS_PORT=${AUTH_REDIS_PORT:-6666}
       - AUTH_REDIS_PASSWORD=${AUTH_REDIS_PASSWORD:-}
-      - AUTH_REDIS_DB=${AUTH_REDIS_DB:-0}
-      # 数据隔离（多实例部署时必须设置不同值）
+      # 多实例隔离
+      - BIRDTV_SYSTEM_ID=${BIRDTV_SYSTEM_ID:-default}
       - REDIS_DATA_PREFIX=${REDIS_DATA_PREFIX:-birdtv:storage:}
       - REDIS_PREFIX=${REDIS_PREFIX:-birdtv}
-      - BIRDTV_SYSTEM_ID=${BIRDTV_SYSTEM_ID:-default}
       - SERVER_ID=${SERVER_ID:-default}
-      # 代理
+      # M3U 代理
       - M3U_PROXY_TIMEOUT_MS=${M3U_PROXY_TIMEOUT_MS:-40000}
       - M3U_PROXY_REDIRECT_LIMIT=${M3U_PROXY_REDIRECT_LIMIT:-3}
       - M3U_PROXY_DEFAULT_UA=${M3U_PROXY_DEFAULT_UA:-okhttp/4.3}
       # Cloudflare Worker (WAF 代理)
       - CLOUDFLARE_WORKER_URL=${CLOUDFLARE_WORKER_URL:-}
-      # 性能与安全
-      - NODE_OPTIONS=--max-old-space-size=500
-      - ULIMIT_CORE=0
     volumes:
       - birdtv-data:/app/data
     depends_on:

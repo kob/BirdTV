@@ -35,7 +35,6 @@ RUN mkdir -p /app/data /app/files/cache
 # 环境变量默认值
 ENV HOST=0.0.0.0 \
     PORT=8771 \
-    NODE_ENV=production \
     BIRDTV_STATIC_ROOT=/app/web \
     BIRDTV_DATA_DIR=/app/data \
     BIRDTV_CACHE_ROOT=/app/files/cache \
@@ -45,13 +44,11 @@ ENV HOST=0.0.0.0 \
     AUTH_DEFAULT_ADMIN=admin \
     AUTH_DEFAULT_PASSWORD=admin123 \
     AUTH_REDIS_HOST= \
-    AUTH_REDIS_PORT=6379 \
+    AUTH_REDIS_PORT=6666 \
     M3U_PROXY_TIMEOUT_MS=40000 \
     M3U_PROXY_REDIRECT_LIMIT=3 \
     M3U_PROXY_DEFAULT_UA=okhttp/4.3 \
-    CLOUDFLARE_WORKER_URL= \
-    NODE_OPTIONS=--max-old-space-size=500 \
-    ULIMIT_CORE=0
+    CLOUDFLARE_WORKER_URL=
 
 EXPOSE 8771
 

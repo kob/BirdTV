@@ -76,7 +76,7 @@ bash diagnose.sh
 - ✓ 日志错误
 - ✓ 系统资源
 - ✓ 网络连接
-- ✓ Redis 连接
+- ✓ Redis/KVRocks 连接
 - ✓ 服务健康
 
 ---

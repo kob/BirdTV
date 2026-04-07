@@ -104,6 +104,8 @@ bash start.sh start
 
 ## 🐳 Docker 部署
 
+> 详细部署指南请查看 [DOCKER_DEPLOY.md](./DOCKER_DEPLOY.md)
+
 ### 镜像信息
 
 - **镜像地址**: `ghcr.io/kob/birdtv:latest`
@@ -120,16 +122,15 @@ cd birdtv
 # 2. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，修改关键配置（尤其是 AUTH_JWT_SECRET）
-vim .env
 
-# 3. 启动服务（包含 BirdTV + Kvrocks）
+# 3. 启动服务（包含 BirdTV + KVRocks）
 docker compose up -d
 
 # 4. 查看日志
 docker compose logs -f birdtv
 ```
 
-### 使用 Docker 命令（不依赖 Kvrocks）
+### 使用 Docker 命令（不依赖 KVRocks）
 
 ```bash
 docker run -d \
@@ -144,9 +145,11 @@ docker run -d \
   ghcr.io/kob/birdtv:latest
 ```
 
-> **注意**: 不挂载 Kvrocks 时，系统使用内存存储，重启后数据丢失。推荐使用 Docker Compose（内含 Kvrocks 容器实现持久化）。
+> **注意**: 不挂载 KVRocks 时，系统使用内存存储，重启后数据丢失。推荐使用 Docker Compose（内含 KVRocks 容器实现持久化）。
 
 ## 📦 部署场景
+
+> Docker 部署详细指南请查看 [DOCKER_DEPLOY.md](./DOCKER_DEPLOY.md)
 
 ### 1. Ubuntu / Debian 服务器
 
@@ -178,7 +181,7 @@ docker compose logs -f birdtv
 sudo ufw allow 8771/tcp
 ```
 
-> **说明**: Docker Compose 自动启动 BirdTV + Kvrocks 两个容器。Kvrocks 是 Redis 兼容数据库，数据持久化在 Docker Volume 中。
+> **说明**: Docker Compose 自动启动 BirdTV + KVRocks 两个容器。KVRocks 是 Redis 兼容数据库，数据持久化在 Docker Volume 中。
 
 #### Nginx 反向代理 + HTTPS
 
@@ -234,7 +237,7 @@ sudo certbot --nginx -d your-domain.com
 3. 确保端口 8771 未被占用
 4. 点击"创建"后查看容器状态
 
-> **说明**: NAS 部署默认使用 Docker Volume 持久化数据。如需使用内建 Redis/Kvrocks，在 docker-compose.yml 中取消对应服务的注释。
+> **说明**: NAS 部署默认使用 Docker Volume 持久化 KVRocks 数据。
 
 ### 3. 软路由部署（OpenWrt / iStoreOS）
 
@@ -272,7 +275,7 @@ EOF
 docker compose up -d
 ```
 
-> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+。如内存充足（1GB+），可在 compose 中追加 Kvrocks 服务实现数据持久化。
+> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+。如内存充足（1GB+），可在 compose 中追加 KVRocks 服务实现数据持久化。
 
 ### 4. Railway
 
@@ -299,7 +302,7 @@ railway up
 railway domain
 ```
 
-> **说明**: Railway 自动分配 HTTPS 域名。免费套餐 $5/月，512MB 内存。Railway 不支持 Redis 侧车，数据使用内存存储。
+> **说明**: Railway 自动分配 HTTPS 域名。免费套餐 $5/月，512MB 内存。Railway 不支持 KVRocks 侧车，数据使用内存存储。
 
 ### 5. Google IDX
 
@@ -311,7 +314,7 @@ git clone https://github.com/kob/birdtv.git
 cd birdtv
 cp .env.example .env
 
-# 启动服务（含 Kvrocks）
+# 启动服务（含 KVRocks）
 docker compose up -d
 
 # 查看日志
@@ -339,21 +342,21 @@ services:
       - PORT=8771
       - AUTH_ENABLED=true
       - AUTH_JWT_SECRET=${AUTH_JWT_SECRET}
-      - AUTH_REDIS_HOST=redis
-      - AUTH_REDIS_PORT=6379
+      - AUTH_REDIS_HOST=kvrocks
+      - AUTH_REDIS_PORT=6666
     depends_on:
-      - redis
+      - kvrocks
     volumes:
       - data:/app/data
 
-  redis:
-    image: redis:7-alpine
+  kvrocks:
+    image: apache/kvrocks:2.11.0
     volumes:
-      - redis-data:/data
+      - kvrocks-data:/var/lib/kvrocks
 
 volumes:
   data:
-  redis-data:
+  kvrocks-data:
 ```
 
 在 Space Settings → Variables and secrets 中添加：
@@ -443,14 +446,14 @@ BirdTV/
 
 ## ⚙️ 环境变量
 
+详细配置说明请参考 [.env.example](./.env.example)。
+
 ### 基础配置
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `HOST` | `0.0.0.0` | 监听地址 |
 | `PORT` | `8771` | 监听端口 |
-| `NODE_ENV` | `production` | 运行环境 |
-| `LOG_LEVEL` | `info` | 日志级别 |
 
 ### 认证配置
 
@@ -461,67 +464,47 @@ BirdTV/
 | `AUTH_TOKEN_EXPIRE_DAYS` | `7` | Token 有效期（天） |
 | `AUTH_DEFAULT_ADMIN` | `admin` | 默认管理员用户名 |
 | `AUTH_DEFAULT_PASSWORD` | `admin123` | 默认管理员密码 |
-| `SECRET_KEY` | `birdtv-secret-key-2024` | Token 签名密钥（非 JWT 模式） |
 
-### Redis 配置（可选）
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `AUTH_REDIS_HOST` | - | Redis 主机地址 |
-| `AUTH_REDIS_PORT` | `6379` | Redis 端口 |
-| `AUTH_REDIS_PASSWORD` | - | Redis 密码 |
-| `AUTH_REDIS_DB` | `0` | Redis 数据库编号 |
-
-> **注意**: 不配置 Redis 时，系统使用内存存储（重启后数据丢失）
-
-### Redis 数据隔离（多实例部署）
+### KVRocks / Redis 配置（可选）
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
+| `AUTH_REDIS_HOST` | - | KVRocks/Redis 主机地址 |
+| `AUTH_REDIS_PORT` | `6379` | KVRocks/Redis 端口（KVRocks 默认 6666） |
+| `AUTH_REDIS_PASSWORD` | - | KVRocks/Redis 密码 |
+
+> **注意**: 不配置时使用内存存储（重启后数据丢失）。推荐使用 KVRocks（Redis 兼容数据库）实现数据持久化。
+
+### 多实例隔离
+
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `BIRDTV_SYSTEM_ID` | `default` | 系统/实例标识（多实例部署时设置不同值） |
 | `REDIS_DATA_PREFIX` | `birdtv:storage:` | 数据存储 key 前缀 |
 | `REDIS_PREFIX` | `birdtv` | 认证模块 key 前缀 |
-| `BIRDTV_SYSTEM_ID` | `default` | 系统标识（与 REDIS_PREFIX 组合隔离认证数据） |
-| `SERVER_ID` | `default` | 服务器标识（用于日志区分） |
+| `SERVER_ID` | `default` | 服务器标识（仅日志区分） |
 
-> **多实例示例**: 两台服务器共享同一 Redis 时，分别设置 `REDIS_DATA_PREFIX=birdtv:storage:svr1:` 和 `REDIS_DATA_PREFIX=birdtv:storage:svr2:`
+### M3U 代理配置
 
-### 静态资源与数据目录
+| 变量名 | 默认值 | 说明 |
+|--------|--------|------|
+| `M3U_REMOTE_BASE_URL` | - | 远程 M3U 源地址 |
+| `M3U_PROXY_TIMEOUT_MS` | `40000` | 代理请求超时时间（毫秒） |
+| `M3U_PROXY_REDIRECT_LIMIT` | `3` | 最大重定向跟随次数 |
+| `M3U_PROXY_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent |
+
+### 高级配置（可选）
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `BIRDTV_STATIC_ROOT` | `./web` | 前端静态文件根目录 |
 | `BIRDTV_DATA_DIR` | `./data` | 数据存储目录 |
 | `BIRDTV_CACHE_ROOT` | `./files/cache` | 缓存文件目录 |
-
-### 代理配置
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `BIRDTV_TIMEOUT_MS` | `40000` | 代理请求超时时间（毫秒） |
-| `BIRDTV_REDIRECT_LIMIT` | `3` | 最大重定向跟随次数 |
-| `BIRDTV_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent |
-| `BIRDTV_REMOTE_BASE_URL` | - | 远程 M3U 源地址 |
-
-### 缓存配置
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
 | `BIRDTV_CACHE_M3U_TTL_MS` | `600000` | M3U 缓存过期时间（毫秒） |
 | `BIRDTV_CACHE_EPG_TTL_MS` | `3600000` | EPG 缓存过期时间（毫秒） |
-
-### 安全配置
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `BIRDTV_ALLOWED_HOSTS` | - | 代理目标主机白名单（逗号分隔，留空不限制） |
+| `BIRDTV_ALLOWED_HOSTS` | - | 代理目标主机白名单（逗号分隔） |
+| `CLOUDFLARE_WORKER_URL` | - | Cloudflare Worker 代理地址 |
 | `BIRDTV_UPSTREAM_PROXY` | - | 上游 HTTP/HTTPS 代理地址 |
-
-### API 服务器配置
-
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `API_SERVER_PORT` | `8771` | API 服务器端口（通常与主服务共用） |
-| `API_CORS_ORIGIN` | `*` | CORS 允许的源（逗号分隔） |
 
 ## 📖 API 文档
 
@@ -687,11 +670,17 @@ docker stop birdtv && docker rm birdtv
 ### 备份与恢复
 
 ```bash
-# 备份数据
+# 备份 BirdTV 数据
 docker run --rm \
   -v birdtv-data:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/birdtv-backup-$(date +%Y%m%d).tar.gz /data
+
+# 备份 KVRocks 数据
+docker run --rm \
+  -v birdtv-kvrocks-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/kvrocks-backup-$(date +%Y%m%d).tar.gz /data
 
 # 恢复数据
 docker run --rm \
@@ -756,19 +745,23 @@ netstat -ano | findstr :8771  # Windows
 PORT=8772
 ```
 
-### Redis 连接失败
+### Redis / KVRocks 连接失败
 
-系统会自动降级到文件存储模式，不影响基本功能。
-如需使用 Redis，请确保：
+系统会自动降级到内存存储模式，不影响基本功能。
+如需数据持久化，推荐使用 KVRocks（Redis 兼容数据库）：
+
 ```bash
-# 安装 Redis
-sudo apt install redis-server
+# Docker 方式部署 KVRocks
+docker run -d \
+  --name kvrocks \
+  --restart unless-stopped \
+  -p 6666:6666 \
+  -v kvrocks-data:/var/lib/kvrocks \
+  apache/kvrocks:2.11.0
 
-# 启动 Redis
-sudo systemctl start redis
-
-# 检查状态
-redis-cli ping  # 应返回 PONG
+# 在 .env 中配置
+AUTH_REDIS_HOST=localhost
+AUTH_REDIS_PORT=6666
 ```
 
 ### 服务频繁自动停止（SAP BAS 等环境）
@@ -811,6 +804,15 @@ pm2 restart birdtv
 ```
 2. 部署 Worker 脚本：使用 `cloudflare-worker-unified.js`
 > **详见**: [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md)
+
+### 数据丢失
+
+**症状**: 重启后频道、设置等数据丢失。
+
+**解决方法**: 使用 KVRocks 持久化数据。推荐使用 Docker Compose（自动包含 KVRocks 容器）：
+```bash
+docker compose up -d
+```
 
 ## 📊 数据模型
 
@@ -874,8 +876,8 @@ pm2 restart birdtv
 ### 后端
 - **运行环境**: Node.js
 - **Web 框架**: 原生 HTTP 模块
-- **认证**: JWT + bcrypt + Redis
-- **数据存储**: JSON 文件 / Redis
+- **认证**: JWT + bcrypt + KVRocks/Redis
+- **数据存储**: JSON 文件 / KVRocks (Redis 兼容)
 
 ### 部署
 - **容器**: Docker + Docker Compose
