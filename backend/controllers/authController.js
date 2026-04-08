@@ -138,12 +138,18 @@ class AuthController {
       let userData = null;
       const redisClient = this.auth.redisClient || null;
       
-      if (redisClient) {
-        const data = await redisClient.get((this.auth.KEYS || { USER_PREFIX: 'auth:user:' }).USER_PREFIX + currentUser.username);
-        if (data) {
-          userData = JSON.parse(data);
+      if (redisClient && this.auth.redisReady !== false) {
+        try {
+          const data = await redisClient.get((this.auth.KEYS || { USER_PREFIX: 'auth:user:' }).USER_PREFIX + currentUser.username);
+          if (data) {
+            userData = JSON.parse(data);
+          }
+        } catch (error) {
+          console.warn('[AuthController] Redis 读取用户数据失败，降级到内存存储:', error.message);
         }
-      } else {
+      }
+      
+      if (!userData) {
         const memoryStorage = this.auth.memoryStorage;
         if (memoryStorage && memoryStorage.users) {
           const data = memoryStorage.users.get(currentUser.username);

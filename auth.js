@@ -11,6 +11,11 @@ let redisClient = null;
 let jwtSecret = 'default-secret-change-in-production';
 let tokenExpireDays = 7;
 let authEnabled = false;
+let redisReady = false;
+let redisConfig = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 // 内存存储持久化文件路径
 let memoryStorageFile = null;
@@ -58,17 +63,38 @@ async function initAuth(config) {
 
   // 只有当redisHost不为空时才尝试连接Redis
   if (config.redisHost) {
+    redisConfig = {
+      host: config.redisHost,
+      port: parseInt(config.redisPort) || 6379,
+      password: config.redisPassword || undefined,
+      database: parseInt(config.redisDb) || 0
+    };
+
     try {
       redisClient = Redis.createClient({
         socket: {
-          host: config.redisHost,
-          port: parseInt(config.redisPort) || 6379
+          host: redisConfig.host,
+          port: redisConfig.port,
+          reconnectStrategy: false
         },
-        password: config.redisPassword || undefined,
-        database: parseInt(config.redisDb) || 0
+        password: redisConfig.password,
+        database: redisConfig.database
+      });
+
+      // 注册事件处理器，捕获运行时断连
+      redisClient.on('error', (err) => {
+        console.warn('[Auth] Redis 运行时异常:', err.message);
+        redisReady = false;
+      });
+
+      redisClient.on('end', () => {
+        console.warn('[Auth] Redis 连接已断开');
+        redisReady = false;
+        _scheduleReconnect();
       });
 
       await redisClient.connect();
+      redisReady = true;
       console.log('[Auth] Redis连接成功');
 
       // 初始化默认角色
@@ -116,6 +142,9 @@ async function initAuth(config) {
       } else {
         console.log('[Auth] 管理员账户已存在（从文件加载）');
       }
+
+      // 尝试后台重连
+      _scheduleReconnect();
     }
   } else {
     // 当redisHost为空时，直接使用内存存储
@@ -221,15 +250,106 @@ function useMemoryStorage() {
 }
 
 /**
+ * Redis 自动重连（指数退避）
+ */
+function _scheduleReconnect(attempt) {
+  if (!redisConfig) return;
+  attempt = attempt || 1;
+  if (attempt > MAX_RECONNECT_ATTEMPTS) {
+    console.warn('[Auth] Redis 重连次数超限，继续使用内存存储');
+    return;
+  }
+  if (reconnectTimer) return; // 已有重连任务
+
+  reconnectAttempt = attempt;
+  const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
+  console.log(`[Auth] ${delay/1000}秒后尝试第${attempt}次 Redis 重连...`);
+
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    await _attemptReconnect(attempt);
+  }, delay);
+}
+
+async function _attemptReconnect(attempt) {
+  if (!redisConfig) return;
+
+  try {
+    const Redis = require('redis');
+    // 确保旧连接已关闭
+    if (redisClient) {
+      try { await redisClient.quit(); } catch {}
+    }
+
+    redisClient = Redis.createClient({
+      socket: {
+        host: redisConfig.host,
+        port: redisConfig.port,
+        reconnectStrategy: false
+      },
+      password: redisConfig.password,
+      database: redisConfig.database
+    });
+
+    redisClient.on('error', (err) => {
+      console.warn('[Auth] Redis 运行时异常:', err.message);
+      redisReady = false;
+    });
+
+    redisClient.on('end', () => {
+      console.warn('[Auth] Redis 连接已断开');
+      redisReady = false;
+      _scheduleReconnect(reconnectAttempt + 1);
+    });
+
+    await redisClient.connect();
+    redisReady = true;
+    reconnectAttempt = 0;
+    console.log('[Auth] Redis 重连成功!');
+  } catch (error) {
+    console.warn(`[Auth] Redis 第${attempt}次重连失败:`, error.message);
+    _scheduleReconnect(attempt + 1);
+  }
+}
+
+/**
+ * 安全执行 Redis 操作，失败时自动降级到内存存储
+ * @param {Function} redisFn - 执行 Redis 操作的函数
+ * @param {Function} memoryFn - 降级内存操作的函数
+ * @returns {*} 操作结果
+ */
+async function _redisSafe(redisFn, memoryFn) {
+  // 优先使用 Redis
+  if (redisReady && redisClient && redisClient.isOpen) {
+    try {
+      return await redisFn();
+    } catch (error) {
+      console.warn('[Auth] Redis 操作失败:', error.message);
+      redisReady = false;
+      // 触发重连
+      _scheduleReconnect();
+    }
+  }
+  // 降级到内存存储
+  if (memoryFn) {
+    return await memoryFn();
+  }
+  return null;
+}
+
+/**
  * 初始化默认角色
  */
 async function initDefaultRoles() {
   for (const [key, role] of Object.entries(DEFAULT_ROLES)) {
-    await redisClient.setEx(
-      KEYS.ROLE_PREFIX + key,
-      86400 * 30,
-      JSON.stringify(role)
-    );
+    try {
+      await _redisSafe(
+        () => redisClient.setEx(KEYS.ROLE_PREFIX + key, 86400 * 30, JSON.stringify(role)),
+        () => { memoryStorage.roles.set(key, JSON.stringify(role)); }
+      );
+    } catch (error) {
+      console.warn('[Auth] 初始化默认角色失败:', error.message);
+    }
   }
 }
 
@@ -306,11 +426,19 @@ async function createUser(username, password, role = 'user', isDefaultPassword =
   };
 
   if (redisClient) {
-    await redisClient.setEx(
-      KEYS.USER_PREFIX + username,
-      86400 * 365,
-      JSON.stringify(userData)
-    );
+    try {
+      await redisClient.setEx(
+        KEYS.USER_PREFIX + username,
+        86400 * 365,
+        JSON.stringify(userData)
+      );
+    } catch (error) {
+      console.warn('[Auth] Redis 创建用户失败，降级到内存存储:', error.message);
+      redisReady = false;
+      _scheduleReconnect();
+      memoryStorage.users.set(username, JSON.stringify(userData));
+      saveMemoryStorageToFile();
+    }
   } else {
     memoryStorage.users.set(username, JSON.stringify(userData));
     saveMemoryStorageToFile(); // 保存到文件
@@ -325,11 +453,20 @@ async function createUser(username, password, role = 'user', isDefaultPassword =
 async function verifyUser(username, password) {
   let userData;
   
-  if (redisClient) {
-    const data = await redisClient.get(KEYS.USER_PREFIX + username);
-    if (!data) return null;
-    userData = JSON.parse(data);
-  } else {
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const data = await redisClient.get(KEYS.USER_PREFIX + username);
+      if (!data) return null;
+      userData = JSON.parse(data);
+    } else {
+      const data = memoryStorage.users.get(username);
+      if (!data) return null;
+      userData = JSON.parse(data);
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis verifyUser 读取失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
     const data = memoryStorage.users.get(username);
     if (!data) return null;
     userData = JSON.parse(data);
@@ -342,15 +479,23 @@ async function verifyUser(username, password) {
   const token = generateToken(userData.id, userData.username, userData.role);
 
   // 存储token
-  if (redisClient) {
-    await redisClient.setEx(
-      KEYS.TOKEN_PREFIX + token,
-      tokenExpireDays * 86400,
-      JSON.stringify({ userId: userData.id, username: userData.username })
-    );
-  } else {
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      await redisClient.setEx(
+        KEYS.TOKEN_PREFIX + token,
+        tokenExpireDays * 86400,
+        JSON.stringify({ userId: userData.id, username: userData.username })
+      );
+    } else {
+      memoryStorage.tokens.set(token, JSON.stringify({ userId: userData.id, username: userData.username }));
+      saveMemoryStorageToFile();
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis 存储 token 失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
     memoryStorage.tokens.set(token, JSON.stringify({ userId: userData.id, username: userData.username }));
-    saveMemoryStorageToFile(); // 保存到文件
+    saveMemoryStorageToFile();
   }
 
   return {
@@ -368,11 +513,16 @@ async function verifyUser(username, password) {
  * 检查用户是否存在
  */
 async function userExists(username) {
-  if (redisClient) {
-    return await redisClient.exists(KEYS.USER_PREFIX + username) === 1;
-  } else {
-    return memoryStorage.users.has(username);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      return await redisClient.exists(KEYS.USER_PREFIX + username) === 1;
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis userExists 失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
+  return memoryStorage.users.has(username);
 }
 
 /**
@@ -384,24 +534,35 @@ async function isTokenValid(token) {
   const payload = verifyToken(token);
   if (!payload) return false;
 
-  if (redisClient) {
-    const exists = await redisClient.exists(KEYS.TOKEN_PREFIX + token) === 1;
-    return exists;
-  } else {
-    return memoryStorage.tokens.has(token);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const exists = await redisClient.exists(KEYS.TOKEN_PREFIX + token) === 1;
+      return exists;
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis isTokenValid 失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
+  return memoryStorage.tokens.has(token);
 }
 
 /**
  * 登出
  */
 async function logout(token) {
-  if (redisClient) {
-    await redisClient.del(KEYS.TOKEN_PREFIX + token);
-  } else {
-    memoryStorage.tokens.delete(token);
-    saveMemoryStorageToFile(); // 保存到文件
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      await redisClient.del(KEYS.TOKEN_PREFIX + token);
+      return;
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis logout 失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
+  memoryStorage.tokens.delete(token);
+  saveMemoryStorageToFile();
 }
 
 /**
@@ -413,17 +574,22 @@ async function hasPermission(token, permission) {
   const payload = verifyToken(token);
   if (!payload) return false;
 
-  if (redisClient) {
-    const roleData = await redisClient.get(KEYS.ROLE_PREFIX + payload.role);
-    if (!roleData) return false;
-    const role = JSON.parse(roleData);
-    return role.permissions.includes('*') || role.permissions.includes(permission);
-  } else {
-    const roleData = memoryStorage.roles.get(payload.role);
-    if (!roleData) return false;
-    const role = JSON.parse(roleData);
-    return role.permissions.includes('*') || role.permissions.includes(permission);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const roleData = await redisClient.get(KEYS.ROLE_PREFIX + payload.role);
+      if (!roleData) return false;
+      const role = JSON.parse(roleData);
+      return role.permissions.includes('*') || role.permissions.includes(permission);
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis hasPermission 失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
+  const roleData = memoryStorage.roles.get(payload.role);
+  if (!roleData) return false;
+  const role = JSON.parse(roleData);
+  return role.permissions.includes('*') || role.permissions.includes(permission);
 }
 
 /**
@@ -501,32 +667,37 @@ async function closeAuth() {
 async function listUsers() {
   const users = [];
 
-  if (redisClient) {
-    // 从 Redis 获取所有用户键
-    const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
-    for (const key of keys) {
-      const data = await redisClient.get(key);
-      if (data) {
-        const userData = JSON.parse(data);
-        users.push({
-          id: userData.id,
-          username: userData.username,
-          role: userData.role,
-          createdAt: userData.createdAt
-        });
+  if (redisClient && redisReady && redisClient.isOpen) {
+    try {
+      const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
+      for (const key of keys) {
+        const data = await redisClient.get(key);
+        if (data) {
+          const userData = JSON.parse(data);
+          users.push({
+            id: userData.id,
+            username: userData.username,
+            role: userData.role,
+            createdAt: userData.createdAt
+          });
+        }
       }
+      return users;
+    } catch (error) {
+      console.warn('[Auth] Redis listUsers 失败，降级到内存存储:', error.message);
+      redisReady = false;
+      _scheduleReconnect();
     }
-  } else {
-    // 从内存存储获取
-    for (const [username, data] of memoryStorage.users.entries()) {
-      const userData = JSON.parse(data);
-      users.push({
-        id: userData.id,
-        username: userData.username,
-        role: userData.role,
-        createdAt: userData.createdAt
-      });
-    }
+  }
+
+  for (const [username, data] of memoryStorage.users.entries()) {
+    const userData = JSON.parse(data);
+    users.push({
+      id: userData.id,
+      username: userData.username,
+      role: userData.role,
+      createdAt: userData.createdAt
+    });
   }
 
   return users;
@@ -541,20 +712,28 @@ async function updateUser(userId, data) {
   let targetUsername = null;
 
   // 查找用户
-  if (redisClient) {
-    const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
-    for (const key of keys) {
-      const userData = await redisClient.get(key);
-      if (userData) {
-        const user = JSON.parse(userData);
-        if (user.id === userId) {
-          targetUser = user;
-          targetUsername = user.username;
-          break;
+  if (redisClient && redisReady && redisClient.isOpen) {
+    try {
+      const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
+      for (const key of keys) {
+        const userData = await redisClient.get(key);
+        if (userData) {
+          const user = JSON.parse(userData);
+          if (user.id === userId) {
+            targetUser = user;
+            targetUsername = user.username;
+            break;
+          }
         }
       }
+    } catch (error) {
+      console.warn('[Auth] Redis updateUser 查询失败，降级到内存存储:', error.message);
+      redisReady = false;
+      _scheduleReconnect();
     }
-  } else {
+  }
+
+  if (!targetUser) {
     for (const [username, dataStr] of memoryStorage.users.entries()) {
       const user = JSON.parse(dataStr);
       if (user.id === userId) {
@@ -582,37 +761,51 @@ async function updateUser(userId, data) {
   targetUser.updatedAt = Date.now();
 
   // 保存更新
-  if (redisClient) {
-    await redisClient.setEx(
-      KEYS.USER_PREFIX + targetUsername,
-      86400 * 365,
-      JSON.stringify(targetUser)
-    );
-  } else {
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      await redisClient.setEx(
+        KEYS.USER_PREFIX + targetUsername,
+        86400 * 365,
+        JSON.stringify(targetUser)
+      );
+    } else {
+      memoryStorage.users.set(targetUsername, JSON.stringify(targetUser));
+      saveMemoryStorageToFile();
+    }
+  } catch (error) {
+    console.warn('[Auth] Redis updateUser 保存失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
     memoryStorage.users.set(targetUsername, JSON.stringify(targetUser));
-    saveMemoryStorageToFile(); // 保存到文件
+    saveMemoryStorageToFile();
   }
 
   // 删除该用户的所有 token（强制重新登录）
-  if (redisClient) {
-    const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
-    for (const tokenKey of tokenKeys) {
-      const tokenData = await redisClient.get(tokenKey);
-      if (tokenData) {
-        const tokenInfo = JSON.parse(tokenData);
-        if (tokenInfo.userId === userId) {
-          await redisClient.del(tokenKey);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
+      for (const tokenKey of tokenKeys) {
+        const tokenData = await redisClient.get(tokenKey);
+        if (tokenData) {
+          const tokenInfo = JSON.parse(tokenData);
+          if (tokenInfo.userId === userId) {
+            await redisClient.del(tokenKey);
+          }
         }
       }
-    }
-  } else {
-    for (const [token, tokenData] of memoryStorage.tokens.entries()) {
-      const info = JSON.parse(tokenData);
-      if (info.userId === userId) {
-        memoryStorage.tokens.delete(token);
+    } else {
+      for (const [token, tokenData] of memoryStorage.tokens.entries()) {
+        const info = JSON.parse(tokenData);
+        if (info.userId === userId) {
+          memoryStorage.tokens.delete(token);
+        }
       }
+      saveMemoryStorageToFile();
     }
-    saveMemoryStorageToFile(); // 保存到文件
+  } catch (error) {
+    console.warn('[Auth] Redis updateUser 删除token失败:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
 
   return {
@@ -630,20 +823,28 @@ async function deleteUser(userId) {
   let targetUsername = null;
 
   // 查找并删除用户
-  if (redisClient) {
-    const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
-    for (const key of keys) {
-      const data = await redisClient.get(key);
-      if (data) {
-        const user = JSON.parse(data);
-        if (user.id === userId) {
-          targetUsername = user.username;
-          await redisClient.del(key);
-          break;
+  if (redisClient && redisReady && redisClient.isOpen) {
+    try {
+      const keys = await redisClient.keys(KEYS.USER_PREFIX + '*');
+      for (const key of keys) {
+        const data = await redisClient.get(key);
+        if (data) {
+          const user = JSON.parse(data);
+          if (user.id === userId) {
+            targetUsername = user.username;
+            await redisClient.del(key);
+            break;
+          }
         }
       }
+    } catch (error) {
+      console.warn('[Auth] Redis deleteUser 查询失败，降级到内存存储:', error.message);
+      redisReady = false;
+      _scheduleReconnect();
     }
-  } else {
+  }
+
+  if (!targetUsername) {
     for (const [username, dataStr] of memoryStorage.users.entries()) {
       const user = JSON.parse(dataStr);
       if (user.id === userId) {
@@ -652,7 +853,7 @@ async function deleteUser(userId) {
         break;
       }
     }
-    saveMemoryStorageToFile(); // 保存到文件
+    saveMemoryStorageToFile();
   }
 
   if (!targetUsername) {
@@ -660,25 +861,31 @@ async function deleteUser(userId) {
   }
 
   // 删除该用户的所有 token
-  if (redisClient) {
-    const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
-    for (const tokenKey of tokenKeys) {
-      const tokenData = await redisClient.get(tokenKey);
-      if (tokenData) {
-        const tokenInfo = JSON.parse(tokenData);
-        if (tokenInfo.userId === userId) {
-          await redisClient.del(tokenKey);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
+      for (const tokenKey of tokenKeys) {
+        const tokenData = await redisClient.get(tokenKey);
+        if (tokenData) {
+          const tokenInfo = JSON.parse(tokenData);
+          if (tokenInfo.userId === userId) {
+            await redisClient.del(tokenKey);
+          }
         }
       }
-    }
-  } else {
-    for (const [token, tokenData] of memoryStorage.tokens.entries()) {
-      const info = JSON.parse(tokenData);
-      if (info.userId === userId) {
-        memoryStorage.tokens.delete(token);
+    } else {
+      for (const [token, tokenData] of memoryStorage.tokens.entries()) {
+        const info = JSON.parse(tokenData);
+        if (info.userId === userId) {
+          memoryStorage.tokens.delete(token);
+        }
       }
+      saveMemoryStorageToFile();
     }
-    saveMemoryStorageToFile(); // 保存到文件
+  } catch (error) {
+    console.warn('[Auth] Redis deleteUser 删除token失败:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
 
   return true;
@@ -691,12 +898,20 @@ async function changePassword(username, newPassword) {
   let userData = null;
 
   // 查找用户
-  if (redisClient) {
-    const data = await redisClient.get(KEYS.USER_PREFIX + username);
-    if (data) {
-      userData = JSON.parse(data);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const data = await redisClient.get(KEYS.USER_PREFIX + username);
+      if (data) {
+        userData = JSON.parse(data);
+      }
     }
-  } else {
+  } catch (error) {
+    console.warn('[Auth] Redis changePassword 读取失败，降级到内存存储:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
+  }
+
+  if (!userData) {
     const data = memoryStorage.users.get(username);
     if (data) {
       userData = JSON.parse(data);
@@ -715,36 +930,50 @@ async function changePassword(username, newPassword) {
 
   // 保存更新
   if (redisClient) {
-    await redisClient.setEx(
-      KEYS.USER_PREFIX + username,
-      86400 * 365,
-      JSON.stringify(userData)
-    );
+    try {
+      await redisClient.setEx(
+        KEYS.USER_PREFIX + username,
+        86400 * 365,
+        JSON.stringify(userData)
+      );
+    } catch (error) {
+      console.warn('[Auth] Redis 创建用户失败，降级到内存存储:', error.message);
+      redisReady = false;
+      _scheduleReconnect();
+      memoryStorage.users.set(username, JSON.stringify(userData));
+      saveMemoryStorageToFile();
+    }
   } else {
     memoryStorage.users.set(username, JSON.stringify(userData));
     saveMemoryStorageToFile(); // 保存到文件
   }
 
   // 删除该用户的所有 token（强制重新登录）
-  if (redisClient) {
-    const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
-    for (const tokenKey of tokenKeys) {
-      const tokenData = await redisClient.get(tokenKey);
-      if (tokenData) {
-        const tokenInfo = JSON.parse(tokenData);
-        if (tokenInfo.userId === userData.id) {
-          await redisClient.del(tokenKey);
+  try {
+    if (redisClient && redisReady && redisClient.isOpen) {
+      const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
+      for (const tokenKey of tokenKeys) {
+        const tokenData = await redisClient.get(tokenKey);
+        if (tokenData) {
+          const tokenInfo = JSON.parse(tokenData);
+          if (tokenInfo.userId === userData.id) {
+            await redisClient.del(tokenKey);
+          }
         }
       }
-    }
-  } else {
-    for (const [token, tokenData] of memoryStorage.tokens.entries()) {
-      const info = JSON.parse(tokenData);
-      if (info.userId === userData.id) {
-        memoryStorage.tokens.delete(token);
+    } else {
+      for (const [token, tokenData] of memoryStorage.tokens.entries()) {
+        const info = JSON.parse(tokenData);
+        if (info.userId === userData.id) {
+          memoryStorage.tokens.delete(token);
+        }
       }
+      saveMemoryStorageToFile();
     }
-    saveMemoryStorageToFile(); // 保存到文件
+  } catch (error) {
+    console.warn('[Auth] Redis changePassword 删除token失败:', error.message);
+    redisReady = false;
+    _scheduleReconnect();
   }
 
   return true;

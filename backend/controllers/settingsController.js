@@ -206,6 +206,16 @@ class SettingsController {
    */
   async syncFromFile(req, res) {
     try {
+      if (!this.storage.redisClient || !this.storage.redisReady || !this.storage.redisClient.isOpen) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          ok: false,
+          error: 'redis_unavailable',
+          message: 'Redis 不可用，无法从 Redis 同步数据'
+        }));
+        return;
+      }
+
       const keys = ['channels', 'm3uSources', 'epgSources', 'settings'];
       const results = [];
 
