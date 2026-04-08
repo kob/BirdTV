@@ -716,9 +716,9 @@ function updateCurrentInfo(elements, source) {
     if (isManual) playerTypeText += ' (手动)';
 
     let actualPlayUrl = source.url || '';
-    if (shouldUseProxy(source.url, false, source)) {
-        actualPlayUrl = getProxyUrl(source.url, getEffectiveUserAgent(source));
-    }
+    // 直接使用 source.url（即 playSource 传给播放器的 actualUrl），
+    // 不再独立调用 shouldUseProxy/getProxyUrl 重新计算，
+    // 避免与播放器内部的实际代理决策不一致。
     if (source.redirectFinalUrl) actualPlayUrl = source.redirectFinalUrl;
 
     if (elements.currentUrl) elements.currentUrl.textContent = `${playerTypeText} ${actualPlayUrl}`;
