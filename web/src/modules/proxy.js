@@ -77,16 +77,17 @@ export function isLikelyHlsStreamUrl(urlLower) {
 }
 
 export function shouldUseProxy(url, preferDirectLan = false, source = null) {
-    // 检查源的代理模式设置
+    // 全局代理模式（用户通过顶栏选择器显式设置）优先于源级配置
+    const currentMode = getTempProxyMode();
+    if (currentMode === 'direct') return false;
+    if (currentMode === 'm3u-proxy') return true;
+
+    // auto 模式下，回退到源级代理模式配置
     if (source && source.sourceProxyMode) {
         const sourceProxyMode = String(source.sourceProxyMode).trim().toLowerCase();
         if (sourceProxyMode === 'direct') return false;
         if (sourceProxyMode === 'proxy') return true;
     }
-
-    const currentMode = getTempProxyMode();
-    if (currentMode === 'direct') return false;
-    if (currentMode === 'm3u-proxy') return true;
 
     // auto 模式下，DASH/MPD 保持直连优先，避免自动切换到代理。
     if (isLikelyDashUrl(url)) return false;
