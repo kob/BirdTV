@@ -266,12 +266,13 @@ async function selectChannel(elements, index, autoplay) {
 }
 
 function readFormSource(elements) {
-    const name = elements.nameInput.value.trim();
-    const url = elements.urlInput.value.trim();
-    const kid = elements.kidInput.value.trim();
-    const key = elements.keyInput.value.trim();
-    const widevineLicense = elements.widevineLicenseInput.value.trim();
-    const playreadyLicense = elements.playreadyLicenseInput.value.trim();
+    const name = elements.nameInput ? elements.nameInput.value.trim() : "";
+    const url = elements.urlInput ? elements.urlInput.value.trim() : "";
+    const kid = elements.kidInput ? elements.kidInput.value.trim() : "";
+    const key = elements.keyInput ? elements.keyInput.value.trim() : "";
+    const widevineLicense = elements.widevineLicenseInput ? elements.widevineLicenseInput.value.trim() : "";
+    const playreadyLicense = elements.playreadyLicenseInput ? elements.playreadyLicenseInput.value.trim() : "";
+    const licenseHeaders = elements.licenseHeadersInput ? elements.licenseHeadersInput.value.trim() : "";
     const userAgent = elements.userAgentInput ? elements.userAgentInput.value.trim() : "";
     const streamType = elements.streamTypeSelect ? normalizeStreamType(elements.streamTypeSelect.value, true) : 'auto';
     const playerType = elements.stagePlayerTypeSelect ? elements.stagePlayerTypeSelect.value : 'auto';
@@ -299,7 +300,7 @@ function readFormSource(elements) {
         if (playreadyLicense) source.drm.licenseServers.playready = playreadyLicense;
     }
 
-    const rawHeaders = elements.licenseHeadersInput.value.trim();
+    const rawHeaders = elements.licenseHeadersInput ? elements.licenseHeadersInput.value.trim() : "";
     if (rawHeaders) {
         try {
             const parsedHeaders = parseLicenseHeadersInput(rawHeaders);
@@ -354,13 +355,13 @@ function fillForm(elements, source) {
 }
 
 function clearForm(elements) {
-    elements.nameInput.value = "";
-    elements.urlInput.value = "";
-    elements.kidInput.value = "";
-    elements.keyInput.value = "";
-    elements.widevineLicenseInput.value = "";
-    elements.playreadyLicenseInput.value = "";
-    elements.licenseHeadersInput.value = "";
+    if (elements.nameInput) elements.nameInput.value = "";
+    if (elements.urlInput) elements.urlInput.value = "";
+    if (elements.kidInput) elements.kidInput.value = "";
+    if (elements.keyInput) elements.keyInput.value = "";
+    if (elements.widevineLicenseInput) elements.widevineLicenseInput.value = "";
+    if (elements.playreadyLicenseInput) elements.playreadyLicenseInput.value = "";
+    if (elements.licenseHeadersInput) elements.licenseHeadersInput.value = "";
     if (elements.userAgentInput) elements.userAgentInput.value = "";
     if (elements.streamTypeSelect) elements.streamTypeSelect.value = "auto";
     if (elements.vlcLinkModeSelect) {
