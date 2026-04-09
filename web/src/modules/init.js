@@ -324,8 +324,8 @@ function readFormSource(elements) {
 
 function fillForm(elements, source) {
     if (!source) return;
-    elements.nameInput.value = source.name || "";
-    elements.urlInput.value = source.url || "";
+    if (elements.nameInput) elements.nameInput.value = source.name || "";
+    if (elements.urlInput) elements.urlInput.value = source.url || "";
     if (elements.userAgentInput) elements.userAgentInput.value = source.userAgent || "";
     if (elements.streamTypeSelect) {
         const st = normalizeStreamType(source.streamType, true);
@@ -345,12 +345,12 @@ function fillForm(elements, source) {
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = safePlayerType || 'auto';
 
     const clearKeys = source.drm && source.drm.clearKeys ? Object.entries(source.drm.clearKeys)[0] : null;
-    elements.kidInput.value = clearKeys ? clearKeys[0] : "";
-    elements.keyInput.value = clearKeys ? clearKeys[1] : "";
-    elements.widevineLicenseInput.value = (source.drm && source.drm.licenseServers) ? (source.drm.licenseServers.widevine || "") : "";
-    elements.playreadyLicenseInput.value = (source.drm && source.drm.licenseServers) ? (source.drm.licenseServers.playready || "") : "";
+    if (elements.kidInput) elements.kidInput.value = clearKeys ? clearKeys[0] : "";
+    if (elements.keyInput) elements.keyInput.value = clearKeys ? clearKeys[1] : "";
+    if (elements.widevineLicenseInput) elements.widevineLicenseInput.value = (source.drm && source.drm.licenseServers) ? (source.drm.licenseServers.widevine || "") : "";
+    if (elements.playreadyLicenseInput) elements.playreadyLicenseInput.value = (source.drm && source.drm.licenseServers) ? (source.drm.licenseServers.playready || "") : "";
     const licenseHeaders = source.drm && source.drm.licenseHeaders ? source.drm.licenseHeaders : null;
-    elements.licenseHeadersInput.value = licenseHeaders ? JSON.stringify(licenseHeaders, null, 2) : "";
+    if (elements.licenseHeadersInput) elements.licenseHeadersInput.value = licenseHeaders ? JSON.stringify(licenseHeaders, null, 2) : "";
 }
 
 function clearForm(elements) {
