@@ -479,6 +479,7 @@ cf logs birdtv --recent
 ```
 BirdTV/
 ├── backend/                    # 后端代码
+│   ├── auth.js                # 认证模块（JWT + bcrypt）
 │   ├── controllers/           # API 控制器
 │   ├── middleware/            # 中间件（认证、CORS）
 │   ├── services/              # 服务层（存储、Token）
@@ -489,7 +490,6 @@ BirdTV/
 │   └── *.html                # 各页面
 ├── data/                      # 数据目录（JSON 存储）
 ├── birdtv.js                 # 主服务器入口
-├── auth.js                   # 认证模块（JWT + bcrypt）
 ├── Dockerfile                # Docker 构建文件
 ├── docker-compose.yml        # Docker Compose 配置
 ├── ecosystem.config.js       # PM2 配置

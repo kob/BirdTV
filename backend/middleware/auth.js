@@ -1,4 +1,4 @@
-const auth = require('../../auth');
+const auth = require('../auth');
 
 /**
  * 授权中间件

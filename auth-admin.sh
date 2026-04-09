@@ -85,7 +85,7 @@ create_user() {
     # 这里需要调用 Node.js 脚本来创建用户
     echo "创建用户: $username (角色: $role)"
     node -e "
-        const auth = require('./auth.js');
+        const auth = require('./backend/auth.js');
         const crypto = require('crypto');
         const bcrypt = require('bcrypt');
         
@@ -149,7 +149,7 @@ reset_admin_password() {
     
     echo "重置管理员密码"
     node -e "
-        const auth = require('./auth.js');
+        const auth = require('./backend/auth.js');
         
         auth.initAuth({
             authEnabled: 'true',

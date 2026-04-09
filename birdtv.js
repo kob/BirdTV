@@ -18,7 +18,7 @@ const { URL } = require('url');
 const { execSync, spawn, spawnSync } = require('child_process');
 
 // 引入授权模块
-const auth = require('./auth');
+const auth = require('./backend/auth');
 const tokenService = require('./backend/services/tokenService');
 
 // 导入存储服务

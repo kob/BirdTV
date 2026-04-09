@@ -25,7 +25,7 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 
 # 复制应用代码
-COPY birdtv.js auth.js ./
+COPY birdtv.js ./
 COPY backend/ ./backend/
 COPY web/ ./web/
 

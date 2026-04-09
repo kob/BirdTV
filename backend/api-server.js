@@ -1,7 +1,7 @@
 const http = require('http');
 const url = require('url');
 const { URL } = require('url');
-const auth = require('../auth');
+const auth = require('./auth');
 
 // 导入中间件
 const corsMiddleware = require('./middleware/cors');
