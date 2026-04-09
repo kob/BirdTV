@@ -148,62 +148,6 @@
       padding: 8px 10px;
     }
 
-    .sidebar-toggle {
-      position: absolute;
-      top: 50%;
-      left: calc(var(--sidebar-width) - 8px);
-      z-index: 1200;
-      pointer-events: none;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      padding: 0;
-      border: none;
-      border-radius: 10px;
-      background: linear-gradient(180deg, rgba(28, 51, 95, 0.95), rgba(11, 21, 41, 0.92));
-      color: #cbd5e1;
-      box-shadow: 0 8px 18px rgba(2, 8, 20, 0.56);
-      transform: translate(-50%, -50%);
-      transition: left var(--t), opacity var(--t), color var(--t), background var(--t);
-    }
-
-    .sidebar-toggle > * {
-      pointer-events: auto;
-    }
-
-    .sidebar-toggle:hover {
-      background: linear-gradient(180deg, rgba(53, 96, 167, 0.95), rgba(18, 39, 77, 0.92));
-      color: #e2e8f0;
-      box-shadow: 0 12px 26px rgba(2, 8, 20, 0.62);
-    }
-
-    body.sidebar-collapsed .shell {
-      grid-template-columns: 0 minmax(0, 1fr);
-      gap: 12px;
-    }
-
-    body.sidebar-collapsed .sidebar {
-      opacity: 0;
-      pointer-events: none;
-      transform: translateX(-20px);
-      padding: 0;
-      border-width: 0;
-      max-height: 0;
-    }
-
-    body.sidebar-collapsed .sidebar-toggle {
-      left: 10px;
-      top: 28px;
-      transform: translate(0, 0);
-      z-index: 20;
-    }
-
-    body.sidebar-collapsed .main {
-      grid-column: 2;
-    }
-
     .card {
       background: rgba(255, 255, 255, 0.035);
       border: 1px solid var(--line);
@@ -341,7 +285,7 @@
     .playlist {
       display: grid;
       gap: 4px;
-      max-height: 300px;
+      max-height: calc(100vh - 320px);
       overflow: auto;
       padding-right: 4px;
     }
@@ -689,15 +633,7 @@
         grid-template-columns: 1fr;
       }
 
-      body.sidebar-collapsed .shell {
-        grid-template-columns: 1fr;
-      }
-
-      body.sidebar-collapsed .sidebar {
-        max-height: none;
-      }
-
-      .main, body.sidebar-collapsed .main {
+      .main {
         grid-column: 1;
       }
       .info-grid, .grid.two {
@@ -713,6 +649,39 @@
       .sidebar, .main {
         padding: 12px;
       }
+    }
+
+    .play-test-input {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      transition: border-color var(--t), background var(--t);
+    }
+
+    .play-test-input:focus {
+      outline: none;
+      border-color: rgba(96, 225, 255, 0.5);
+      background: rgba(76, 158, 255, 0.08);
+    }
+
+    .play-test-select {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .play-test-select:focus {
+      outline: none;
+      border-color: rgba(96, 225, 255, 0.5);
     }
   </style>
   <style>
@@ -769,13 +738,6 @@
 </head>
 <body class="luna-ui luna-player">
     <div class="shell">
-        <button class="sidebar-toggle" id="sidebarToggleButton" type="button" aria-label="折叠左侧栏" aria-expanded="true">
-            <span class="sidebar-toggle-icon" aria-hidden="true">
-                <span class="dot-grid">
-                    <i></i><i></i><i></i><i></i><i></i><i></i>
-                </span>
-            </span>
-        </button>
         <aside class="panel sidebar">
           <section class="sidebar-head">
             <div class="sidebar-brand">
@@ -788,6 +750,44 @@
             </div>
           </section>
 
+            <details class="card collapsible" id="playTestSection">
+                <summary>
+                    <span class="summary-title">播放测试</span>
+                    <span class="summary-hint">默认收起，点击展开</span>
+                </summary>
+                <div class="grid collapsible-content" style="gap:8px;">
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">频道名称
+                    <input id="testNameInput" type="text" placeholder="例如：CCTV-1" class="play-test-input">
+                </label>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">播放地址
+                    <input id="testUrlInput" type="text" placeholder="http://example.com/stream.m3u8" class="play-test-input">
+                </label>
+                <div style="display:flex;gap:6px;">
+                    <label style="display:grid;gap:3px;flex:1;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">KID
+                        <input id="testKidInput" type="text" placeholder="可选" class="play-test-input">
+                    </label>
+                    <label style="display:grid;gap:3px;flex:1;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">KEY
+                        <input id="testKeyInput" type="text" placeholder="可选" class="play-test-input">
+                    </label>
+                </div>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">流类型
+                    <select id="testStreamTypeSelect" class="play-test-select">
+                        <option value="auto">自动检测</option>
+                        <option value="hls">HLS</option>
+                        <option value="mpd">DASH/MPD</option>
+                        <option value="ts">TS</option>
+                    </select>
+                </label>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">文本导入
+                    <textarea id="testImportTextarea" rows="5" placeholder="粘贴 #EXTINF / #KODIPROP 等格式文本，自动解析填充" class="play-test-input" style="resize:vertical;font-size:12px;font-family:monospace;"></textarea>
+                </label>
+                <div style="display:flex;gap:6px;justify-content:flex-end;">
+                    <button class="secondary" id="testImportButton" type="button">导入解析</button>
+                    <button class="secondary" id="testClearButton" type="button">清空</button>
+                    <button class="primary" id="testPlayButton" type="button">播放</button>
+                </div>
+                </div>
+            </details>
 
             <details class="card collapsible">
                 <summary>

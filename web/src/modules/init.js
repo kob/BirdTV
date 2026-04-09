@@ -11,8 +11,7 @@ import {
 import { loadChannels, persistChannels } from './store.js';
 import { parseLicenseHeadersInput } from './drm.js';
 import {
-    getElements, refreshSidebarCollapsedState, toggleSidebarCollapsedState,
-    queueSidebarToggleAnchorPositionUpdate
+    getElements
 } from './dom.js';
 import { initShakaPlayer } from './shaka-init.js';
 import { playSource, updateStatus, updateCurrentInfo } from './live.js';
@@ -22,7 +21,8 @@ import { updateFallbackCooldownText, clearAllFallbackCooldown } from './players/
 import { loadEpgData, applyEpgUrlToChannels, openEpgModal, closeEpgModal } from './epg.js';
 import {
     importFromM3UUrl, importFromM3UText, tryLoadLocalM3U,
-    normalizeStreamType, getSelectedM3UImportType, normalizeM3UUrl, normalizeSource
+    normalizeStreamType, getSelectedM3UImportType, normalizeM3UUrl, normalizeSource,
+    parseM3UToSources
 } from './m3u.js';
 import {
     getConnectionMode, setConnectionMode,
@@ -105,7 +105,6 @@ async function init() {
     }
 
     // 初始化播放器
-    refreshSidebarCollapsedState(elements);
     try { await initShakaPlayer(elements); } catch (error) { console.error('播放器初始化失败:', error); }
 
     // 加载频道
@@ -412,20 +411,6 @@ function bindEvents(elements) {
 
     elements.playVlcDirectButton?.addEventListener("click", () => playWithForcedVlcMode(elements, 'direct'));
     elements.playVlcProxyButton?.addEventListener("click", () => playWithForcedVlcMode(elements, 'proxy'));
-
-    // 侧边栏：使用捕获阶段 + 指针兜底，避免点击事件被遮罩或其他监听吞掉
-    const handleSidebarToggle = (ev) => {
-        try {
-            ev?.preventDefault?.();
-            ev?.stopPropagation?.();
-            ev?.stopImmediatePropagation?.();
-        } catch {}
-        toggleSidebarCollapsedState(elements);
-    };
-    elements.sidebarToggleButton?.addEventListener("click", handleSidebarToggle, true);
-    elements.sidebarToggleButton?.addEventListener("pointerup", handleSidebarToggle, true);
-    window.addEventListener("resize", () => refreshSidebarCollapsedState(elements));
-    window.addEventListener("resize", queueSidebarToggleAnchorPositionUpdate);
 
     // 搜索
     elements.searchInput?.addEventListener("input", () => renderPlaylist(elements));
@@ -749,6 +734,93 @@ function bindEvents(elements) {
             applyEpgUrlToChannels(epgUrl);
             updateStatus(elements, "EPG 已加载", "EPG 就绪");
         }
+    });
+
+    // 播放测试栏
+    const testPlayButton = document.getElementById('testPlayButton');
+    const testClearButton = document.getElementById('testClearButton');
+    const testImportButton = document.getElementById('testImportButton');
+    const testNameInput = document.getElementById('testNameInput');
+    const testUrlInput = document.getElementById('testUrlInput');
+    const testKidInput = document.getElementById('testKidInput');
+    const testKeyInput = document.getElementById('testKeyInput');
+    const testStreamTypeSelect = document.getElementById('testStreamTypeSelect');
+    const testImportTextarea = document.getElementById('testImportTextarea');
+
+    // 文本导入解析：从 M3U/KODIPROP 格式提取频道信息填充表单
+    if (testImportButton) {
+        testImportButton.addEventListener('click', () => {
+            const text = (testImportTextarea?.value || '').trim();
+            if (!text) {
+                updateStatus(elements, '请粘贴文本内容后再导入', '内容为空', true);
+                return;
+            }
+            try {
+                const sources = parseM3UToSources(text);
+                if (!sources.length) {
+                    updateStatus(elements, '未能解析出有效的频道信息', '解析失败', true);
+                    return;
+                }
+                // 取解析到的第一个频道填充表单
+                const s = sources[0];
+                if (testNameInput) testNameInput.value = s.name || '';
+                if (testUrlInput) testUrlInput.value = s.url || '';
+                const kid = s.drm?.clearKeys ? Object.keys(s.drm.clearKeys)[0] : '';
+                const key = kid ? s.drm.clearKeys[kid] : '';
+                if (testKidInput) testKidInput.value = kid || '';
+                if (testKeyInput) testKeyInput.value = key || '';
+                if (testStreamTypeSelect && s.streamType && ['mpd', 'ts', 'hls'].includes(s.streamType)) {
+                    testStreamTypeSelect.value = s.streamType;
+                }
+                updateStatus(elements, `已解析${sources.length}个频道，已填充第1个`, '导入成功');
+            } catch (e) {
+                updateStatus(elements, '文本解析出错：' + (e.message || e), '解析异常', true);
+            }
+        });
+    }
+
+    if (testPlayButton) {
+        testPlayButton.addEventListener('click', async () => {
+            const name = (testNameInput?.value || '').trim();
+            const url = (testUrlInput?.value || '').trim();
+            if (!name || !url) {
+                updateStatus(elements, '请填写频道名称和播放地址', '参数缺失', true);
+                return;
+            }
+            const source = { name, url };
+            const kid = (testKidInput?.value || '').trim();
+            const key = (testKeyInput?.value || '').trim();
+            if (kid || key) {
+                if (!kid || !key) {
+                    updateStatus(elements, 'KID 和 KEY 需要同时填写', 'DRM 参数不完整', true);
+                    return;
+                }
+                source.drm = { clearKeys: { [kid]: key } };
+            }
+            const streamType = testStreamTypeSelect?.value || 'auto';
+            if (['mpd', 'ts', 'hls'].includes(streamType)) source.streamType = streamType;
+
+            updateCurrentInfo(elements, source);
+            await playSource(source, elements);
+        });
+    }
+
+    if (testClearButton) {
+        testClearButton.addEventListener('click', () => {
+            if (testNameInput) testNameInput.value = '';
+            if (testUrlInput) testUrlInput.value = '';
+            if (testKidInput) testKidInput.value = '';
+            if (testKeyInput) testKeyInput.value = '';
+            if (testStreamTypeSelect) testStreamTypeSelect.value = 'auto';
+            if (testImportTextarea) testImportTextarea.value = '';
+        });
+    }
+
+    // 播放测试栏 Enter 键触发播放
+    [testNameInput, testUrlInput, testKidInput, testKeyInput].forEach(input => {
+        input?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && testPlayButton) testPlayButton.click();
+        });
     });
 
     // 全局 ESC 关闭弹窗
