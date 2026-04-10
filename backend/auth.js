@@ -15,7 +15,7 @@ let redisReady = false;
 let redisConfig = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
-const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 // 内存存储持久化文件路径
 let memoryStorageFile = null;
@@ -75,7 +75,8 @@ async function initAuth(config) {
         socket: {
           host: redisConfig.host,
           port: redisConfig.port,
-          reconnectStrategy: false
+          reconnectStrategy: false,
+          connectTimeout: 5000
         },
         password: redisConfig.password,
         database: redisConfig.database
@@ -285,7 +286,8 @@ async function _attemptReconnect(attempt) {
       socket: {
         host: redisConfig.host,
         port: redisConfig.port,
-        reconnectStrategy: false
+        reconnectStrategy: false,
+        connectTimeout: 5000
       },
       password: redisConfig.password,
       database: redisConfig.database

@@ -21,6 +21,8 @@ class StorageService {
     this.redisClient = null;
     this.redisReady = false;
     this.redisConfig = redisConfig;
+    this._reconnectStopped = false;
+    this._consecutiveErrors = 0;
     // 支持通过环境变量设置数据隔离前缀，自动附加 BIRDTV_SYSTEM_ID 实现多实例隔离
     const basePrefix = process.env.REDIS_DATA_PREFIX || 'birdtv:storage:';
     const systemId = process.env.BIRDTV_SYSTEM_ID || 'default';
@@ -41,21 +43,33 @@ class StorageService {
         this.redisClient = Redis.createClient({
           socket: {
             host: this.redisConfig.host,
-            port: parseInt(this.redisConfig.port) || 6379
+            port: parseInt(this.redisConfig.port) || 6379,
+            connectTimeout: 5000
           },
           password: this.redisConfig.password || undefined,
           database: parseInt(this.redisConfig.db) || 0
         });
 
         this.redisClient.on('error', (err) => {
+          if (this._reconnectStopped) return;
+          this._consecutiveErrors++;
           console.warn('[StorageService] Redis 连接异常:', err.message);
           this.redisReady = false;
+          // 连续错误超过 3 次直接放弃，销毁客户端
+          if (this._consecutiveErrors >= 3) {
+            console.warn('[StorageService] Redis 连续异常，放弃连接，使用 JSON 文件存储');
+            this._destroyRedisClient();
+          }
         });
 
         this.redisClient.on('end', () => {
-          console.warn('[StorageService] Redis 连接已断开，尝试重连...');
+          if (!this._reconnectStopped) {
+            console.warn('[StorageService] Redis 连接已断开，尝试重连...');
+          }
           this.redisReady = false;
-          this._scheduleReconnect();
+          if (!this._reconnectStopped) {
+            this._scheduleReconnect();
+          }
         });
 
         await this.redisClient.connect();
@@ -65,6 +79,7 @@ class StorageService {
         console.warn('[StorageService] Redis 连接失败:', error.message);
         console.log('[StorageService] 降级使用 JSON 文件存储');
         this.redisReady = false;
+        this._destroyRedisClient();
       }
     } else {
       console.log('[StorageService] 未配置 Redis，使用 JSON 文件存储');
@@ -90,11 +105,26 @@ class StorageService {
   }
 
   /**
+   * 销毁 Redis 客户端，停止所有事件
+   */
+  _destroyRedisClient() {
+    this._reconnectStopped = true;
+    if (this.redisClient) {
+      try {
+        this.redisClient.removeAllListeners();
+        this.redisClient.destroy();
+      } catch {}
+      this.redisClient = null;
+    }
+  }
+
+  /**
    * 调度重连（指数退避，最多重试 5 次）
    */
   _scheduleReconnect(attempt = 1) {
     if (attempt > 5) {
       console.warn('[StorageService] Redis 重连次数超限，停止重试，使用 JSON 文件存储');
+      this._destroyRedisClient();
       return;
     }
     
@@ -108,39 +138,53 @@ class StorageService {
    * 尝试重连
    */
   async _attemptReconnect(attempt = 1) {
-    if (!this.redisClient || !this.redisConfig?.host) return;
+    if (!this.redisConfig?.host || this._reconnectStopped) return;
     
     try {
-      // 确保旧连接已关闭
-      try { await this.redisClient.quit(); } catch {}
+      // 确保旧连接已销毁
+      this._destroyRedisClient();
+      this._reconnectStopped = false; // 重置，允许本次重连
+      this._consecutiveErrors = 0;
       
+      const Redis = require('redis');
       this.redisClient = Redis.createClient({
         socket: {
           host: this.redisConfig.host,
           port: parseInt(this.redisConfig.port) || 6379,
-          reconnectStrategy: false // 我们自己处理重连
+          reconnectStrategy: false,
+          connectTimeout: 5000
         },
         password: this.redisConfig.password || undefined,
         database: parseInt(this.redisConfig.db) || 0
       });
 
       this.redisClient.on('error', (err) => {
+        if (this._reconnectStopped) return;
+        this._consecutiveErrors++;
         console.warn('[StorageService] Redis 重连异常:', err.message);
         this.redisReady = false;
+        if (this._consecutiveErrors >= 3) {
+          console.warn('[StorageService] Redis 连续异常，放弃重连');
+          this._destroyRedisClient();
+        }
       });
 
       this.redisClient.on('end', () => {
-        console.warn('[StorageService] Redis 重连后断开，尝试重新连接...');
-        this.redisReady = false;
-        this._scheduleReconnect(attempt + 1);
+        if (!this._reconnectStopped) {
+          console.warn('[StorageService] Redis 重连后断开，尝试重新连接...');
+          this.redisReady = false;
+          this._scheduleReconnect(attempt + 1);
+        }
       });
 
       await this.redisClient.connect();
       this.redisReady = true;
       console.log('[StorageService] Redis 重连成功!');
     } catch (error) {
-      console.warn(`[StorageService] Redis 第${attempt}次重连失败:`, error.message);
-      this._scheduleReconnect(attempt + 1);
+      if (!this._reconnectStopped) {
+        console.warn(`[StorageService] Redis 第${attempt}次重连失败:`, error.message);
+        this._scheduleReconnect(attempt + 1);
+      }
     }
   }
 

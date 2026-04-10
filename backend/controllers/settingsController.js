@@ -157,14 +157,15 @@ class SettingsController {
    */
   async getSyncInfo(req, res) {
     try {
-      res.json({
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
         ok: true,
         data: {
           redisPrefix: this.storage.redisPrefix,
           redisReady: this.storage.redisReady,
           serverId: process.env.SERVER_ID || 'default'
         }
-      });
+      }));
     } catch (error) {
       console.error('[SettingsController] getSyncInfo error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -182,14 +183,15 @@ class SettingsController {
   async syncToRedis(req, res) {
     try {
       const result = await this.storage._syncFilesToRedis();
-      res.json({
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
         ok: true,
         message: '数据同步到 Redis 成功',
         data: {
           redisPrefix: this.storage.redisPrefix,
           serverId: process.env.SERVER_ID || 'default'
         }
-      });
+      }));
     } catch (error) {
       console.error('[SettingsController] syncToRedis error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -242,7 +244,8 @@ class SettingsController {
         }
       }
 
-      res.json({
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({
         ok: true,
         message: '从 Redis 同步到文件成功',
         data: {
@@ -250,7 +253,7 @@ class SettingsController {
           serverId: process.env.SERVER_ID || 'default',
           results
         }
-      });
+      }));
     } catch (error) {
       console.error('[SettingsController] syncFromFile error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });

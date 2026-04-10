@@ -4,7 +4,7 @@ const auth = require('../auth');
  * 授权中间件
  * 验证 JWT Token
  */
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   // 检查授权是否启用
   if (!auth.isEnabled()) {
     req.user = { id: 'default', username: 'admin', role: 'admin' };
@@ -22,11 +22,19 @@ function authMiddleware(req, res, next) {
     return;
   }
 
-  // 验证 token
+  // 验证 token 签名和过期时间
   const payload = auth.verifyToken(token);
   if (!payload) {
     res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: '无效或已过期的认证令牌' }));
+    return;
+  }
+
+  // 验证 token 是否在存储中存在（支持登出后 token 失效）
+  const isValid = await auth.isTokenValid(token);
+  if (!isValid) {
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: '认证令牌已失效' }));
     return;
   }
 
@@ -63,7 +71,7 @@ function adminMiddleware(req, res, next) {
  * 可选授权中间件
  * 如果提供了 token 则验证，否则继续
  */
-function optionalAuthMiddleware(req, res, next) {
+async function optionalAuthMiddleware(req, res, next) {
   if (!auth.isEnabled()) {
     req.user = { id: 'default', username: 'admin', role: 'admin' };
     next();
@@ -76,11 +84,14 @@ function optionalAuthMiddleware(req, res, next) {
   if (token) {
     const payload = auth.verifyToken(token);
     if (payload) {
-      req.user = {
-        id: payload.userId,
-        username: payload.username,
-        role: payload.role
-      };
+      const isValid = await auth.isTokenValid(token);
+      if (isValid) {
+        req.user = {
+          id: payload.userId,
+          username: payload.username,
+          role: payload.role
+        };
+      }
     }
   }
 
