@@ -1539,6 +1539,23 @@ function createApiRouter(controllers) {
       return settingsController.getEffectiveUA(req, res);
     }
 
+    // ==================== 数据同步 API ====================
+
+    // GET /api/settings/sync/info - 获取同步信息
+    if (url === '/api/settings/sync/info' && method === 'GET') {
+      return settingsController.getSyncInfo(req, res);
+    }
+
+    // POST /api/settings/sync/redis - 同步文件到 Redis
+    if (url === '/api/settings/sync/redis' && method === 'POST') {
+      return settingsController.syncToRedis(req, res);
+    }
+
+    // POST /api/settings/sync/file - 从 Redis 同步到文件
+    if (url === '/api/settings/sync/file' && method === 'POST') {
+      return settingsController.syncFromFile(req, res);
+    }
+
     // ==================== 定时任务 API ====================
     // 获取调度器引用
     const scheduler = serverState.scheduler;
