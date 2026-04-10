@@ -113,6 +113,28 @@ async function initAuth(config) {
           true
         );
         console.log('[Auth] 默认管理员账户已创建');
+      } else if (config.forceResetAdmin === 'true') {
+        // 强制重置默认管理员密码
+        const username = config.defaultAdmin || 'admin';
+        const newPassword = config.defaultPassword || 'admin123';
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+        try {
+          if (redisClient && redisReady && redisClient.isOpen) {
+            const data = await redisClient.get(KEYS.USER_PREFIX + username);
+            if (data) {
+              const userData = JSON.parse(data);
+              userData.passwordHash = passwordHash;
+              userData.isDefaultPassword = true;
+              userData.updatedAt = Date.now();
+              await redisClient.setEx(KEYS.USER_PREFIX + username, 86400 * 365, JSON.stringify(userData));
+              memoryStorage.users.set(username, JSON.stringify(userData));
+              saveMemoryStorageToFile();
+              console.log(`[Auth] 已强制重置管理员 "${username}" 密码为默认密码`);
+            }
+          }
+        } catch (resetErr) {
+          console.warn('[Auth] 重置管理员密码失败:', resetErr.message);
+        }
       }
 
       // 将 Redis 中的用户/角色数据同步到内存存储作为降级备份
@@ -169,7 +191,24 @@ async function initAuth(config) {
         saveMemoryStorageToFile(); // 保存到文件
         console.log('[Auth] 默认管理员账户已创建（内存存储）');
       } else {
-        console.log('[Auth] 管理员账户已存在（从文件加载）');
+        // 强制重置管理员密码
+        if (config.forceResetAdmin === 'true') {
+          const username = config.defaultAdmin || 'admin';
+          const newPassword = config.defaultPassword || 'admin123';
+          const passwordHash = bcrypt.hashSync(newPassword, 10);
+          const data = memoryStorage.users.get(username);
+          if (data) {
+            const userData = JSON.parse(data);
+            userData.passwordHash = passwordHash;
+            userData.isDefaultPassword = true;
+            userData.updatedAt = Date.now();
+            memoryStorage.users.set(username, JSON.stringify(userData));
+            saveMemoryStorageToFile();
+            console.log(`[Auth] 已强制重置管理员 "${username}" 密码为默认密码（内存存储）`);
+          }
+        } else {
+          console.log('[Auth] 管理员账户已存在（从文件加载）');
+        }
       }
 
       // 尝试后台重连

@@ -245,7 +245,8 @@ function getConfig(overrides = {}) {
     redisPassword: String(overrides.redisPassword || env.AUTH_REDIS_PASSWORD || ''),
     redisDb: String(overrides.redisDb || env.AUTH_REDIS_DB || '0'),
     defaultAdmin: String(overrides.defaultAdmin || env.AUTH_DEFAULT_ADMIN || 'admin'),
-    defaultPassword: String(overrides.defaultPassword || env.AUTH_DEFAULT_PASSWORD || 'admin123')
+    defaultPassword: String(overrides.defaultPassword || env.AUTH_DEFAULT_PASSWORD || 'admin123'),
+    forceResetAdmin: String(overrides.forceResetAdmin || env.AUTH_FORCE_RESET_ADMIN || 'false')
   };
 }
 
