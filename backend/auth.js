@@ -114,6 +114,32 @@ async function initAuth(config) {
         );
         console.log('[Auth] 默认管理员账户已创建');
       }
+
+      // 将 Redis 中的用户/角色数据同步到内存存储作为降级备份
+      try {
+        const userKeys = await redisClient.keys(KEYS.USER_PREFIX + '*');
+        for (const key of userKeys) {
+          const data = await redisClient.get(key);
+          if (data) {
+            const username = key.replace(KEYS.USER_PREFIX, '');
+            memoryStorage.users.set(username, data);
+          }
+        }
+        const roleKeys = await redisClient.keys(KEYS.ROLE_PREFIX + '*');
+        for (const key of roleKeys) {
+          const data = await redisClient.get(key);
+          if (data) {
+            const role = key.replace(KEYS.ROLE_PREFIX, '');
+            memoryStorage.roles.set(role, data);
+          }
+        }
+        if (userKeys.length > 0 || roleKeys.length > 0) {
+          saveMemoryStorageToFile();
+          console.log(`[Auth] 已将 ${userKeys.length} 个用户和 ${roleKeys.length} 个角色同步到内存备份`);
+        }
+      } catch (syncErr) {
+        console.warn('[Auth] Redis 数据同步到内存失败:', syncErr.message);
+      }
     } catch (error) {
       console.error('[Auth] Redis连接失败:', error.message);
       console.log('[Auth] 将使用内存存储作为备用');
@@ -465,6 +491,11 @@ async function verifyUser(username, password) {
       const data = await redisClient.get(KEYS.USER_PREFIX + username);
       if (!data) return null;
       userData = JSON.parse(data);
+      // 同步到内存存储作为降级备份
+      if (!memoryStorage.users.has(username)) {
+        memoryStorage.users.set(username, data);
+        saveMemoryStorageToFile();
+      }
     } else {
       const data = memoryStorage.users.get(username);
       if (!data) return null;
@@ -522,7 +553,16 @@ async function verifyUser(username, password) {
 async function userExists(username) {
   try {
     if (redisClient && redisReady && redisClient.isOpen) {
-      return await redisClient.exists(KEYS.USER_PREFIX + username) === 1;
+      const exists = await redisClient.exists(KEYS.USER_PREFIX + username) === 1;
+      // 同步到内存存储作为降级备份
+      if (exists && !memoryStorage.users.has(username)) {
+        const data = await redisClient.get(KEYS.USER_PREFIX + username);
+        if (data) {
+          memoryStorage.users.set(username, data);
+          saveMemoryStorageToFile();
+        }
+      }
+      return exists;
     }
   } catch (error) {
     console.warn('[Auth] Redis userExists 失败，降级到内存存储:', error.message);
