@@ -2,6 +2,7 @@
  * 设置控制器
  */
 const UAManager = require('../managers/uaManager');
+const auth = require('../auth');
 
 class SettingsController {
   constructor(storage) {
@@ -183,13 +184,16 @@ class SettingsController {
   async syncToRedis(req, res) {
     try {
       const result = await this.storage._syncFilesToRedis();
+      // 同步 auth 数据（用户、token、角色）
+      const authResult = await auth.syncToRedis();
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         ok: true,
         message: '数据同步到 Redis 成功',
         data: {
           redisPrefix: this.storage.redisPrefix,
-          serverId: process.env.SERVER_ID || 'default'
+          serverId: process.env.SERVER_ID || 'default',
+          authSync: authResult
         }
       }));
     } catch (error) {
@@ -244,6 +248,9 @@ class SettingsController {
         }
       }
 
+      // 同步 auth 数据（用户、token、角色）到 auth-storage.json
+      const authResult = await auth.syncFromRedis();
+
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({
         ok: true,
@@ -251,7 +258,8 @@ class SettingsController {
         data: {
           redisPrefix: this.storage.redisPrefix,
           serverId: process.env.SERVER_ID || 'default',
-          results
+          results,
+          authSync: authResult
         }
       }));
     } catch (error) {

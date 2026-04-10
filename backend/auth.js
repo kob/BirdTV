@@ -999,5 +999,87 @@ module.exports = {
   KEYS,
   isEnabled: () => authEnabled,
   redisClient,
-  memoryStorage
+  memoryStorage,
+  /**
+   * 同步内存存储数据到 Redis（auth 模块独立管理的数据）
+   */
+  async syncToRedis() {
+    if (!redisClient || !redisReady || !redisClient.isOpen) {
+      return { synced: false, reason: 'Redis 不可用' };
+    }
+    try {
+      let count = 0;
+      for (const [username, data] of memoryStorage.users.entries()) {
+        const key = KEYS.USER_PREFIX + username;
+        const exists = await redisClient.exists(key);
+        if (!exists) {
+          await redisClient.setEx(key, 86400 * 365, data);
+          count++;
+        }
+      }
+      for (const [token, data] of memoryStorage.tokens.entries()) {
+        const key = KEYS.TOKEN_PREFIX + token;
+        const exists = await redisClient.exists(key);
+        if (!exists) {
+          await redisClient.setEx(key, tokenExpireDays * 86400, data);
+          count++;
+        }
+      }
+      for (const [role, data] of memoryStorage.roles.entries()) {
+        const key = KEYS.ROLE_PREFIX + role;
+        const exists = await redisClient.exists(key);
+        if (!exists) {
+          await redisClient.setEx(key, 86400 * 30, data);
+          count++;
+        }
+      }
+      return { synced: true, count };
+    } catch (error) {
+      console.warn('[Auth] 同步到 Redis 失败:', error.message);
+      return { synced: false, reason: error.message };
+    }
+  },
+  /**
+   * 从 Redis 同步数据到内存存储（auth 模块独立管理的数据）
+   */
+  async syncFromRedis() {
+    if (!redisClient || !redisReady || !redisClient.isOpen) {
+      return { synced: false, reason: 'Redis 不可用' };
+    }
+    try {
+      let count = 0;
+      const userKeys = await redisClient.keys(KEYS.USER_PREFIX + '*');
+      for (const key of userKeys) {
+        const data = await redisClient.get(key);
+        if (data) {
+          const username = key.replace(KEYS.USER_PREFIX, '');
+          memoryStorage.users.set(username, data);
+          count++;
+        }
+      }
+      const tokenKeys = await redisClient.keys(KEYS.TOKEN_PREFIX + '*');
+      for (const key of tokenKeys) {
+        const data = await redisClient.get(key);
+        if (data) {
+          const token = key.replace(KEYS.TOKEN_PREFIX, '');
+          memoryStorage.tokens.set(token, data);
+          count++;
+        }
+      }
+      const roleKeys = await redisClient.keys(KEYS.ROLE_PREFIX + '*');
+      for (const key of roleKeys) {
+        const data = await redisClient.get(key);
+        if (data) {
+          const role = key.replace(KEYS.ROLE_PREFIX, '');
+          memoryStorage.roles.set(role, data);
+          count++;
+        }
+      }
+      saveMemoryStorageToFile();
+      return { synced: true, count };
+    } catch (error) {
+      console.warn('[Auth] 从 Redis 同步失败:', error.message);
+      return { synced: false, reason: error.message };
+    }
+  }
 };
