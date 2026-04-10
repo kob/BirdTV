@@ -1744,11 +1744,11 @@ async function authMiddleware(req, res, config, next) {
       console.log('[Auth Middleware] Validated link token:', decoded);
     } else {
       // 否则使用 auth 模块验证（JWT Token）
-      isValid = await auth.isTokenValid(token);
+      isValid = await auth.isTokenValidWithCleanup(token);
     }
   } catch (e) {
     // Token 解码失败，尝试用 auth 验证（可能是 JWT）
-    isValid = await auth.isTokenValid(token);
+    isValid = await auth.isTokenValidWithCleanup(token);
   }
   
   if (!isValid) {
