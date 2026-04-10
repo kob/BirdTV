@@ -358,9 +358,6 @@ async function initDefaultRoles() {
       console.warn('[Auth] 初始化默认角色失败:', error.message);
     }
   }
-
-  // 启动过期token定时清理
-  _startTokenCleanup();
 }
 
 /**
@@ -1152,7 +1149,4 @@ module.exports = {
       return { synced: false, reason: error.message };
     }
   }
-
-  // 启动过期token定时清理
-  _startTokenCleanup();
 };
