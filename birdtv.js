@@ -222,8 +222,8 @@ function parseAllowedHosts(raw) {
 function getConfig(overrides = {}) {
   const env = process.env;
   return {
-    port: parseNumber(overrides.port || env.BIRDTV_PORT || env.M3U_PROXY_PORT, DEFAULTS.port),
-    host: String(overrides.host || env.BIRDTV_HOST || env.M3U_PROXY_HOST || DEFAULTS.host),
+    port: parseNumber(overrides.port || env.BIRDTV_PORT || env.M3U_PROXY_PORT || env.PORT, DEFAULTS.port),
+    host: String(overrides.host || env.BIRDTV_HOST || env.M3U_PROXY_HOST || env.HOST || DEFAULTS.host),
     requestTimeoutMs: parseNumber(overrides.requestTimeoutMs || env.BIRDTV_TIMEOUT_MS || env.M3U_PROXY_TIMEOUT_MS, DEFAULTS.requestTimeoutMs),
     redirectLimit: parseNumber(overrides.redirectLimit || env.BIRDTV_REDIRECT_LIMIT || env.M3U_PROXY_REDIRECT_LIMIT, DEFAULTS.redirectLimit),
     staticRoot: path.resolve(overrides.staticRoot || env.BIRDTV_STATIC_ROOT || env.M3U_PROXY_STATIC_ROOT || DEFAULTS.staticRoot),
