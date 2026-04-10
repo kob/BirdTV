@@ -116,7 +116,10 @@ async function initAuth() {
       redisHost: process.env.AUTH_REDIS_HOST,
       redisPort: process.env.AUTH_REDIS_PORT,
       redisPassword: process.env.AUTH_REDIS_PASSWORD,
-      redisDb: process.env.AUTH_REDIS_DB
+      redisDb: process.env.AUTH_REDIS_DB,
+      dataDir: DEFAULTS.dataDir,
+      defaultAdmin: process.env.AUTH_DEFAULT_ADMIN || 'admin',
+      defaultPassword: process.env.AUTH_DEFAULT_PASSWORD || 'admin123'
     });
     console.log('[API Server] 授权系统已启用');
   } else {
