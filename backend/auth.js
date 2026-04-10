@@ -15,7 +15,9 @@ let redisReady = false;
 let redisConfig = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
+let tokenCleanupTimer = null;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const TOKEN_CLEANUP_INTERVAL = 60 * 60 * 1000; // 1小时清理一次
 
 // 内存存储持久化文件路径
 let memoryStorageFile = null;
@@ -178,6 +180,9 @@ async function initAuth(config) {
       console.log('[Auth] 管理员账户已存在（从文件加载）');
     }
   }
+
+  // 启动过期token定时清理
+  _startTokenCleanup();
 }
 
 /**
@@ -353,6 +358,9 @@ async function initDefaultRoles() {
       console.warn('[Auth] 初始化默认角色失败:', error.message);
     }
   }
+
+  // 启动过期token定时清理
+  _startTokenCleanup();
 }
 
 /**
@@ -550,6 +558,21 @@ async function isTokenValid(token) {
 }
 
 /**
+ * 验证token有效性（含即时清理）
+ * verifyToken已检查JWT exp，过期时返回null，isTokenValid返回false
+ * 但内存中的过期token不会被自动删除，此方法在验证时即时清理
+ */
+async function isTokenValidWithCleanup(token) {
+  const valid = await isTokenValid(token);
+  if (!valid && memoryStorage.tokens.has(token)) {
+    // token已过期但仍在内存中，立即清理
+    memoryStorage.tokens.delete(token);
+    saveMemoryStorageToFile();
+  }
+  return valid;
+}
+
+/**
  * 登出
  */
 async function logout(token) {
@@ -655,9 +678,55 @@ function authMiddleware(requiredPermission = null) {
 }
 
 /**
+ * 清理内存存储中的过期token
+ */
+function _cleanExpiredTokens() {
+  let cleaned = 0;
+  for (const [token, tokenData] of memoryStorage.tokens.entries()) {
+    // 直接解码JWT payload检查exp
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      // 格式异常的token直接删除
+      memoryStorage.tokens.delete(token);
+      cleaned++;
+      continue;
+    }
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      if (Date.now() / 1000 > payload.exp) {
+        memoryStorage.tokens.delete(token);
+        cleaned++;
+      }
+    } catch {
+      // 解析失败的token直接删除
+      memoryStorage.tokens.delete(token);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    saveMemoryStorageToFile();
+    console.log(`[Auth] 已清理 ${cleaned} 个过期token`);
+  }
+}
+
+/**
+ * 启动token定时清理任务
+ */
+function _startTokenCleanup() {
+  if (tokenCleanupTimer) clearInterval(tokenCleanupTimer);
+  // 首次启动时立即清理一次
+  _cleanExpiredTokens();
+  tokenCleanupTimer = setInterval(_cleanExpiredTokens, TOKEN_CLEANUP_INTERVAL);
+}
+
+/**
  * 关闭授权系统
  */
 async function closeAuth() {
+  if (tokenCleanupTimer) {
+    clearInterval(tokenCleanupTimer);
+    tokenCleanupTimer = null;
+  }
   if (redisClient) {
     await redisClient.quit();
   }
@@ -989,6 +1058,7 @@ module.exports = {
   verifyToken,
   logout,
   isTokenValid,
+  isTokenValidWithCleanup,
   hasPermission,
   getUserInfo,
   authMiddleware,
@@ -1082,4 +1152,7 @@ module.exports = {
       return { synced: false, reason: error.message };
     }
   }
+
+  // 启动过期token定时清理
+  _startTokenCleanup();
 };

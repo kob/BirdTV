@@ -31,7 +31,7 @@ async function authMiddleware(req, res, next) {
   }
 
   // 验证 token 是否在存储中存在（支持登出后 token 失效）
-  const isValid = await auth.isTokenValid(token);
+  const isValid = await auth.isTokenValidWithCleanup(token);
   if (!isValid) {
     res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ ok: false, error: '认证令牌已失效' }));
@@ -84,7 +84,7 @@ async function optionalAuthMiddleware(req, res, next) {
   if (token) {
     const payload = auth.verifyToken(token);
     if (payload) {
-      const isValid = await auth.isTokenValid(token);
+      const isValid = await auth.isTokenValidWithCleanup(token);
       if (isValid) {
         req.user = {
           id: payload.userId,
