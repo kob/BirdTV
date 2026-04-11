@@ -83,7 +83,7 @@
           
           listDiv.innerHTML = channels.map((c, i) => `
             <div style="display:flex;align-items:center;padding:8px;border-bottom:1px solid var(--border);" class="manual-channel-item">
-              <input type="checkbox" checked data-idx="${i}" style="margin-right:12px;">
+              <input type="checkbox" checked data-idx="${i}" data-name="${esc(c.name || '')}" data-url="${esc(c.url || '')}" data-group="${esc(c.group || '')}" data-tvgid="${esc(c.tvgId || '')}" data-tvglogo="${esc(c.tvgLogo || '')}" data-streamtype="${esc(c.streamType || '')}" data-playertype="${esc(c.playerType || '')}" data-drm='${JSON.stringify(c.drm || {})}' data-useragent="${esc(c.userAgent || '')}" style="margin-right:12px;">
               <div style="flex:1;">
                 <div style="font-weight:600;">${esc(c.name || '未命名')}</div>
                 <div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:400px;">${esc(c.url || '')}</div>
@@ -125,11 +125,17 @@
       allItems.forEach((item) => {
         const cb = item.querySelector('input[type="checkbox"]');
         if (cb && cb.checked) {
-          const nameEl = item.querySelector('div > div:first-child');
-          const urlEl = item.querySelector('div > div:nth-child(2)');
-          const groupEl = item.querySelector('div:last-child');
-          const channel = { name: nameEl?.textContent || '', url: urlEl?.textContent || '', streamType: 'live' };
-          channel.group = importGroup || (groupEl?.textContent || '') || '未分组';
+          const channel = {
+            name: cb.dataset.name || '',
+            url: cb.dataset.url || '',
+            group: importGroup || cb.dataset.group || '未分组',
+            streamType: cb.dataset.streamtype || 'auto'
+          };
+          if (cb.dataset.tvgid) channel.tvgId = cb.dataset.tvgid;
+          if (cb.dataset.tvglogo) channel.tvgLogo = cb.dataset.tvglogo;
+          if (cb.dataset.playertype) channel.playerType = cb.dataset.playertype;
+          if (cb.dataset.useragent) channel.userAgent = cb.dataset.useragent;
+          if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
           if (importProxy) channel.proxyMode = importProxy;
           if (importPlayer) channel.playerType = importPlayer;
           if (importUA) channel.userAgent = importUA;
