@@ -447,8 +447,9 @@ class SourceController {
             channel.playerType = 'shaka';
           }
 
-          // 处理 ClearKey 信息
-          if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+          // 处理 ClearKey 信息（兼容 'clearkey' 和 'org.w3.clearkey' 两种写法）
+          const licenseType = String(pendingKodiProps['inputstream.adaptive.license_type'] || '').toLowerCase();
+          if ((licenseType === 'clearkey' || licenseType === 'org.w3.clearkey') && 
               pendingKodiProps['inputstream.adaptive.license_key']) {
             const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
             const [kid, key] = licenseKey.split(':');
@@ -678,8 +679,9 @@ class SourceController {
           channel.playerType = 'shaka';
         }
 
-        // 处理 ClearKey 信息
-        if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+        // 处理 ClearKey 信息（兼容 'clearkey' 和 'org.w3.clearkey' 两种写法）
+        const licenseType = String(pendingKodiProps['inputstream.adaptive.license_type'] || '').toLowerCase();
+        if ((licenseType === 'clearkey' || licenseType === 'org.w3.clearkey') && 
             pendingKodiProps['inputstream.adaptive.license_key']) {
           const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
           const [kid, key] = licenseKey.split(':');
@@ -857,8 +859,9 @@ class SourceController {
             channelData.playerType = 'shaka';
           }
 
-          // 处理 ClearKey 信息
-          if (pendingKodiProps['inputstream.adaptive.license_type'] === 'clearkey' && 
+          // 处理 ClearKey 信息（兼容 'clearkey' 和 'org.w3.clearkey' 两种写法）
+          const importLicenseType = String(pendingKodiProps['inputstream.adaptive.license_type'] || '').toLowerCase();
+          if ((importLicenseType === 'clearkey' || importLicenseType === 'org.w3.clearkey') && 
               pendingKodiProps['inputstream.adaptive.license_key']) {
             const licenseKey = pendingKodiProps['inputstream.adaptive.license_key'];
             const [kid, key] = licenseKey.split(':');
