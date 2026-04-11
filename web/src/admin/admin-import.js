@@ -125,18 +125,20 @@
       allItems.forEach((item) => {
         const cb = item.querySelector('input[type="checkbox"]');
         if (cb && cb.checked) {
+          let channelUrl = cb.dataset.url || '';
+          if (importProxy === 'proxy' || importProxy === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url || '')}`;
           const channel = {
             name: cb.dataset.name || '',
-            url: cb.dataset.url || '',
+            url: channelUrl,
             group: importGroup || cb.dataset.group || '未分组',
             streamType: cb.dataset.streamtype || 'auto'
           };
+          if (importProxy) channel.proxyMode = importProxy;
           if (cb.dataset.tvgid) channel.tvgId = cb.dataset.tvgid;
           if (cb.dataset.tvglogo) channel.tvgLogo = cb.dataset.tvglogo;
           if (cb.dataset.playertype) channel.playerType = cb.dataset.playertype;
           if (cb.dataset.useragent) channel.userAgent = cb.dataset.useragent;
           if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
-          if (importProxy) channel.proxyMode = importProxy;
           if (importPlayer) channel.playerType = importPlayer;
           if (importUA) channel.userAgent = importUA;
           channelsToImport.push(channel);
@@ -319,7 +321,9 @@
       const proxyMode = document.getElementById('fileProxyMode').value;
 
       const channelsToImport = Array.from(checkboxes).map(cb => {
-        const channel = { name: cb.dataset.name, url: cb.dataset.url, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', streamType: cb.dataset.streamtype || 'auto', playerType: cb.dataset.playertype || 'auto', userAgent: cb.dataset.useragent || '', proxyMode };
+        let channelUrl = cb.dataset.url;
+        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
+        const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', streamType: cb.dataset.streamtype || 'auto', playerType: cb.dataset.playertype || 'auto', userAgent: cb.dataset.useragent || '', proxyMode };
         if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
         if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
         return channel;
@@ -427,7 +431,9 @@
 
       setStep(1);
       const channelsToImport = Array.from(checkboxes).map(cb => {
-        const channel = { name: cb.dataset.name, url: cb.dataset.url, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', proxyMode, playerType: cb.dataset.playertype || sourcePlayerType, streamType: cb.dataset.streamtype || 'auto', userAgent: cb.dataset.useragent || '', sourceId };
+        let channelUrl = cb.dataset.url;
+        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
+        const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', proxyMode, playerType: cb.dataset.playertype || sourcePlayerType, streamType: cb.dataset.streamtype || 'auto', userAgent: cb.dataset.useragent || '', sourceId };
         if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
         if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
         return channel;
