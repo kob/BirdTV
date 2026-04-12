@@ -74,7 +74,7 @@
           <td><input type="checkbox" class="channel-checkbox" value="${c.id}" ${checked}></td>
           <td>${c.tvgLogo ? `<img src="${esc(c.tvgLogo)}" style="width:40px;height:40px;object-fit:contain;border-radius:4px;" onerror="this.style.display='none'">` : '-'}</td>
           <td><b>${esc(c.name)}</b></td>
-          <td>${esc(c.tvgId || '-')}</td>
+          <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(c.tvgId || '-')}">${esc(c.tvgId || '-')}</td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(displayUrl)}">${esc(displayUrl)}</td>
           <td>${esc(c.group || '-')}</td>
           <td>${esc(c.sourceName || '-')}</td>
