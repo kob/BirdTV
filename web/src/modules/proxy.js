@@ -98,6 +98,27 @@ export function shouldUseProxy(url, preferDirectLan = false, source = null) {
     return true;
 }
 
+/**
+ * 获取当前频道实际生效的代理模式描述
+ * 返回: 'proxy' | 'direct' | 'auto'
+ */
+export function getEffectiveProxyMode(url, source = null) {
+    const currentMode = getTempProxyMode();
+    if (currentMode === 'direct') return 'direct';
+    if (currentMode === 'm3u-proxy') return 'proxy';
+
+    // auto 模式下判断实际行为
+    if (source && source.sourceProxyMode) {
+        const sourceProxyMode = String(source.sourceProxyMode).trim().toLowerCase();
+        if (sourceProxyMode === 'direct') return 'direct';
+        if (sourceProxyMode === 'proxy') return 'proxy';
+    }
+
+    if (isLikelyDashUrl(url)) return 'direct';
+
+    return 'proxy';
+}
+
 export function isCorsRestricted(url) {
     if (!url || typeof url !== 'string') return false;
     try {

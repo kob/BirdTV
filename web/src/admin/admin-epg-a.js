@@ -303,7 +303,11 @@
                 <input type="text" id="importChannelSearch" placeholder="搜索频道..." oninput="filterImportChannels()" 
                   style="flex:1;padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-main);font-size:13px;">
               </div>
-              <div style="margin-bottom:8px;font-size:13px;color:var(--muted);">
+              <div style="margin-bottom:8px;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:12px;">
+                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                  <input type="checkbox" id="importSelectAll" onchange="toggleImportSelectAll(this)">
+                  全选
+                </label>
                 已选择 <span id="importSelectedCount" style="color:var(--primary);font-weight:600;">0</span> 个频道
               </div>
             </div>
@@ -350,6 +354,32 @@
       }
       
       document.getElementById('importChannelList').innerHTML = renderImportChannelList(filtered);
+      updateImportSelectAllState();
+    }
+    
+    function toggleImportSelectAll(checkbox) {
+      const listEl = document.getElementById('importChannelList');
+      if (!listEl) return;
+      const checkboxes = listEl.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(cb => {
+        cb.checked = checkbox.checked;
+        updateImportSelection(cb);
+      });
+    }
+    
+    function updateImportSelectAllState() {
+      const selectAllCb = document.getElementById('importSelectAll');
+      const listEl = document.getElementById('importChannelList');
+      if (!selectAllCb || !listEl) return;
+      const checkboxes = listEl.querySelectorAll('input[type="checkbox"]');
+      if (checkboxes.length === 0) {
+        selectAllCb.checked = false;
+        selectAllCb.indeterminate = false;
+        return;
+      }
+      const checkedCount = listEl.querySelectorAll('input[type="checkbox"]:checked').length;
+      selectAllCb.checked = checkedCount === checkboxes.length;
+      selectAllCb.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
     }
     
     function updateImportSelection(checkbox) {
@@ -367,6 +397,7 @@
       }
       
       document.getElementById('importSelectedCount').textContent = epgSelectedIds.length;
+      updateImportSelectAllState();
     }
     
     async function doImportFromChannels() {

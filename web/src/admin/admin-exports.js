@@ -40,6 +40,8 @@
   window.filterImportChannels = filterImportChannels;
   window.updateImportSelection = updateImportSelection;
   window.doImportFromChannels = doImportFromChannels;
+  window.toggleImportSelectAll = toggleImportSelectAll;
+  window.updateImportSelectAllState = updateImportSelectAllState;
   window.toggleEpgSelectAll = toggleEpgSelectAll;
   window.updateEpgSelection = updateEpgSelection;
   window.batchSetStrategy = batchSetStrategy;

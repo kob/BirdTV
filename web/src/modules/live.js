@@ -11,7 +11,7 @@ import {
 import {
     shouldUseProxy, getProxyUrl, unwrapProxySourceUrl,
     isCorsRestricted, isLikelyDashUrl, isLikelyHlsStreamUrl,
-    getTempProxyMode, shouldPreferProxyFirst
+    getTempProxyMode, shouldPreferProxyFirst, getEffectiveProxyMode
 } from './proxy.js';
 import {
     applyShakaDrmConfigForSource, assertDrmConfigBeforeShaka,
@@ -664,7 +664,17 @@ function updateCurrentInfo(elements, source) {
     // 避免与播放器内部的实际代理决策不一致。
     if (source.redirectFinalUrl) actualPlayUrl = source.redirectFinalUrl;
 
-    if (elements.currentUrl) elements.currentUrl.textContent = `${playerTypeText} ${actualPlayUrl}`;
+    // 显示当前频道实际生效的代理模式
+    const effectiveProxyMode = getEffectiveProxyMode(source.url || '', source);
+    const proxyModeLabel = effectiveProxyMode === 'proxy' ? '代理' : (effectiveProxyMode === 'direct' ? '直连' : '自动');
+    if (elements.currentUrl) elements.currentUrl.textContent = `${playerTypeText} [${proxyModeLabel}] ${actualPlayUrl}`;
+
+    // 更新播放器类型描述，包含代理模式信息
+    if (elements.playerTypeDesc) {
+        const drmLabel = (source.drm?.clearKeys && Object.keys(source.drm.clearKeys).length > 0) ? 'Clear Key' : 
+                         (source.drm?.licenseServers ? 'Widevine/PlayReady' : '无DRM');
+        elements.playerTypeDesc.textContent = `${playerTypeText} · ${proxyModeLabel} · ${drmLabel}`;
+    }
 
     const hasClearKey = !!(source.drm && source.drm.clearKeys && Object.keys(source.drm.clearKeys).length > 0);
     const hasLicense = !!(source.drm && source.drm.licenseServers && (source.drm.licenseServers.widevine || source.drm.licenseServers.playready));

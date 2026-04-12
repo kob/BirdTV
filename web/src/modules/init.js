@@ -27,7 +27,7 @@ import {
 import {
     getConnectionMode, setConnectionMode,
     getTempProxyMode, setTempProxyMode,
-    getProxyMode, setProxyMode
+    getProxyMode, setProxyMode, getEffectiveProxyMode
 } from './proxy.js';
 import {
     updatePlaybackModeLabel, getPlaybackMode,
@@ -261,6 +261,8 @@ async function selectChannel(elements, index, autoplay) {
     renderPlaylist(elements);
     updateCurrentInfo(elements, source);
     updateVlcLinkModeLabel(source, elements);
+    // 确保代理模式选择器与状态同步（防止换台后 UI 值被意外重置）
+    if (elements.tempProxyModeSelect) elements.tempProxyModeSelect.value = getTempProxyMode();
     if (autoplay) await playSource({ ...source }, elements);
 }
 
