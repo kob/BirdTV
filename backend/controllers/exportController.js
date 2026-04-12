@@ -37,17 +37,13 @@ class ExportController {
 
       const exportDir = path.resolve(__dirname, '../../data/exports');
 
-      // 同名覆盖：删除已有的同名导出记录和文件
+      // 同名覆盖：删除已有的同名导出记录（不删文件，新文件会覆盖写入），保留关联短链接
       if (filename) {
         const existingExports = exportModel.getAll();
         const existing = existingExports.find(e => e.filename === filename);
         if (existing) {
-          const oldFilePath = path.join(exportDir, existing.filename);
-          if (fs.existsSync(oldFilePath)) fs.unlinkSync(oldFilePath);
-          exportModel.delete(existing.id);
-          // 删除关联的短链接
-          const existingLinks = linkModel.getAll();
-          existingLinks.filter(l => l.exportId === existing.id).forEach(l => linkModel.delete(l.id));
+          // 只删记录不删文件（新 M3U 内容稍后写入同名路径覆盖旧文件）
+          exportModel.deleteRecordOnly(existing.id);
         }
       }
 
@@ -227,6 +223,14 @@ class ExportController {
         tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() // 1 year
       });
 
+      // 将同名文件关联的旧短链接的 exportId 更新为新记录 ID，保持短链接持续有效
+      const linksForFile = linkModel.getByFilename(filename);
+      linksForFile.forEach(link => {
+        if (link.exportId !== exportId) {
+          linkModel.update(link.id, { exportId });
+        }
+      });
+
       res.json({
         ok: true,
         data: {
@@ -316,6 +320,12 @@ class ExportController {
   async deleteExport(req, res) {
     try {
       const { id } = req.params;
+      // 先查找关联的短链接，按文件名匹配
+      const exportRecord = exportModel.getById(id);
+      if (exportRecord) {
+        const linksForFile = linkModel.getByFilename(exportRecord.filename);
+        linksForFile.forEach(l => linkModel.delete(l.id));
+      }
       const success = exportModel.delete(id);
       if (success) {
         res.json({ ok: true, message: 'Export deleted' });

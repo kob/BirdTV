@@ -48,6 +48,11 @@ class Link {
     return links.find(e => e.username === username);
   }
 
+  getByFilename(filename) {
+    const links = this.getAll();
+    return links.filter(e => e.filename === filename);
+  }
+
   generateSubCode() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let code = '';

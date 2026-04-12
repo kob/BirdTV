@@ -102,6 +102,15 @@ class Export {
     return exports[index];
   }
 
+  deleteRecordOnly(id) {
+    const exports = this.getAll();
+    const index = exports.findIndex(e => e.id === id);
+    if (index === -1) return false;
+    exports.splice(index, 1);
+    this._save(exports);
+    return true;
+  }
+
   delete(id) {
     const exports = this.getAll();
     const index = exports.findIndex(e => e.id === id);
