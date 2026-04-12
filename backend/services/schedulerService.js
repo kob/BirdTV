@@ -62,7 +62,7 @@ class SchedulerService {
    * 创建定时任务
    */
   async createTask(data) {
-    const { type = 'import', sourceId, cron, name, enabled = true, exportConfig } = data;
+    const { type = 'import', sourceId, cron, name, enabled = true, exportConfig, importConfig } = data;
 
     if (!type || !cron) {
       throw new Error('type 和 cron 为必填项');
@@ -86,6 +86,7 @@ class SchedulerService {
       }
       taskData.sourceId = sourceId;
       taskData.sourceName = source.name;
+      if (importConfig) taskData.importConfig = importConfig;
       taskName = taskName || `定时导入 - ${source.name}`;
     } else if (type === 'export') {
       if (!exportConfig) {
@@ -255,8 +256,10 @@ class SchedulerService {
         throw new Error('节目源已被删除');
       }
 
+      const importConfig = task.importConfig || {};
       const imported = await this.sourceController._importChannelsFromM3U(
-        source.url, source.id || source._id, source.userAgent
+        source.url, source.id || source._id, importConfig.userAgent || source.userAgent,
+        { proxyMode: importConfig.proxyMode, playerType: importConfig.playerType, group: importConfig.group }
       );
 
       const result = {

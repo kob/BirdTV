@@ -165,6 +165,18 @@
       ).join('');
 
       const taskType = task?.type || 'import';
+      const importConfig = task?.importConfig || {};
+      const sourceProxyMode = importConfig.proxyMode || '';
+      const sourcePlayerType = importConfig.playerType || '';
+      const sourceUserAgent = importConfig.userAgent || '';
+      const sourceGroup = importConfig.group || '';
+
+      const IMPORT_UA_PRESETS = [
+        { name: "默认 (okhttp)", value: "okhttp" },
+        { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+        { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+        { name: "curl", value: "curl/8.4.0" }
+      ];
 
       showModal(editId ? '编辑定时任务' : '新建定时任务', `
         <div class="form-group">
@@ -184,6 +196,31 @@
             <option value="">-- 请选择节目源 --</option>
             ${sourceOptions}
           </select>
+        </div>
+        <div id="importOptionsGroup">
+          <div class="form-row">
+            <div class="form-group"><label>代理模式</label><select id="taskProxyMode" style="width:100%;padding:8px 12px;">
+              <option value="">保持原始</option>
+              <option value="auto" ${sourceProxyMode === 'auto' ? 'selected' : ''}>自动</option>
+              <option value="proxy" ${sourceProxyMode === 'proxy' ? 'selected' : ''}>代理</option>
+              <option value="direct" ${sourceProxyMode === 'direct' ? 'selected' : ''}>直连</option>
+            </select></div>
+            <div class="form-group"><label>默认播放器</label><select id="taskPlayerType" style="width:100%;padding:8px 12px;">
+              <option value="">保持原始</option>
+              <option value="auto" ${sourcePlayerType === 'auto' ? 'selected' : ''}>自动</option>
+              <option value="shaka" ${sourcePlayerType === 'shaka' ? 'selected' : ''}>Shaka</option>
+              <option value="hls" ${sourcePlayerType === 'hls' ? 'selected' : ''}>HLS</option>
+              <option value="mpegts" ${sourcePlayerType === 'mpegts' ? 'selected' : ''}>MPEG-TS</option>
+              <option value="native" ${sourcePlayerType === 'native' ? 'selected' : ''}>Native</option>
+            </select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>User Agent</label><select id="taskUserAgent" style="width:100%;padding:8px 12px;">
+              <option value="">保持原始</option>
+              ${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}" ${sourceUserAgent === ua.value ? 'selected' : ''}>${esc(ua.name)}</option>`).join('')}
+            </select></div>
+            <div class="form-group"><label>默认分组</label><input type="text" id="taskImportGroup" placeholder="未分组" value="${esc(sourceGroup)}" style="width:100%;padding:8px 12px;"></div>
+          </div>
         </div>
         <div class="form-group" id="exportGroup" style="display:none;">
           <label>选择分组 *</label>
@@ -216,15 +253,18 @@
 
     function toggleTaskType(type) {
       const sourceGroup = document.getElementById('sourceGroup');
+      const importOptionsGroup = document.getElementById('importOptionsGroup');
       const exportGroup = document.getElementById('exportGroup');
       const exportFilenameGroup = document.getElementById('exportFilenameGroup');
 
       if (type === 'import') {
         sourceGroup.style.display = 'block';
+        importOptionsGroup.style.display = 'block';
         exportGroup.style.display = 'none';
         exportFilenameGroup.style.display = 'none';
       } else if (type === 'export') {
         sourceGroup.style.display = 'none';
+        importOptionsGroup.style.display = 'none';
         exportGroup.style.display = 'block';
         exportFilenameGroup.style.display = 'block';
       }
@@ -243,6 +283,17 @@
       if (type === 'import') {
         if (!sourceId) { toast('请选择节目源', 'error'); return; }
         data.sourceId = sourceId;
+        // 收集导入参数
+        const proxyMode = document.getElementById('taskProxyMode')?.value || '';
+        const playerType = document.getElementById('taskPlayerType')?.value || '';
+        const userAgent = document.getElementById('taskUserAgent')?.value || '';
+        const group = (document.getElementById('taskImportGroup')?.value || '').trim();
+        const importConfig = {};
+        if (proxyMode) importConfig.proxyMode = proxyMode;
+        if (playerType) importConfig.playerType = playerType;
+        if (userAgent) importConfig.userAgent = userAgent;
+        if (group) importConfig.group = group;
+        if (Object.keys(importConfig).length > 0) data.importConfig = importConfig;
       } else if (type === 'export') {
         const groupsSelect = document.getElementById('taskGroups');
         const selectedGroups = Array.from(groupsSelect.selectedOptions).map(opt => opt.value);

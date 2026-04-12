@@ -748,8 +748,9 @@ class SourceController {
   }
 
   // 从 M3U URL 导入频道
-  async _importChannelsFromM3U(url, sourceId, userAgent = null) {
+  async _importChannelsFromM3U(url, sourceId, userAgent = null, importOptions = {}) {
     const Channel = require('../models/Channel');
+    const { proxyMode: optProxyMode, playerType: optPlayerType, group: optGroup } = importOptions;
 
     try {
       const content = await this._fetchContent(url, userAgent);
@@ -833,17 +834,24 @@ class SourceController {
         if (line.startsWith('#') || line.startsWith('<')) continue;
 
         // 这是一个 URL 行
-        const channelUrl = line;
+        // 构建频道数据
+        let channelUrl = line;
+        // 代理模式：auto/proxy 重写为代理 URL
+        const effectiveProxyMode = optProxyMode || '';
+        if (effectiveProxyMode === 'proxy' || effectiveProxyMode === 'auto') {
+          channelUrl = `/m3u-proxy?url=${encodeURIComponent(line)}`;
+        }
+        const effectivePlayerType = optPlayerType || '';
         const name = pendingName || `频道 ${channels.length + 1}`;
 
-        // 构建频道数据
         const channelData = {
           name,
           url: channelUrl,
           sourceId: sourceId,
-          group: pendingGroup,
+          group: optGroup || pendingGroup || '未分组',
           streamType: 'auto',
-          playerType: 'auto'
+          playerType: effectivePlayerType || 'auto',
+          proxyMode: effectiveProxyMode || 'auto'
         };
 
         // 添加 tvg-id 和 tvg-logo
