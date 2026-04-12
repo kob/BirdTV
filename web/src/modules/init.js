@@ -257,6 +257,10 @@ async function selectChannel(elements, index, autoplay) {
     if (index < 0 || index >= state.channels.length) return;
     state.currentIndex = index;
     const source = state.channels[index];
+    // 让搜索框失去焦点，避免输入法等干扰后续操作
+    if (elements.searchInput && document.activeElement === elements.searchInput) {
+        elements.searchInput.blur();
+    }
     fillForm(elements, source);
     renderPlaylist(elements);
     updateCurrentInfo(elements, source);
@@ -366,7 +370,7 @@ function renderPlaylist(elements) {
     const keyword = (elements.searchInput?.value || '').trim().toLowerCase();
     const filtered = state.channels.map((source, index) => ({ source, index })).filter(({ source }) => source.name.toLowerCase().includes(keyword));
     if (elements.playlist) elements.playlist.innerHTML = "";
-    if (elements.channelCount) elements.channelCount.textContent = `${state.channels.length} 个`;
+    if (elements.channelCount) elements.channelCount.textContent = keyword ? `${filtered.length} / ${state.channels.length} 个` : `${state.channels.length} 个`;
     filtered.forEach(({ source, index }) => {
         const item = document.createElement("div");
         item.className = `playlist-item${index === state.currentIndex ? " active" : ""}`;
