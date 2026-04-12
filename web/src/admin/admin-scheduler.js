@@ -18,7 +18,10 @@
         const tasks = res.data || [];
         const statusEl = document.getElementById('schedulerStatus');
         if (res.status) {
-          statusEl.textContent = `调度器运行中 · ${res.status.activeTasks} 个活跃任务`;
+          const tzInfo = res.status.timezone ? `${res.status.timezone} (${res.status.timezoneOffset})` : res.status.timezoneOffset || '';
+          const timeInfo = res.status.serverTimeLocal || '';
+          statusEl.innerHTML = `调度器运行中 · ${res.status.activeTasks} 个活跃任务` +
+            (tzInfo ? `<br><span style="font-size:11px;color:var(--muted);">服务器时区: ${esc(tzInfo)} · 当前时间: ${esc(timeInfo)}</span>` : '');
         }
 
         if (!tasks.length) {

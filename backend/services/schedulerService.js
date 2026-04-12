@@ -365,9 +365,20 @@ class SchedulerService {
    * 获取调度器状态摘要
    */
   getStatus() {
+    const now = new Date();
+    const tzOffset = -now.getTimezoneOffset();
+    const tzHours = Math.floor(Math.abs(tzOffset) / 60);
+    const tzMins = Math.abs(tzOffset) % 60;
+    const tzSign = tzOffset >= 0 ? '+' : '-';
+    const tzString = `UTC${tzSign}${String(tzHours).padStart(2, '0')}:${String(tzMins).padStart(2, '0')}`;
+    const tzName = Intl.DateTimeFormat().resolvedOptions().timeZone || tzString;
     return {
       running: this.running,
       activeTasks: this.timers.size,
+      serverTime: now.toISOString(),
+      serverTimeLocal: now.toLocaleString('zh-CN', { hour12: false }),
+      timezone: tzName,
+      timezoneOffset: tzString,
       tasks: Array.from(this.timers.entries()).map(([id, timer]) => ({
         id,
         nextRunIn: Math.max(0, timer.nextRun - Date.now())
