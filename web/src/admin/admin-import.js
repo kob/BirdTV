@@ -1,4 +1,43 @@
     // ========== 导入菜单 ==========
+    const IMPORT_UA_PRESETS = [
+      { name: "默认 (okhttp)", value: "okhttp" },
+      { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
+      { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+      { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+      { name: "curl", value: "curl/8.4.0" }
+    ];
+    const IMPORT_PROXY_OPTIONS = `<option value="">保持原始</option><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option>`;
+    const IMPORT_PLAYER_OPTIONS = `<option value="">保持原始</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option>`;
+    const IMPORT_UA_OPTIONS = `<option value="">保持原始</option>${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}">${esc(ua.name)}</option>`).join('')}`;
+
+    /**
+     * 构建导入频道对象（统一逻辑）
+     * @param {object} cb - checkbox 元素（含 dataset）
+     * @param {object} opts - { proxyMode, playerType, userAgent, group }
+     * @returns {object} channel
+     */
+    function buildImportChannel(cb, opts) {
+      const { proxyMode, playerType, userAgent, group } = opts;
+      let channelUrl = cb.dataset.url || '';
+      if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url || '')}`;
+      const channel = {
+        name: cb.dataset.name || '',
+        url: channelUrl,
+        group: group || cb.dataset.group || '未分组',
+        streamType: cb.dataset.streamtype || 'auto'
+      };
+      if (proxyMode) channel.proxyMode = proxyMode;
+      if (cb.dataset.tvgid) channel.tvgId = cb.dataset.tvgid;
+      if (cb.dataset.tvglogo) channel.tvgLogo = cb.dataset.tvglogo;
+      // playerType: 用户选择优先，否则用原始值
+      channel.playerType = playerType || cb.dataset.playertype || 'auto';
+      // userAgent: 用户选择优先，否则用原始值
+      channel.userAgent = userAgent || cb.dataset.useragent || '';
+      if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
+      if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
+      return channel;
+    }
+
     function showImportMenuModal() {
       showModal('导入频道', `
         <div style="display:flex;flex-direction:column;gap:16px;padding:20px 0;">
@@ -20,13 +59,6 @@
 
     // ========== 导入频道 ==========
     function showManualImportModal() {
-      const UA_PRESETS = [
-        { name: "默认 (okhttp)", value: "okhttp" },
-        { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
-        { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
-        { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
-        { name: "curl", value: "curl/8.4.0" }
-      ];
       showModal('导入频道', `
         <div style="padding:16px 0;">
           <div class="form-group">
@@ -36,11 +68,11 @@
           </div>
           <div class="form-row">
             <div class="form-group"><label>默认分组</label><input type="text" id="manualImportGroup" placeholder="未分组" style="width:100%;"></div>
-            <div class="form-group"><label>代理模式</label><select id="manualImportProxyMode" style="width:100%;"><option value="">保持原始</option><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+            <div class="form-group"><label>代理模式</label><select id="manualImportProxyMode" style="width:100%;">${IMPORT_PROXY_OPTIONS}</select></div>
           </div>
           <div class="form-row">
-            <div class="form-group"><label>播放器</label><select id="manualImportPlayer" style="width:100%;"><option value="">保持原始</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option></select></div>
-            <div class="form-group"><label>User Agent</label><select id="manualImportUA" style="width:100%;"><option value="">保持原始</option>${UA_PRESETS.map(ua => `<option value="${esc(ua.value)}">${esc(ua.name)}</option>`).join('')}</select></div>
+            <div class="form-group"><label>播放器</label><select id="manualImportPlayer" style="width:100%;">${IMPORT_PLAYER_OPTIONS}</select></div>
+            <div class="form-group"><label>User Agent</label><select id="manualImportUA" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
           </div>
           <div id="manualFilePreview" style="display:none;margin-top:16px;">
             <h4 style="margin-bottom:12px;">频道预览</h4>
@@ -125,23 +157,7 @@
       allItems.forEach((item) => {
         const cb = item.querySelector('input[type="checkbox"]');
         if (cb && cb.checked) {
-          let channelUrl = cb.dataset.url || '';
-          if (importProxy === 'proxy' || importProxy === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url || '')}`;
-          const channel = {
-            name: cb.dataset.name || '',
-            url: channelUrl,
-            group: importGroup || cb.dataset.group || '未分组',
-            streamType: cb.dataset.streamtype || 'auto'
-          };
-          if (importProxy) channel.proxyMode = importProxy;
-          if (cb.dataset.tvgid) channel.tvgId = cb.dataset.tvgid;
-          if (cb.dataset.tvglogo) channel.tvgLogo = cb.dataset.tvglogo;
-          if (cb.dataset.playertype) channel.playerType = cb.dataset.playertype;
-          if (cb.dataset.useragent) channel.userAgent = cb.dataset.useragent;
-          if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
-          if (importPlayer) channel.playerType = importPlayer;
-          if (importUA) channel.userAgent = importUA;
-          channelsToImport.push(channel);
+          channelsToImport.push(buildImportChannel(cb, { proxyMode: importProxy, playerType: importPlayer, userAgent: importUA, group: importGroup }));
         }
       });
       
@@ -189,20 +205,26 @@
 
           showModal('从节目源导入频道 - ' + esc(source.name), `
             <div id="importFormArea">
-            <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;">
-              <option value="auto" ${proxyMode === 'auto' ? 'selected' : ''}>自动</option>
-              <option value="proxy" ${proxyMode === 'proxy' ? 'selected' : ''}>代理</option>
-              <option value="direct" ${proxyMode === 'direct' ? 'selected' : ''}>直连</option>
-            </select></div>
-            <div class="form-group"><label>默认播放器</label><select id="sourcePlayerType" style="width:100%;">
-              <option value="auto" ${defaultPlayerType === 'auto' ? 'selected' : ''}>自动</option>
-              <option value="vlc-proxy" ${defaultPlayerType === 'vlc-proxy' ? 'selected' : ''}>VLC代理</option>
-              <option value="vlc-direct" ${defaultPlayerType === 'vlc-direct' ? 'selected' : ''}>VLC直连</option>
-              <option value="shaka" ${defaultPlayerType === 'shaka' ? 'selected' : ''}>Shaka</option>
-              <option value="hls" ${defaultPlayerType === 'hls' ? 'selected' : ''}>HLS</option>
-              <option value="mpegts" ${defaultPlayerType === 'mpegts' ? 'selected' : ''}>MPEG-TS</option>
-              <option value="native" ${defaultPlayerType === 'native' ? 'selected' : ''}>Native</option>
-            </select></div>
+            <div class="form-row">
+              <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;">
+                <option value="auto" ${proxyMode === 'auto' ? 'selected' : ''}>自动</option>
+                <option value="proxy" ${proxyMode === 'proxy' ? 'selected' : ''}>代理</option>
+                <option value="direct" ${proxyMode === 'direct' ? 'selected' : ''}>直连</option>
+              </select></div>
+              <div class="form-group"><label>默认播放器</label><select id="sourcePlayerType" style="width:100%;">
+                <option value="auto" ${defaultPlayerType === 'auto' ? 'selected' : ''}>自动</option>
+                <option value="vlc-proxy" ${defaultPlayerType === 'vlc-proxy' ? 'selected' : ''}>VLC代理</option>
+                <option value="vlc-direct" ${defaultPlayerType === 'vlc-direct' ? 'selected' : ''}>VLC直连</option>
+                <option value="shaka" ${defaultPlayerType === 'shaka' ? 'selected' : ''}>Shaka</option>
+                <option value="hls" ${defaultPlayerType === 'hls' ? 'selected' : ''}>HLS</option>
+                <option value="mpegts" ${defaultPlayerType === 'mpegts' ? 'selected' : ''}>MPEG-TS</option>
+                <option value="native" ${defaultPlayerType === 'native' ? 'selected' : ''}>Native</option>
+              </select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>User Agent</label><select id="sourceUserAgent" style="width:100%;"><option value="">保持原始</option>${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}" ${sourceUserAgent === ua.value ? 'selected' : ''}>${esc(ua.name)}</option>`).join('')}</select></div>
+              <div class="form-group"><label>默认分组</label><input type="text" id="sourceImportGroup" placeholder="未分组" style="width:100%;"></div>
+            </div>
             <input type="hidden" id="importSourceId" value="${defaultSourceId}">
             <input type="hidden" id="importSourceUserAgent" value="${esc(sourceUserAgent)}">
             <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
@@ -230,7 +252,14 @@
           showModal('从节目源导入频道', `
             <div id="importFormArea">
             <div class="form-group"><label>选择节目源 *</label><select id="importSourceSelect"><option value="">-- 请选择节目源 --</option>${sourceOptions}</select></div>
-            <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;"><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+            <div class="form-row">
+              <div class="form-group"><label>代理模式</label><select id="sourceProxyMode" style="width:100%;"><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+              <div class="form-group"><label>默认播放器</label><select id="sourcePlayerType" style="width:100%;">${IMPORT_PLAYER_OPTIONS}</select></div>
+            </div>
+            <div class="form-row">
+              <div class="form-group"><label>User Agent</label><select id="sourceUserAgent" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
+              <div class="form-group"><label>默认分组</label><input type="text" id="sourceImportGroup" placeholder="未分组" style="width:100%;"></div>
+            </div>
             <input type="hidden" id="importSourceId" value="">
             <input type="hidden" id="importSourceUserAgent" value="">
             <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
@@ -256,7 +285,14 @@
     function importChannelsFromFile() {
       showModal('从文件导入频道', `
         <div class="form-group"><label>选择M3U文件 *</label><input type="file" id="m3uFile" accept=".m3u,.m3u8" style="padding:8px 0;"><p style="font-size:12px;color:var(--muted);margin-top:4px;">支持 .m3u 和 .m3u8 格式</p></div>
-        <div class="form-group"><label>代理模式</label><select id="fileProxyMode" style="width:100%;"><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>代理模式</label><select id="fileProxyMode" style="width:100%;">${IMPORT_PROXY_OPTIONS}</select></div>
+          <div class="form-group"><label>播放器</label><select id="filePlayerType" style="width:100%;">${IMPORT_PLAYER_OPTIONS}</select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>User Agent</label><select id="fileUserAgent" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
+          <div class="form-group"><label>默认分组</label><input type="text" id="fileImportGroup" placeholder="未分组" style="width:100%;"></div>
+        </div>
         <div id="fileChannelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="fileChannelListContent"></div></div>
       `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn" id="loadFileChannelsBtn" onclick="loadFileChannels()">解析文件</button><button class="btn btn-primary" id="importFileBtn" onclick="doImportFileChannels()" style="display:none;">导入选中</button>`);
     }
@@ -319,15 +355,11 @@
       const checkboxes = document.querySelectorAll('.import-file-channel-checkbox:checked');
       if (checkboxes.length === 0) { toast('请选择要导入的频道', 'error'); return; }
       const proxyMode = document.getElementById('fileProxyMode').value;
+      const playerType = document.getElementById('filePlayerType')?.value || '';
+      const userAgent = document.getElementById('fileUserAgent')?.value || '';
+      const group = (document.getElementById('fileImportGroup')?.value || '').trim();
 
-      const channelsToImport = Array.from(checkboxes).map(cb => {
-        let channelUrl = cb.dataset.url;
-        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
-        const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', streamType: cb.dataset.streamtype || 'auto', playerType: cb.dataset.playertype || 'auto', userAgent: cb.dataset.useragent || '', proxyMode };
-        if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
-        if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
-        return channel;
-      });
+      const channelsToImport = Array.from(checkboxes).map(cb => buildImportChannel(cb, { proxyMode, playerType, userAgent, group }));
 
       try {
         const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport }) });
@@ -400,7 +432,9 @@
       const totalCount = checkboxes.length;
       const sourceId = document.getElementById('importSourceId')?.value || document.getElementById('importSourceSelect')?.value;
       const proxyMode = document.getElementById('sourceProxyMode').value;
-      let sourcePlayerType = document.getElementById('sourcePlayerType')?.value || 'auto';
+      const playerType = document.getElementById('sourcePlayerType')?.value || '';
+      const userAgent = document.getElementById('sourceUserAgent')?.value || '';
+      const group = (document.getElementById('sourceImportGroup')?.value || '').trim();
 
       const formArea = document.getElementById('importFormArea');
       const progressArea = document.getElementById('importProgressArea');
@@ -431,11 +465,8 @@
 
       setStep(1);
       const channelsToImport = Array.from(checkboxes).map(cb => {
-        let channelUrl = cb.dataset.url;
-        if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url)}`;
-        const channel = { name: cb.dataset.name, url: channelUrl, group: cb.dataset.group || '', tvgId: cb.dataset.tvgid || '', tvgLogo: cb.dataset.tvglogo || '', proxyMode, playerType: cb.dataset.playertype || sourcePlayerType, streamType: cb.dataset.streamtype || 'auto', userAgent: cb.dataset.useragent || '', sourceId };
-        if (cb.dataset.drm) { try { const d = JSON.parse(cb.dataset.drm); if (d && Object.keys(d).length > 0) channel.drm = d; } catch (e) {} }
-        if (channel.playerType === 'shaka' && !channel.drm) { try { const ck = JSON.parse(cb.dataset.clearkeys || '{}'); if (Object.keys(ck).length > 0) channel.drm = { clearKeys: ck }; } catch (e) {} }
+        const channel = buildImportChannel(cb, { proxyMode, playerType, userAgent, group });
+        channel.sourceId = sourceId;
         return channel;
       });
 
