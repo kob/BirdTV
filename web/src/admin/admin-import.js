@@ -1,7 +1,6 @@
     // ========== 导入菜单 ==========
     const IMPORT_UA_PRESETS = [
       { name: "默认 (okhttp)", value: "okhttp" },
-      { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
       { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
       { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
       { name: "curl", value: "curl/8.4.0" }
@@ -213,8 +212,6 @@
               </select></div>
               <div class="form-group"><label>默认播放器</label><select id="sourcePlayerType" style="width:100%;">
                 <option value="auto" ${defaultPlayerType === 'auto' ? 'selected' : ''}>自动</option>
-                <option value="vlc-proxy" ${defaultPlayerType === 'vlc-proxy' ? 'selected' : ''}>VLC代理</option>
-                <option value="vlc-direct" ${defaultPlayerType === 'vlc-direct' ? 'selected' : ''}>VLC直连</option>
                 <option value="shaka" ${defaultPlayerType === 'shaka' ? 'selected' : ''}>Shaka</option>
                 <option value="hls" ${defaultPlayerType === 'hls' ? 'selected' : ''}>HLS</option>
                 <option value="mpegts" ${defaultPlayerType === 'mpegts' ? 'selected' : ''}>MPEG-TS</option>
@@ -534,7 +531,6 @@
         const allGroups = [...new Set([...groups, ...presetGroups])].sort();
         const UA_PRESETS = [
           { name: "默认 (okhttp)", value: "okhttp" },
-          { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
           { name: "MX Player", value: "MXPlayer/1.58.1" },
           { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
           { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },

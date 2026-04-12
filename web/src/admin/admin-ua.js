@@ -1,7 +1,6 @@
     // ========== UA 管理 ==========
     const UA_PRESETS = [
       { name: "默认 (okhttp)", value: "okhttp" },
-      { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
       { name: "MX Player", value: "MXPlayer/1.58.1" },
       { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
       { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },

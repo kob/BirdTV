@@ -20,7 +20,6 @@ import {
 import { pushDiagnosticEvent, toDiagnosticErrorCode, toDiagnosticErrorMessage, getCurrentPlaybackSnapshot } from './diagnostics.js';
 import { formatPlaybackError, explainPlaybackError } from './errors.js';
 import { getEffectiveUserAgent } from './ua.js';
-import { getEffectiveVlcLinkMode, updateVlcLinkModeLabel } from './channels.js';
 import { updateFallbackCooldownText } from './players/fallback.js';
 import { initShakaPlayer } from './shaka-init.js';
 
@@ -513,47 +512,6 @@ async function interruptCurrentPlayForSwitch() {
     await Promise.race([cleanupPromise, new Promise(resolve => setTimeout(resolve, 1500))]);
 }
 
-// ─── VLC 外部播放 ───
-
-async function launchVlcPlayback(source, url, decision = null) {
-    const { VLC_LAUNCH_TIMEOUT_MS } = await import('./constants.js');
-    const { unwrapProxySourceUrl: uwp, getProxyUrl: gpu } = await import('./proxy.js');
-    const sourceKind = String(decision?.sourceKind || '').trim();
-    const strategy = String(decision?.strategy || 'compat').trim();
-    const userAgent = String(source?.userAgent || '').trim();
-    const sourceVlcMode = String(source?.vlcLinkMode || '').trim();
-    const globalVlcMode = String(localStorage.getItem('tvplayer.vlcLinkMode') || '').trim();
-    const vlcMode = (sourceVlcMode === 'direct' || sourceVlcMode === 'proxy') ? sourceVlcMode : (globalVlcMode === 'direct' ? 'direct' : 'proxy');
-    const launchUrl = vlcMode === 'direct' ? (uwp(url) || url) : gpu(url, userAgent || null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), VLC_LAUNCH_TIMEOUT_MS);
-
-    try {
-        const response = await fetch('/vlc/launch', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: launchUrl, originalUrl: String(url || ''), sourceKind, strategy, vlcMode, userAgent: userAgent || undefined, networkCachingMs: 1800 }),
-            signal: controller.signal
-        });
-        let data = null;
-        try { data = await response.json(); } catch { data = null; }
-        if (!response.ok || !(data?.ok)) {
-            const message = (data?.error || data?.message) || `VLC 启动失败 (HTTP ${response.status})`;
-            const error = new Error(String(message));
-            error.code = 4701;
-            throw error;
-        }
-        return data;
-    } catch (error) {
-        if (error?.name === 'AbortError') {
-            const timeoutError = new Error('VLC 启动超时，请确认本机 VLC 可执行文件可用');
-            timeoutError.code = 4702;
-            throw timeoutError;
-        }
-        throw error;
-    } finally { clearTimeout(timer); }
-}
-
 // ─── 引擎决策 ───
 
 function getPlaybackEngineDecision(source) {
@@ -588,18 +546,9 @@ function getPlaybackEngineDecision(source) {
     if (effectivePlayerType && effectivePlayerType !== 'auto') {
         // 将 artplayer/hlsjs 转换为 hls，使用 ArtPlayer 播放
         let manual = (effectivePlayerType === 'art' || effectivePlayerType === 'artplayer' || effectivePlayerType === 'hlsjs' || effectivePlayerType === 'hls.js') ? 'hls' : effectivePlayerType;
-        if (effectivePlayerType === 'vlc-direct' || effectivePlayerType === 'vlc-proxy') {
-            manual = 'vlc';
-            // 根据源的代理模式或播放器类型设置 VLC 模式
-            if (effectivePlayerType === 'vlc-direct') {
-                source.vlcLinkMode = 'direct';
-            } else if (effectivePlayerType === 'vlc-proxy') {
-                source.vlcLinkMode = 'proxy';
-            } else if (sourceProxyMode === 'direct') {
-                source.vlcLinkMode = 'direct';
-            } else if (sourceProxyMode === 'proxy') {
-                source.vlcLinkMode = 'proxy';
-            }
+        // 兼容旧数据中的 vlc-proxy/vlc-direct，回退为 auto
+        if (effectivePlayerType === 'vlc-direct' || effectivePlayerType === 'vlc-proxy' || effectivePlayerType === 'vlc') {
+            manual = 'auto';
         }
         const reason = manualRaw ? 'manual_override' : 'source_default';
         console.log('[EngineDecision] 使用手动/源默认配置:', { engine: manual, playerType: manual, reason, originalType: effectivePlayerType });
@@ -665,7 +614,7 @@ function getPlaybackEngineDecision(source) {
 
 function resolveEngineExecutionPlan(engineDecision) {
     const playerType = engineDecision?.playerType || engineDecision?.engine || 'hls';
-    return { requestedEngine: engineDecision?.engine, requestedPlayerType: playerType, playerType, isVlcPlaceholderFallback: false, executionReason: engineDecision?.engine === 'vlc' ? 'vlc_bridge_launch' : 'direct_engine_execution' };
+    return { requestedEngine: engineDecision?.engine, requestedPlayerType: playerType, playerType, executionReason: 'direct_engine_execution' };
 }
 
 // ─── 状态更新 ───
@@ -686,7 +635,6 @@ function updateCurrentInfo(elements, source) {
         if (elements.currentUrl) elements.currentUrl.textContent = "-";
         if (elements.currentDrm) elements.currentDrm.textContent = "未配置";
         updateOrchestrationText(elements, null);
-        updateVlcLinkModeLabel(null, elements);
         updateFallbackCooldownText(null);
         if (elements.epgNow) elements.epgNow.textContent = "当前：-";
         if (elements.epgNowDesc) elements.epgNowDesc.textContent = "简介：-";
@@ -701,11 +649,6 @@ function updateCurrentInfo(elements, source) {
 
     let playerTypeText = '';
     switch (playerType) {
-        case 'vlc': {
-            const mode = getEffectiveVlcLinkMode(source, elements);
-            playerTypeText = mode === 'direct' ? '[VLC-直链]' : '[VLC-代理]';
-            break;
-        }
         case 'shaka': playerTypeText = '[MPD]'; break;
         case 'hls': playerTypeText = '[ART-HLS]'; break;
         case 'mpegts': playerTypeText = '[MPEGTS]'; break;
@@ -728,7 +671,6 @@ function updateCurrentInfo(elements, source) {
     if (elements.currentDrm) elements.currentDrm.textContent = hasClearKey ? "Clear Key" : (hasLicense ? "Widevine/PlayReady" : "无 DRM");
 
     updateOrchestrationText(elements, state.lastEngineDecision);
-    updateVlcLinkModeLabel(source, elements);
     updateFallbackCooldownText(source);
 }
 
@@ -885,17 +827,6 @@ export async function playSource(source, elements) {
                     tryAlternativePlayers(elements, source, 'native', nativeError);
                 }
             });
-        } else if (playerTypeCode === 'vlc') {
-            if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
-            const _artCon = document.getElementById('artplayer-container');
-            if (_artCon) _artCon.style.display = 'none';
-            const videoEl = document.getElementById("video");
-            try { videoEl.pause(); } catch {}
-            videoEl.removeAttribute('src'); videoEl.load(); videoEl.style.display = '';
-            state.currentPlayerType = 'vlc';
-            const launchResult = await launchVlcPlayback(source, actualUrl, engineDecision);
-            pushDiagnosticEvent(elements, { type: "vlc-launch", level: "info", player: "vlc", channel: source?.name || "", url: actualUrl, message: "VLC 启动成功", meta: { pid: launchResult?.pid, executable: launchResult?.executable } });
-            updateStatus(elements, `已交给 VLC 播放: ${source.name}`, "VLC外部");
         } else if (playerTypeCode === 'shaka') {
             if (state.artPlayer) { state.artPlayer.destroy(true); state.artPlayer = null; }
             if (state.hlsPlayer) { state.hlsPlayer.destroy(); state.hlsPlayer = null; }

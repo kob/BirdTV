@@ -40,7 +40,6 @@
       document.getElementById('testPlayreadyLicense').value = '';
       document.getElementById('testLicenseHeaders').value = '';
       document.getElementById('testPlayerType').value = 'auto';
-      document.getElementById('testVlcLinkMode').value = 'proxy';
       document.getElementById('testStreamType').value = 'auto';
       document.getElementById('testUserAgent').value = '';
       toast('已清空表单', 'info');
@@ -55,7 +54,6 @@
       const playreadyLicense = document.getElementById('testPlayreadyLicense').value.trim();
       const licenseHeadersStr = document.getElementById('testLicenseHeaders').value.trim();
       const playerType = document.getElementById('testPlayerType').value;
-      const vlcLinkMode = document.getElementById('testVlcLinkMode').value;
       const streamType = document.getElementById('testStreamType').value;
       const userAgent = document.getElementById('testUserAgent').value.trim();
 
@@ -97,7 +95,6 @@
       if (userAgent) channel.userAgent = userAgent;
       if (streamType && streamType !== 'auto') channel.streamType = streamType;
       if (playerType && playerType !== 'auto') channel.playerType = playerType;
-      if (vlcLinkMode === 'direct' || vlcLinkMode === 'proxy') channel.vlcLinkMode = vlcLinkMode;
 
       return channel;
     }

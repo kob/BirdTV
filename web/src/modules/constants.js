@@ -10,7 +10,6 @@ export const AUTO_EPG_URL_KEY = shared.AUTO_EPG_URL_KEY || "tvplayer.autoEpgUrl.
 export const SIDEBAR_COLLAPSED_KEY = shared.SIDEBAR_COLLAPSED_KEY || "tvplayer.sidebarCollapsed.v1";
 export const SIDEBAR_AUTO_COLLAPSE_WIDTH = shared.SIDEBAR_AUTO_COLLAPSE_WIDTH || 1180;
 export const GLOBAL_UA_KEY = shared.GLOBAL_UA_KEY || "tvplayer.globalUserAgent.v1";
-export const VLC_LINK_MODE_KEY = shared.VLC_LINK_MODE_KEY || "tvplayer.vlcLinkMode.v1";
 export const M3U_CONFIGS_KEY = shared.M3U_CONFIGS_KEY || "tvplayer.m3uConfigs.v1";
 export const EPG_CONFIGS_KEY = shared.EPG_CONFIGS_KEY || "tvplayer.epgConfigs.v1";
 
@@ -31,7 +30,6 @@ export const SHAKA_LOAD_TIMEOUT_MS = shared.SHAKA_LOAD_TIMEOUT_MS || 30000; // �
 export const SHAKA_PROXY_LOAD_TIMEOUT_MS = shared.SHAKA_PROXY_LOAD_TIMEOUT_MS || 10000; // 从 12s 降到 10s
 export const SHAKA_DIRECT_FIRST_TIMEOUT_MS = shared.SHAKA_DIRECT_FIRST_TIMEOUT_MS || 8000; // 从 12s 降到 8s，直连优先快速失败
 export const PLAY_REQUEST_DEDUP_MS = shared.PLAY_REQUEST_DEDUP_MS || 1200;
-export const VLC_LAUNCH_TIMEOUT_MS = shared.VLC_LAUNCH_TIMEOUT_MS || 9000;
 export const PROXY_HEALTH_TIMEOUT_MS = shared.PROXY_HEALTH_TIMEOUT_MS || 4500;
 export const PROXY_HEALTH_TTL_MS = shared.PROXY_HEALTH_TTL_MS || 60000;
 export const FALLBACK_ENGINE_COOLDOWN_BASE_MS = shared.FALLBACK_ENGINE_COOLDOWN_BASE_MS || 8000;

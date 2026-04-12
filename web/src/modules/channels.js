@@ -3,7 +3,7 @@
  */
 
 import { state } from './state.js';
-import { VLC_LINK_MODE_KEY, UHD_HINT_PATTERN, SHAKA_RETRY } from './constants.js';
+import { UHD_HINT_PATTERN, SHAKA_RETRY } from './constants.js';
 import { getConnectionMode } from './proxy.js';
 
 export function updatePlaybackModeLabel(elements) {
@@ -14,19 +14,6 @@ export function updatePlaybackModeLabel(elements) {
 
 export function getPlaybackMode() {
     return localStorage.getItem("tvplayer.playbackMode") || "auto";
-}
-
-export function getEffectiveVlcLinkMode(source = null, elements = {}) {
-    const sourceMode = String(source && source.vlcLinkMode || '').trim();
-    if (sourceMode === 'direct' || sourceMode === 'proxy') return sourceMode;
-    const selectedMode = String((elements.vlcLinkModeSelect && elements.vlcLinkModeSelect.value) || localStorage.getItem(VLC_LINK_MODE_KEY) || '').trim();
-    return selectedMode === 'direct' ? 'direct' : 'proxy';
-}
-
-export function updateVlcLinkModeLabel(source = null, elements = {}) {
-    if (!elements.vlcLinkModeText) return;
-    const mode = getEffectiveVlcLinkMode(source, elements);
-    elements.vlcLinkModeText.textContent = mode === 'direct' ? '直链' : '代理';
 }
 
 export function updateConnectionModeLabel(elements = {}) {

@@ -6,7 +6,7 @@
 import { state } from './state.js';
 import {
     GLOBAL_UA_KEY, DEFAULT_PROXY_UA, AUTO_M3U_URL_KEY, AUTO_EPG_URL_KEY,
-    DEMO_CHANNELS, VLC_LINK_MODE_KEY, M3U_CONFIGS_KEY, EPG_CONFIGS_KEY, UHD_HINT_PATTERN
+    DEMO_CHANNELS, M3U_CONFIGS_KEY, EPG_CONFIGS_KEY, UHD_HINT_PATTERN
 } from './constants.js';
 import { loadChannels, persistChannels } from './store.js';
 import { parseLicenseHeadersInput } from './drm.js';
@@ -31,8 +31,7 @@ import {
 } from './proxy.js';
 import {
     updatePlaybackModeLabel, getPlaybackMode,
-    updateVlcLinkModeLabel, updateConnectionModeLabel,
-    getEffectiveVlcLinkMode, applyPlaybackProfile
+    updateConnectionModeLabel, applyPlaybackProfile
 } from './channels.js';
 import {
     initGlobalUaSelect, bindGlobalUaSelect, handleLogout
@@ -276,7 +275,6 @@ function readFormSource(elements) {
     const userAgent = elements.userAgentInput ? elements.userAgentInput.value.trim() : "";
     const streamType = elements.streamTypeSelect ? normalizeStreamType(elements.streamTypeSelect.value, true) : 'auto';
     const playerType = elements.stagePlayerTypeSelect ? elements.stagePlayerTypeSelect.value : 'auto';
-    const vlcLinkMode = elements.vlcLinkModeSelect ? String(elements.vlcLinkModeSelect.value || '').trim() : '';
 
     if (!name || !url) {
         updateStatus(elements, "频道名称和播放地址不能为空", "参数缺失", true);
@@ -317,9 +315,10 @@ function readFormSource(elements) {
     if (userAgent) source.userAgent = userAgent;
     if (['mpd', 'ts', 'hls', 'unknown'].includes(streamType)) source.streamType = streamType;
     if (playerType && playerType !== 'auto') source.playerType = playerType;
-    if (playerType === 'vlc-direct') source.vlcLinkMode = 'direct';
-    else if (playerType === 'vlc-proxy') source.vlcLinkMode = 'proxy';
-    if (vlcLinkMode === 'direct' || vlcLinkMode === 'proxy') source.vlcLinkMode = vlcLinkMode;
+    // 兼容旧数据中的 vlc-proxy/vlc-direct，回退为 auto
+    if (playerType === 'vlc-direct' || playerType === 'vlc-proxy' || playerType === 'vlc') {
+        source.playerType = 'auto';
+    }
     return source;
 }
 
@@ -332,16 +331,10 @@ function fillForm(elements, source) {
         const st = normalizeStreamType(source.streamType, true);
         elements.streamTypeSelect.value = ['mpd', 'ts', 'hls', 'unknown'].includes(st) ? st : 'auto';
     }
-    if (elements.vlcLinkModeSelect) {
-        const mode = source.vlcLinkMode || localStorage.getItem(VLC_LINK_MODE_KEY) || 'proxy';
-        elements.vlcLinkModeSelect.value = mode === 'direct' ? 'direct' : 'proxy';
-    }
-    if (elements.vlcPathInput) elements.vlcPathInput.value = '';
-
     let safePlayerType = source.playerType || 'auto';
     if (['art', 'hlsjs'].includes(safePlayerType)) safePlayerType = 'hls';
-    if (safePlayerType === 'vlc') {
-        safePlayerType = String(source.vlcLinkMode || '').trim() === 'direct' ? 'vlc-direct' : 'vlc-proxy';
+    if (safePlayerType === 'vlc' || safePlayerType === 'vlc-direct' || safePlayerType === 'vlc-proxy') {
+        safePlayerType = 'auto';
     }
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = safePlayerType || 'auto';
 
@@ -364,12 +357,7 @@ function clearForm(elements) {
     if (elements.licenseHeadersInput) elements.licenseHeadersInput.value = "";
     if (elements.userAgentInput) elements.userAgentInput.value = "";
     if (elements.streamTypeSelect) elements.streamTypeSelect.value = "auto";
-    if (elements.vlcLinkModeSelect) {
-        elements.vlcLinkModeSelect.value = String(localStorage.getItem(VLC_LINK_MODE_KEY) || 'proxy') === 'direct' ? 'direct' : 'proxy';
-    }
-    if (elements.vlcPathInput) elements.vlcPathInput.value = '';
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = "auto";
-    updateVlcLinkModeLabel(null, elements);
 }
 
 function renderPlaylist(elements) {
@@ -384,21 +372,6 @@ function renderPlaylist(elements) {
         item.addEventListener("click", async () => { await selectChannel(elements, index, true); });
         elements.playlist.appendChild(item);
     });
-}
-
-// ─── VLC 强制模式播放 ───
-
-function playWithForcedVlcMode(elements, vlcMode) {
-    const source = readFormSource(elements);
-    if (!source) return;
-    source.playerType = vlcMode === 'direct' ? 'vlc-direct' : 'vlc-proxy';
-    source.vlcLinkMode = vlcMode;
-    if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = source.playerType;
-    if (elements.vlcLinkModeSelect) elements.vlcLinkModeSelect.value = vlcMode;
-    localStorage.setItem(VLC_LINK_MODE_KEY, vlcMode);
-    updateVlcLinkModeLabel(source, elements);
-    updateStatus(elements, `准备使用 VLC${vlcMode === 'direct' ? '直链' : '代理'}播放`, 'VLC 准备');
-    playSource(source, elements);
 }
 
 // ─── 事件绑定 ───
@@ -587,14 +560,6 @@ function bindEvents(elements) {
         const isLikelyUhd = UHD_HINT_PATTERN.test(`${sourceHint.name} ${sourceHint.url}`);
         const mode = getPlaybackMode();
         if (state.player) applyPlaybackProfile(elements, { isLikelyUhd, preferFallback: mode === "stable" });
-    });
-
-    // VLC 链接模式
-    elements.vlcLinkModeSelect?.addEventListener("change", () => {
-        const mode = elements.vlcLinkModeSelect.value === 'direct' ? 'direct' : 'proxy';
-        localStorage.setItem(VLC_LINK_MODE_KEY, mode);
-        const activeSource = (state.currentIndex >= 0 && state.currentIndex < state.channels.length) ? state.channels[state.currentIndex] : null;
-        updateVlcLinkModeLabel(activeSource, elements);
     });
 
     // 播放器类型

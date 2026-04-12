@@ -133,7 +133,7 @@ class SettingsController {
       const categories = [
         { id: 'general', name: '通用设置', items: ['language', 'theme', 'autoplay'] },
         { id: 'proxy', name: '代理设置', items: ['proxyEnabled', 'proxyUrl', 'timeout'] },
-        { id: 'player', name: '播放器设置', items: ['defaultPlayer', 'vlcPath', 'networkCache'] },
+        { id: 'player', name: '播放器设置', items: ['defaultPlayer', 'networkCache'] },
         { id: 'epg', name: 'EPG 设置', items: ['epgEnabled', 'defaultEpgSource'] },
         { id: 'cache', name: '缓存设置', items: ['cacheEnabled', 'cacheTtl'] },
         { id: 'security', name: '安全设置', items: ['authEnabled', 'sessionTimeout'] }

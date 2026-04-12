@@ -9,7 +9,7 @@ class M3uSource {
     this.name = data.name;
     this.url = data.url;
     this.importType = data.importType || 'auto'; // auto/mpd/ts/hls/unknown
-    this.defaultPlayerType = data.defaultPlayerType || 'auto'; // auto/vlc-proxy/vlc-direct/shaka/hls/mpegts/native
+    this.defaultPlayerType = data.defaultPlayerType || 'auto'; // auto/shaka/hls/mpegts/native
     this.proxyMode = data.proxyMode || 'auto'; // auto/proxy/direct
     this.userAgent = data.userAgent || ''; // 自定义UA，为空时使用全局默认
     this.enabled = data.enabled !== undefined ? data.enabled : true;

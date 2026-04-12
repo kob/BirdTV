@@ -454,7 +454,6 @@ class StorageService {
       proxyAuth: '',
       timeout: 30000,
       defaultPlayer: 'hls',
-      vlcPath: '',
       networkCache: 1000,
       epgEnabled: false,
       defaultM3uSource: '',

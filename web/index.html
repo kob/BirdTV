@@ -53,7 +53,6 @@
         window.BirdTVConstants = window.BirdTVConstants || {};
         window.BirdTVConstants.UA_PRESETS = [
             { name: "默认 (okhttp)", value: "okhttp" },
-            { name: "VLC for Android", value: "VLC/3.6.7 (Android; 12; Mobile) LibVLC/3.6.7" },
             { name: "MX Player", value: "MXPlayer/1.58.1" },
             { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
             { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
@@ -849,8 +848,6 @@
                             播放器
                             <select id="stagePlayerTypeSelect" style="width:auto;min-width:124px;padding:6px 30px 6px 10px;font-size:12px;">
                                 <option value="auto">自动</option>
-                                <option value="vlc-proxy">VLC代理</option>
-                                <option value="vlc-direct">VLC直链</option>
                                 <option value="shaka">Shaka</option>
                                 <option value="hls">Art(HLS)</option>
                                 <option value="mpegts">mpegts</option>
@@ -917,7 +914,6 @@
                 <div class="status-chip"><small>DRM</small><strong id="currentDrm">未配置</strong></div>
                 <div class="status-chip"><small>播放模式</small><strong id="modeText">自动</strong></div>
                 <!-- 连接模式显示已隐藏 - 完全服务端模式 -->
-                <div class="status-chip"><small>VLC链接</small><strong id="vlcLinkModeText">代理</strong></div>
                 <div class="status-chip"><small>编排</small><strong id="orchestrationText">-</strong></div>
                 <div class="status-chip"><small>冷却</small><strong id="fallbackCooldownText">-</strong></div>
                 <div class="status-chip"><small>分辨率</small><strong id="resolutionText">-</strong></div>
@@ -961,7 +957,7 @@
                     <div>MPD 可填完整地址，也可填相对路径；相对路径要求当前站点后面有反向代理或源站路由。</div>
                     <div>当前实现的是 Clear Key DRM，输入 KID 和 KEY 后会自动注入到 Shaka Player。</div>
                     <div>如果你有现成的频道数组，可以直接粘贴到"JSON 数据"里导入。</div>
-                    <div>VLC播放链接和节目类型是针对单个频道的设置；代理模式是全局设置，影响所有频道的代理行为。</div>
+                    <div>节目类型是针对单个频道的设置；代理模式是全局设置，影响所有频道的代理行为。</div>
                 </div>
             </details>
         </main>

@@ -88,7 +88,10 @@ export function normalizeSource(source) {
     if (source.sourceProxyMode) normalized.sourceProxyMode = source.sourceProxyMode;
     const streamType = normalizeStreamType(source.streamType, false);
     if (['mpd', 'ts', 'hls', 'unknown'].includes(streamType)) normalized.streamType = streamType;
-    if (['vlc', 'vlc-direct', 'vlc-proxy', 'shaka', 'hls', 'native', 'mpegts'].includes(source.playerType)) normalized.playerType = source.playerType;
+    if (['vlc', 'vlc-direct', 'vlc-proxy', 'shaka', 'hls', 'native', 'mpegts'].includes(source.playerType)) {
+        // vlc/vlc-direct/vlc-proxy 旧数据兼容，回退为 auto
+        normalized.playerType = ['vlc', 'vlc-direct', 'vlc-proxy'].includes(source.playerType) ? 'auto' : source.playerType;
+    }
     if (source.catchup || source.catchupSource) {
         normalized.catchup = source.catchup || "default";
         if (source.catchupSource) normalized.catchupSource = source.catchupSource;
