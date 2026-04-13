@@ -1,177 +1,118 @@
 # BirdTV
 
-现代化的 IPTV 播放器系统，包含完整的前端播放器、后台管理系统和移动端界面。支持 M3U 播放列表、频道管理、EPG 电子节目单、用户认证等功能。
+现代化 IPTV 播放器系统，包含完整的前端播放器、后台管理系统和移动端界面。支持 M3U 播放列表、频道管理、EPG 电子节目单、用户认证等功能。
 
-> **快速开始**：查看 [QUICK_START.md](./QUICK_START.md) 了解一键部署方案（PM2/Systemd/守护脚本）
->
-> **服务稳定性**：查看 [SERVICE_STABILITY_SOLUTION.md](./SERVICE_STABILITY_SOLUTION.md) 解决服务自动停止问题
->
-> **WAF 代理**：查看 [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md) 解决 Cloudflare 拦截问题
+## 功能特性
 
-## ✨ 功能特性
-
-### 📺 播放器
-- 支持多种流媒体格式：HLS、DASH、MP4、WebM、TS
-- 多种播放器内核：Shaka Player、ArtPlayer、HLS.js、mpegts.js
-- 智能播放器选择：根据流媒体类型自动选择最佳播放器
+### 播放器
+- 多种流媒体格式：HLS、DASH、MP4、WebM、TS
+- 多播放器内核：Shaka Player、ArtPlayer、HLS.js、mpegts.js
+- 智能播放器选择：根据流类型自动选择最佳播放器
 - DRM 支持：Widevine、PlayReady 许可证
-- 线路切换：支持多线路快速切换
-- 故障转移：播放失败自动切换到备用线路
-- 美观的 Luna 主题界面
-- 快速加载和响应
+- 线路切换 & 故障转移
+- Luna 主题界面
 
-### 🎛️ 后台管理
-- 完整的用户认证系统（JWT + KVRocks）
+### 后台管理
+- 用户认证（JWT + KVRocks）
 - 频道管理：CRUD、搜索、批量导入、批量操作
-- 源配置管理：M3U 源、EPG 源
-- EPG 电子节目单：独立管理，多种加载策略
-- 用户管理：角色权限、密码管理
-- 分组管理：预设分组 + 自定义分组
-- UA 管理：全局和频道级 User-Agent 设置
-- 系统设置：播放器、缓存、超时等
-- 导出管理：M3U 导出、导出记录
-- 链接管理：用户专属链接
+- 源配置：M3U 源、EPG 源
+- EPG 电子节目单：多种加载策略
+- 用户管理、分组管理、UA 管理
+- 系统设置、导出管理、链接管理
 
-### 📱 移动端
-- 简洁的移动端界面
-- 快速搜索频道
-- 收藏管理和播放记录
-- M3U 导入功能
-- 播放器设置
+### 移动端
+- 简洁触屏界面、快速搜索、收藏管理
+- 播放记录、M3U 导入、播放器设置
 
-### 🔧 API 服务
-- RESTful API 接口
-- CORS 支持
-- 数据持久化（KVRocks）
-- 自动缓存机制
+## 快速开始
 
-## 🚀 快速开始
+BirdTV **必须**配合 KVRocks（Redis 兼容数据库）使用。
 
-### 前置依赖
+### Docker Compose 一键部署（推荐）
 
-BirdTV **必须**配合 KVRocks（Redis 兼容数据库）使用，用于存储频道、认证、设置等所有业务数据。
+```bash
+# 1. 创建目录
+mkdir birdtv && cd birdtv
 
-| 依赖 | 最低版本 | 说明 |
-|------|----------|------|
-| Node.js | v18+ | 运行环境 |
-| KVRocks | v2.x | 数据持久化（Redis 协议兼容） |
+# 2. 创建 .env 文件
+cat > .env << 'EOF'
+AUTH_JWT_SECRET=替换为随机密钥
+EOF
+
+# 3. 下载 docker-compose.yml
+curl -O https://raw.githubusercontent.com/kob/birdtv/main/docker-compose.yml
+
+# 4. 启动
+docker compose up -d
+```
+
+生成随机密钥：`openssl rand -hex 32`
 
 ### 本地部署
 
-#### 1. 环境准备
-
-确保已安装 Node.js (推荐 v18+) 和 KVRocks：
+**前置依赖**：Node.js v18+、KVRocks v2.x
 
 ```bash
-node --version
-npm --version
-
-# Docker 方式安装 KVRocks（推荐）
+# 安装 KVRocks
 docker run -d --name kvrocks --restart unless-stopped \
   -p 6666:6666 -v kvrocks-data:/var/lib/kvrocks \
   apache/kvrocks:2.11.0
 
-# 或从源码编译安装 KVRocks
-# 参考：https://kvrocks.apache.org/docs/get-started/install/
-```
-
-#### 2. 安装依赖
-
-```bash
+# 安装 BirdTV
 cd BirdTV
 npm install
-```
-
-#### 3. 配置环境变量
-
-```bash
 cp .env.example .env
-# 编辑 .env 文件，必须配置 AUTH_REDIS_HOST 和 AUTH_JWT_SECRET
-```
-
-`.env` 必填项：
-
-```bash
-AUTH_JWT_SECRET=<随机密钥>      # openssl rand -hex 32 生成
-AUTH_REDIS_HOST=localhost        # KVRocks 地址
-AUTH_REDIS_PORT=6666             # KVRocks 端口
-```
-
-#### 4. 启动服务
-
-```bash
-# 方式一：使用 PM2（生产环境推荐）
-pm2 start ecosystem.config.js
-pm2 save
-pm2 startup  # 可选：开机自启
-
-# 方式二：使用 npm 命令
-npm run start:web:local
-
-# 方式三：直接启动
+# 编辑 .env，配置 AUTH_REDIS_HOST 和 AUTH_JWT_SECRET
 node birdtv.js
-
-# 方式四：使用启动脚本
-bash start.sh start
 ```
 
-> **推荐**：生产环境使用 PM2，支持自动重启、日志管理、内存监控。详见 [QUICK_START.md](./QUICK_START.md)
+### 访问服务
 
-#### 5. 访问服务
+| 页面 | 地址 |
+|------|------|
+| 前端播放器 | http://localhost:8771/ |
+| 后台管理 | http://localhost:8771/admin.html |
+| 移动端 | http://localhost:8771/mobile.html |
+| 登录页 | http://localhost:8771/login.html |
+| 健康检查 | http://localhost:8771/health |
 
-- **前端播放器**: http://localhost:8771/
-- **后台管理**: http://localhost:8771/admin.html
-- **移动端**: http://localhost:8771/mobile.html
-- **登录页面**: http://localhost:8771/login.html
-- **健康检查**: http://localhost:8771/health
+**默认账号**：`admin / admin123`（首次登录请修改密码）
 
-**默认账号**: `admin / admin123`（首次登录请修改密码）
-
-## 🐳 Docker 部署
-
-> 详细部署指南请查看 [DOCKER_DEPLOY.md](./DOCKER_DEPLOY.md)
->
-> Docker Compose 已内置 KVRocks 容器，一键启动即可，**无需手动配置数据库**。
+## Docker 部署
 
 ### 镜像信息
 
-- **镜像地址**: `ghcr.io/kob/birdtv:latest`
-- **基础镜像**: node:20-alpine
-- **架构支持**: linux/amd64, linux/arm64
-- **数据库**: KVRocks 2.11.0（Redis 兼容，自动随 Compose 启动）
+| 项目 | 说明 |
+|------|------|
+| 镜像 | `ghcr.io/kob/birdtv:latest` |
+| 基础镜像 | node:20-alpine |
+| 架构 | linux/amd64, linux/arm64 |
+| 数据库 | KVRocks 2.11.0（Redis 兼容，Compose 自动启动） |
 
-### 使用 Docker Compose（推荐）
+### Docker Compose（推荐）
 
 ```bash
-# 1. 克隆项目
-git clone https://github.com/kob/birdtv.git
-cd birdtv
+mkdir birdtv && cd birdtv
+curl -O https://raw.githubusercontent.com/kob/birdtv/main/docker-compose.yml
 
-# 2. 配置环境变量
-cp .env.example .env
-# 编辑 .env，修改 AUTH_JWT_SECRET（必须），AUTH_REDIS_HOST 不用改（Compose 内部自动连接）
+# 配置密钥
+echo "AUTH_JWT_SECRET=$(openssl rand -hex 32)" > .env
 
-# 3. 启动服务（BirdTV + KVRocks，自动管理依赖）
 docker compose up -d
-
-# 4. 查看日志
 docker compose logs -f birdtv
 ```
 
-### 使用 Docker 命令（需自行管理 KVRocks）
+### Docker 命令（需自行管理 KVRocks）
 
 ```bash
-# 1. 先启动 KVRocks
+# 1. 启动 KVRocks
 docker run -d --name kvrocks --restart unless-stopped \
   -p 6666:6666 -v kvrocks-data:/var/lib/kvrocks \
   apache/kvrocks:2.11.0
 
 # 2. 启动 BirdTV
-docker run -d \
-  --name birdtv \
-  --restart unless-stopped \
+docker run -d --name birdtv --restart unless-stopped \
   -p 8771:8771 \
-  -e AUTH_ENABLED=true \
   -e AUTH_JWT_SECRET=$(openssl rand -hex 32) \
   -e AUTH_REDIS_HOST=host.docker.internal \
   -e AUTH_REDIS_PORT=6666 \
@@ -179,48 +120,25 @@ docker run -d \
   ghcr.io/kob/birdtv:latest
 ```
 
-> **注意**: 独立 Docker 运行需要自行确保 KVRocks 已启动并可达。推荐使用 Docker Compose，自动管理两个容器的启动顺序和健康检查。
+## 部署场景
 
-## 📦 部署场景
-
-> Docker 部署详细指南请查看 [DOCKER_DEPLOY.md](./DOCKER_DEPLOY.md)
-
-### 1. Ubuntu / Debian 服务器
+### Ubuntu / Debian
 
 ```bash
-# 安装 Docker
 curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker $USER
-newgrp docker
+sudo usermod -aG docker $USER && newgrp docker
 
-# 克隆项目
-git clone https://github.com/kob/birdtv.git
-cd birdtv
+mkdir birdtv && cd birdtv
+curl -O https://raw.githubusercontent.com/kob/birdtv/main/docker-compose.yml
+echo "AUTH_JWT_SECRET=$(openssl rand -hex 32)" > .env
 
-# 配置环境变量
-cp .env.example .env
-# 修改 AUTH_JWT_SECRET 为随机密钥
-sed -i "s/change-me-in-production/$(openssl rand -hex 32)/" .env
-
-# 启动服务
 docker compose up -d
-
-# 查看服务状态
-docker compose ps
-
-# 查看日志
-docker compose logs -f birdtv
-
-# 配置防火墙
 sudo ufw allow 8771/tcp
 ```
-
-> **说明**: Docker Compose 自动启动 BirdTV + KVRocks 两个容器。KVRocks 是 Redis 兼容数据库，数据持久化在 Docker Volume 中。
 
 #### Nginx 反向代理 + HTTPS
 
 ```nginx
-# /etc/nginx/sites-available/birdtv
 server {
     listen 80;
     server_name your-domain.com;
@@ -254,42 +172,26 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d your-domain.com
 ```
 
-### 2. NAS 部署（Synology / QNAP）
+### NAS 部署
 
 **Synology 群晖 (DSM 7.2+)**：
-1. 打开 Container Manager → 项目
-2. 点击"新建"，选择"创建 docker-compose.yml"
-3. 项目名称填 `birdtv`
-4. 粘贴项目中的 `docker-compose.yml` 内容
-5. 根据需要修改端口映射和环境变量
-6. 点击"完成"部署（自动启动 BirdTV + KVRocks）
-7. 访问 `http://nas-ip:8771`
+1. Container Manager → 项目 → 新建
+2. 粘贴 `docker-compose.yml` 内容
+3. 修改端口和环境变量后部署
 
-**QNAP 威联通 (QuTS hero)**：
-1. 打开 Container Station → 应用程序
-2. 点击"创建"，粘贴 YAML 配置
-3. 确保端口 8771 和 6666 未被占用
-4. 点击"创建"后查看容器状态（两个容器：birdtv + kvrocks）
+**QNAP 威联通**：
+1. Container Station → 应用程序 → 创建
+2. 粘贴 YAML 配置，确保端口 8771 和 6666 未占用
 
-> **说明**: NAS 部署默认使用 Docker Volume 持久化 KVRocks 数据。确保 NAS 有足够存储空间。
-
-### 3. 软路由部署（OpenWrt / iStoreOS）
+### 软路由（OpenWrt / iStoreOS）
 
 ```bash
-# SSH 连接到路由器
 ssh root@192.168.1.1
-
-# 安装 Docker（需要 entware 或 opkg 源支持）
-opkg update
-opkg install docker dockerd docker-compose
+opkg update && opkg install docker dockerd docker-compose
 /etc/init.d/dockerd start && /etc/init.d/dockerd enable
 
-# 创建工作目录
 mkdir -p /root/birdtv && cd /root/birdtv
-
-# 创建 docker-compose.yml（含 KVRocks，约需 200MB 内存）
 cat > docker-compose.yml << 'EOF'
-version: "3.8"
 services:
   birdtv:
     image: ghcr.io/kob/birdtv:latest
@@ -323,188 +225,61 @@ services:
       retries: 5
 EOF
 
-# 启动
 docker compose up -d
 ```
 
-> **说明**: 软路由建议使用 `network_mode: host` 省去端口映射开销。内存建议 512MB+（KVRocks 约占 50-100MB）。
+> 软路由建议 `network_mode: host`，内存建议 512MB+。
 
-### 4. Railway
+### Railway
 
 ```bash
 npm install -g @railway/cli
-railway login
-railway init
+railway login && railway init
 
-# 创建 KVRocks 插件（Redis 协议兼容）
+# 创建 Redis 插件（KVRocks 兼容）
 railway add --plugin redis
 
-# 创建 BirdTV 服务（从 Dockerfile 构建）
-railway up
-
-# 或直接使用 Docker 镜像
+# 使用 Docker 镜像
 railway variables set RAILWAY_CONTAINER_IMAGE=ghcr.io/kob/birdtv:latest
-
-# 设置环境变量（Redis 插件会自动注入 AUTH_REDIS_HOST/PORT）
 railway variables set AUTH_ENABLED=true
 railway variables set AUTH_JWT_SECRET=$(openssl rand -hex 32)
 railway variables set PORT=8771
 
-# 部署
 railway up
-
-# 获取公网域名
 railway domain
 ```
 
-> **说明**: Railway 自动分配 HTTPS 域名。需使用 Redis 插件提供 KVRocks 兼容存储（免费套餐 30MB Redis）。
+### Hugging Face Spaces
 
-### 5. Google IDX
+1. 创建新 Space，SDK 选 **Docker**
+2. 在 Space Settings → Variables and secrets 添加 `AUTH_JWT_SECRET`
+3. 提交 `docker-compose.yml` 后自动部署
 
-```bash
-# 在 IDX 终端中执行
+### CloudBase 云开发
 
-# 克隆项目并启动
-git clone https://github.com/kob/birdtv.git
-cd birdtv
-cp .env.example .env
+1. 创建环境，开启云托管
+2. 创建 Redis 实例
+3. 创建云托管服务，选择镜像 `ghcr.io/kob/birdtv:latest`
+4. 配置环境变量：`AUTH_JWT_SECRET`、`AUTH_REDIS_HOST`、`AUTH_REDIS_PORT`、`PORT=8771`
 
-# 启动服务（含 KVRocks）
-docker compose up -d
-
-# 查看日志
-docker compose logs -f birdtv
-```
-
-> **说明**: IDX 自动创建端口转发，在 IDE 右上角 "Web Preview" → "Port 8771" 即可访问。
-
-### 6. Hugging Face Spaces
-
-1. 访问 [Hugging Face Spaces](https://huggingface.co/new-space)，创建新 Space
-2. SDK 选择 **Docker**，Space 名称填 `birdtv`
-
-在仓库中创建 `docker-compose.yml`：
-
-```yaml
-version: "3.8"
-services:
-  birdtv:
-    image: ghcr.io/kob/birdtv:latest
-    ports:
-      - "7860:8771"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8771
-      - AUTH_ENABLED=true
-      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET}
-      - AUTH_REDIS_HOST=kvrocks
-      - AUTH_REDIS_PORT=6666
-    depends_on:
-      - kvrocks
-    volumes:
-      - data:/app/data
-
-  kvrocks:
-    image: apache/kvrocks:2.11.0
-    volumes:
-      - kvrocks-data:/var/lib/kvrocks
-
-volumes:
-  data:
-  kvrocks-data:
-```
-
-在 Space Settings → Variables and secrets 中添加：
-- `AUTH_JWT_SECRET`: 随机密钥（`openssl rand -hex 32`）
-
-提交后自动构建部署，访问 `https://huggingface.co/spaces/your-username/birdtv`。
-
-### 7. SAP BTP (Cloud Foundry)
-
-```bash
-# 安装 CF CLI
-brew install cloudfoundry/tap/cf-cli  # macOS
-# 或参考 https://docs.cloudfoundry.org/cf-cli/install-go-cli.html
-
-# 登录
-cf login -a https://api.<region>.hana.ondemand.com -u <user> -p <pass> -o <org> -s <space>
-
-# 创建 Redis 服务实例
-cf create-service redis cloud redis-birdtv
-
-# 推送应用
-cf push birdtv \
-  --docker-image ghcr.io/kob/birdtv:latest \
-  --docker-username <github-user> \
-  --docker-password <github-pat> \
-  -m 512M -k 1G \
-  --no-start
-
-# 绑定 Redis
-cf bind-service birdtv redis-birdtv
-
-# 设置环境变量
-cf set-env birdtv AUTH_ENABLED true
-cf set-env birdtv AUTH_JWT_SECRET $(openssl rand -hex 32)
-cf set-env birdtv AUTH_REDIS_HOST $(cf env birdtv | grep VCAP_SERVICES -A5 | jq -r '.redis[0].credentials.hostname')
-cf set-env birdtv AUTH_REDIS_PORT $(cf env birdtv | grep VCAP_SERVICES -A5 | jq -r '.redis[0].credentials.port')
-cf set-env birdtv PORT 8080
-
-# 启动
-cf restage birdtv
-
-# 查看日志
-cf logs birdtv --recent
-```
-
-> **说明**: BTP 自动分配 HTTPS 路由。端口必须设为 `8080`（CF 默认暴露端口）。
-
-### 8. CloudBase 云开发
-
-1. 登录 [腾讯云 CloudBase](https://console.cloud.tencent.com/tcb)，创建环境
-2. 在环境设置中开启 **云托管**
-3. 在 CloudBase 中创建 Redis 实例（Redis 协议兼容 KVRocks）
-4. 上传 Docker 镜像到腾讯云容器镜像服务 (TCR)
-5. 创建云托管服务，选择镜像 `ghcr.io/kob/birdtv:latest`
-6. 设置环境变量：
-   - `AUTH_ENABLED=true`
-   - `AUTH_JWT_SECRET=<随机密钥>`
-   - `AUTH_REDIS_HOST=<Redis 内网地址>`
-   - `AUTH_REDIS_PORT=6379`
-   - `PORT=8771`
-7. 部署后 CloudBase 自动分配 HTTPS 域名
-
-## 📁 项目结构
+## 项目结构
 
 ```
 BirdTV/
 ├── backend/                    # 后端代码
-│   ├── auth.js                # 认证模块（JWT + bcrypt）
 │   ├── controllers/           # API 控制器
 │   ├── middleware/            # 中间件（认证、CORS）
-│   ├── services/              # 服务层（存储、Token）
-│   └── api-server.js         # API 服务器入口
+│   └── services/              # 服务层（存储、Token）
 ├── web/                       # 前端代码
-│   ├── src/modules/          # 功能模块（20+ JS 模块）
-│   ├── assets/               # 静态资源（CSS、图片）
-│   └── *.html                # 各页面
-├── data/                      # 数据目录（JSON 存储）
+│   ├── src/modules/          # 功能模块
+│   └── assets/               # 静态资源
 ├── birdtv.js                 # 主服务器入口
 ├── Dockerfile                # Docker 构建文件
 ├── docker-compose.yml        # Docker Compose 配置
-├── ecosystem.config.js       # PM2 配置
-├── daemon.sh                 # 守护进程脚本
-├── diagnose.sh               # 诊断工具
-├── deploy-service.sh         # 一键部署脚本
-├── start.sh                  # 启动脚本
-├── cloudflare-worker-unified.js  # Cloudflare Worker 代理
-├── package.json              # 项目配置
 └── .env.example              # 环境变量示例
 ```
 
-## ⚙️ 环境变量
-
-详细配置说明请参考 [.env.example](./.env.example)。
+## 环境变量
 
 ### 基础配置
 
@@ -518,7 +293,7 @@ BirdTV/
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
 | `AUTH_ENABLED` | `true` | 是否启用认证 |
-| `AUTH_JWT_SECRET` | `change-me-in-production` | JWT 密钥（生产环境必须修改） |
+| `AUTH_JWT_SECRET` | `change-me-in-production` | JWT 密钥（**生产环境必须修改**） |
 | `AUTH_TOKEN_EXPIRE_DAYS` | `7` | Token 有效期（天） |
 | `AUTH_DEFAULT_ADMIN` | `admin` | 默认管理员用户名 |
 | `AUTH_DEFAULT_PASSWORD` | `admin123` | 默认管理员密码 |
@@ -531,509 +306,140 @@ BirdTV/
 | `AUTH_REDIS_PORT` | `6666` | KVRocks 端口 |
 | `AUTH_REDIS_PASSWORD` | - | KVRocks 密码（可选） |
 
-> **必填**: BirdTV 必须连接 KVRocks 实例，未配置将无法启动。Docker Compose 方式自动管理连接。
+> Docker Compose 方式自动管理 KVRocks 连接，无需手动配置。
 
 ### 多实例隔离
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `BIRDTV_SYSTEM_ID` | `default` | 系统/实例标识（多实例部署时设置不同值） |
+| `BIRDTV_SYSTEM_ID` | `default` | 系统标识（多实例部署时设置不同值） |
 | `REDIS_DATA_PREFIX` | `birdtv:storage:` | 数据存储 key 前缀 |
 | `REDIS_PREFIX` | `birdtv` | 认证模块 key 前缀 |
-| `SERVER_ID` | `default` | 服务器标识（仅日志区分） |
 
 ### M3U 代理配置
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `M3U_REMOTE_BASE_URL` | - | 远程 M3U 源地址 |
-| `M3U_PROXY_TIMEOUT_MS` | `40000` | 代理请求超时时间（毫秒） |
-| `M3U_PROXY_REDIRECT_LIMIT` | `3` | 最大重定向跟随次数 |
+| `M3U_PROXY_TIMEOUT_MS` | `40000` | 代理请求超时（毫秒） |
+| `M3U_PROXY_REDIRECT_LIMIT` | `3` | 最大重定向次数 |
 | `M3U_PROXY_DEFAULT_UA` | `okhttp/4.3` | 默认 User-Agent |
 
 ### 高级配置（可选）
 
 | 变量名 | 默认值 | 说明 |
 |--------|--------|------|
-| `BIRDTV_STATIC_ROOT` | `./web` | 前端静态文件根目录 |
-| `BIRDTV_DATA_DIR` | `./data` | 数据存储目录 |
-| `BIRDTV_CACHE_ROOT` | `./files/cache` | 缓存文件目录 |
-| `BIRDTV_CACHE_M3U_TTL_MS` | `600000` | M3U 缓存过期时间（毫秒） |
-| `BIRDTV_CACHE_EPG_TTL_MS` | `3600000` | EPG 缓存过期时间（毫秒） |
-| `BIRDTV_ALLOWED_HOSTS` | - | 代理目标主机白名单（逗号分隔） |
 | `CLOUDFLARE_WORKER_URL` | - | Cloudflare Worker 代理地址 |
 | `BIRDTV_UPSTREAM_PROXY` | - | 上游 HTTP/HTTPS 代理地址 |
 
-## 📖 API 文档
+## API 文档
 
 ### 认证接口
 
 ```bash
-# 登录
-POST /api/auth/login
-{ "username": "admin", "password": "admin123" }
-
-# 登出
-POST /api/auth/logout
-Authorization: Bearer <token>
-
-# 获取用户信息
-GET /api/auth/userinfo
-Authorization: Bearer <token>
+POST /api/auth/login          # 登录
+POST /api/auth/logout         # 登出
+GET  /api/auth/userinfo       # 获取用户信息
 ```
 
 ### 频道接口
 
 ```bash
-# 获取频道列表
-GET /api/channels
-
-# 搜索频道
-GET /api/channels?search=keyword
-
-# 创建频道
-POST /api/channels
-{ "name": "CCTV-1", "url": "http://...", "streamType": "live" }
-
-# 更新频道
-PUT /api/channels/:id
-
-# 删除频道
-DELETE /api/channels/:id
-
-# 批量导入
-POST /api/channels/batch
-
-# 批量删除
-POST /api/channels/batch/delete
-
-# 批量更新
-POST /api/channels/batch/update
+GET    /api/channels              # 获取频道列表
+GET    /api/channels?search=keyword  # 搜索频道
+POST   /api/channels              # 创建频道
+PUT    /api/channels/:id          # 更新频道
+DELETE /api/channels/:id          # 删除频道
+POST   /api/channels/batch        # 批量导入
+POST   /api/channels/batch/delete # 批量删除
+POST   /api/channels/batch/update # 批量更新
 ```
 
 ### EPG 接口
 
 ```bash
-# 获取 EPG 频道列表
-GET /api/epg/channels
-
-# 创建 EPG 频道
-POST /api/epg/channels
-
-# 更新 EPG 频道
-PUT /api/epg/channels/:id
-
-# 删除 EPG 频道
-DELETE /api/epg/channels/:id
-
-# 批量设置分组
-POST /api/epg/batch-set-group
+GET    /api/epg/channels       # 获取 EPG 频道列表
+POST   /api/epg/channels       # 创建 EPG 频道
+PUT    /api/epg/channels/:id   # 更新 EPG 频道
+DELETE /api/epg/channels/:id   # 删除 EPG 频道
+POST   /api/epg/batch-set-group # 批量设置分组
 ```
 
 ### 源管理接口
 
 ```bash
-# 获取 M3U 源列表
-GET /api/sources/m3u
-
-# 创建 M3U 源
-POST /api/sources/m3u
-{ "name": "我的源", "url": "http://..." }
-
-# 更新 M3U 源
-PUT /api/sources/m3u/:id
-
-# 删除 M3U 源
-DELETE /api/sources/m3u/:id
-
-# 获取 EPG 源列表
-GET /api/sources/epg
-
-# 创建 EPG 源
-POST /api/sources/epg
-
-# 更新 EPG 源
-PUT /api/sources/epg/:id
-
-# 删除 EPG 源
-DELETE /api/sources/epg/:id
+GET    /api/sources/m3u        # 获取 M3U 源列表
+POST   /api/sources/m3u        # 创建 M3U 源
+PUT    /api/sources/m3u/:id    # 更新 M3U 源
+DELETE /api/sources/m3u/:id    # 删除 M3U 源
+GET    /api/sources/epg        # 获取 EPG 源列表
+POST   /api/sources/epg        # 创建 EPG 源
+PUT    /api/sources/epg/:id    # 更新 EPG 源
+DELETE /api/sources/epg/:id    # 删除 EPG 源
 ```
 
-### 设置接口
+### 设置 & 导出 & 链接接口
 
 ```bash
-# 获取设置
-GET /api/settings
-
-# 更新设置
-PUT /api/settings
-{ "defaultPlayer": "shaka", "cacheM3uTtl": 600000 }
-
-# 获取全局 UA
-GET /api/settings/ua/global
-
-# 更新全局 UA
-PUT /api/settings/ua/global
+GET  /api/settings             # 获取设置
+PUT  /api/settings             # 更新设置
+GET  /api/settings/ua/global   # 获取全局 UA
+PUT  /api/settings/ua/global   # 更新全局 UA
+GET  /api/exports              # 获取导出记录
+POST /api/exports              # 创建导出记录
+DELETE /api/exports/:id        # 删除导出记录
+GET  /api/links                # 获取链接列表
+POST /api/links                # 创建链接
+PUT  /api/links/:id            # 更新链接
+DELETE /api/links/:id          # 删除链接
 ```
 
-### 导出接口
-
-```bash
-# 获取导出记录列表
-GET /api/exports
-
-# 创建导出记录
-POST /api/exports
-
-# 删除导出记录
-DELETE /api/exports/:id
-```
-
-### 链接接口
-
-```bash
-# 获取链接列表
-GET /api/links
-
-# 创建链接
-POST /api/links
-
-# 更新链接
-PUT /api/links/:id
-
-# 删除链接
-DELETE /api/links/:id
-```
-
-## 🛠️ 常用命令
-
-### Docker 命令
+## 常用命令
 
 ```bash
 # 查看日志
-docker logs -f birdtv
+docker compose logs -f birdtv
 
 # 进入容器
 docker exec -it birdtv sh
 
-# 重启容器
-docker restart birdtv
+# 重启
+docker compose restart birdtv
 
 # 更新镜像
-docker pull ghcr.io/kob/birdtv:latest
-docker stop birdtv && docker rm birdtv
-# 然后使用新镜像启动容器
-```
+docker compose pull birdtv && docker compose up -d
 
-### 备份与恢复
-
-```bash
-# 备份 BirdTV 数据
-docker run --rm \
-  -v birdtv-data:/data \
-  -v $(pwd):/backup \
+# 备份数据
+docker run --rm -v birdtv-data:/data -v $(pwd):/backup \
   alpine tar czf /backup/birdtv-backup-$(date +%Y%m%d).tar.gz /data
-
-# 备份 KVRocks 数据
-docker run --rm \
-  -v birdtv-kvrocks-data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/kvrocks-backup-$(date +%Y%m%d).tar.gz /data
-
-# 恢复数据
-docker run --rm \
-  -v birdtv-data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/birdtv-backup-20240101.tar.gz -C /
 ```
 
-## 🔧 故障排查
-
-### 按钮无响应
-
-**症状**: 点击 `index.html` 页面上的任何按钮都没有反应。
-
-**解决方法**:
-1. 清除浏览器缓存（Ctrl + Shift + Delete）
-2. 硬刷新页面（Ctrl + Shift + R）
-3. 访问 `http://localhost:8771/debug.html` 进行诊断
-
-### 页面白屏
-
-**解决方法**:
-1. 打开浏览器开发者工具（F12）
-2. 查看 Console 标签页的错误信息
-3. 检查后端服务是否正常运行
-4. 查看 Network 标签页确认文件加载状态
-
-### 认证失败
-
-**解决方法**:
-1. 清除本地 Token：`localStorage.removeItem('authToken')`
-2. 重新登录
-3. 检查 `.env` 文件中的认证配置
-
-### 播放失败
-
-**解决方法**:
-1. 尝试切换播放器类型（自动 → HLS → Shaka → 原生）
-2. 调整代理模式（自动 → 直连 → 代理）
-3. 检查源地址是否有效
-
-### HTTPS 页面播放 HTTP 源失败（混合内容）
-
-**症状**: 在 HTTPS 部署的站点上，播放 HTTP 的直播源（尤其是 MPD/DASH）时加载失败。
-
-**说明**: 系统已内置 HTTP→HTTPS 自动升级机制。当检测到页面为 HTTPS 且源地址为 HTTP 时，会自动将源地址升级为 HTTPS 尝试直连播放，失败则回退到代理模式。此机制覆盖所有代理模式（直连/自动/代理）下的 DASH/MPD 源，以及非直连模式下的其他流类型。
-
-**解决方法**:
-1. 确认源站是否支持 HTTPS 访问（系统会自动尝试）
-2. 如源站不支持 HTTPS，将代理模式设为"代理"以走同源代理
-3. 检查浏览器控制台的 `dash-https-upgrade` 诊断日志了解升级过程
-
-### 端口被占用
-
-**解决方法**:
-```bash
-# 查找占用端口的进程
-lsof -i :8771  # Mac/Linux
-netstat -ano | findstr :8771  # Windows
-
-# 修改 .env 中的端口
-PORT=8772
-```
-
-### KVRocks 连接失败
-
-**症状**: 启动报错 `KVRocks 连接失败`，服务无法正常运行。
-
-**解决方法**:
-1. 确认 KVRocks 已启动并监听正确端口：
-
-```bash
-# 检查 KVRocks 是否运行
-docker ps | grep kvrocks
-# 或
-ss -tlnp | grep 6666
-
-# 测试连接
-redis-cli -p 6666 ping  # 应返回 PONG
-```
-
-2. 检查 `.env` 配置：
-
-```bash
-# 确认 AUTH_REDIS_HOST 和 AUTH_REDIS_PORT 正确
-grep AUTH_REDIS .env
-```
-
-3. Docker 方式重新部署 KVRocks：
-
-```bash
-docker run -d \
-  --name kvrocks \
-  --restart unless-stopped \
-  -p 6666:6666 \
-  -v kvrocks-data:/var/lib/kvrocks \
-  apache/kvrocks:2.11.0
-```
-
-> **KVRocks 文档**: https://kvrocks.apache.org/
-
-### 服务频繁自动停止（SAP BAS 等环境）
-
-**症状**: 服务运行一段时间后自动退出。
-
-**解决方法**:
-1. 使用 PM2 进程管理器（推荐）：
-```bash
-pm2 start ecosystem.config.js
-pm2 save
-```
-2. 或使用 Systemd 服务：
-```bash
-sudo cp birdtv.service /etc/systemd/system/
-sudo systemctl enable --now birdtv
-```
-3. 或使用守护脚本：
-```bash
-bash daemon.sh start
-```
-4. 运行诊断工具定位问题：
-```bash
-bash diagnose.sh
-```
-> **详见**: [SERVICE_STABILITY_SOLUTION.md](./SERVICE_STABILITY_SOLUTION.md)
-
-### Cloudflare WAF 拦截导致 403/520 错误
-
-**症状**: 部分请求返回 403 或 520 错误。
-
-**解决方法**:
-1. 配置 Cloudflare Worker 作为代理：
-```bash
-# 编辑 .env 文件
-CLOUDFLARE_WORKER_URL=https://your-worker.workers.dev
-
-# 重启服务
-pm2 restart birdtv
-```
-2. 部署 Worker 脚本：使用 `cloudflare-worker-unified.js`
-> **详见**: [CLOUDFLARE_WAF_SOLUTION.md](./CLOUDFLARE_WAF_SOLUTION.md)
-
-### 数据丢失
-
-**症状**: 重启后频道、设置等数据丢失。
-
-**解决方法**: 确保 KVRocks 数据卷正常挂载：
-
-```bash
-# 检查数据卷
-docker volume ls | grep kvrocks
-
-# 确认数据卷有数据
-docker run --rm -v birdtv-kvrocks-data:/data alpine ls -la /data/
-
-# 推荐使用 Docker Compose（自动管理数据卷和持久化）
-docker compose up -d
-```
-
-## 📊 数据模型
-
-### Channel（频道）
-
-```javascript
-{
-  id: string,           // 唯一标识
-  name: string,         // 频道名称
-  url: string,          // 播放地址
-  group: string,        // 分组
-  streamType: string,   // 流类型 (auto/mpd/ts/hls/unknown)
-  playerType: string,   // 播放器类型 (auto/shaka/hls/mpegts/native)
-  proxyMode: string,    // 代理模式 (auto/proxy/direct)
-  userAgent: string,    // User-Agent
-  drm: object,          // DRM 配置
-  tvgId: string,        // TVG ID
-  tvgLogo: string,      // TVG Logo
-  sourceId: string,     // 源 ID
-  createdAt: string,    // 创建时间
-  updatedAt: string     // 更新时间
-}
-```
-
-### EpgChannel（EPG 频道）
-
-```javascript
-{
-  id: string,           // 唯一标识
-  name: string,         // 频道名称
-  group: string,        // 分组
-  strategy: string,     // 加载策略 (auto/manual/custom/smart)
-  epgUrl: string,       // EPG 源 URL
-  epgChannelId: string, // EPG 频道 ID（用于匹配）
-  createdAt: string,    // 创建时间
-  updatedAt: string     // 更新时间
-}
-```
-
-### User（用户）
-
-```javascript
-{
-  id: string,           // 唯一标识
-  username: string,     // 用户名
-  password: string,     // 加密密码
-  role: string,         // 角色 (admin/user)
-  createdAt: string,    // 创建时间
-  updatedAt: string     // 更新时间
-}
-```
-
-## 💻 技术栈
-
-### 前端
-- **核心**: HTML5, CSS3, JavaScript (ES6+)
-- **播放器**: Shaka Player, ArtPlayer, HLS.js, mpegts.js
-- **UI 框架**: 原生 JavaScript + Luna 主题
-- **状态管理**: 自定义 Store 模式
-
-### 后端
-- **运行环境**: Node.js
-- **Web 框架**: 原生 HTTP 模块
-- **认证**: JWT + bcrypt + KVRocks
-- **数据存储**: KVRocks（Redis 兼容数据库）
-
-### 部署
-- **容器**: Docker + Docker Compose
-- **进程管理**: PM2
-- **反向代理**: Nginx, Caddy
-
-## 🔒 安全建议
-
-1. **修改默认密码**: 生产环境必须修改 `AUTH_DEFAULT_PASSWORD`
-2. **使用强密钥**: 生成随机 JWT_SECRET: `openssl rand -hex 32`
-3. **启用 HTTPS**: 使用 Nginx 或 Traefik 反向代理
-4. **限制访问**: 配置防火墙规则
-5. **定期备份**: 设置定时备份数据卷
-6. **更新镜像**: 定期拉取最新镜像更新
-
-## 📱 移动端使用
-
-### 访问地址
-
-手机访问：`https://your-domain.com/mobile.html`
-
-### 主要功能
-
-- 简洁界面：大按钮、大字体，适合触屏操作
-- 快速搜索：实时搜索频道名称
-- 收藏管理：一键收藏喜爱的频道
-- 播放记录：自动记录最近播放的频道
-- M3U 导入：支持 M3U 链接导入和手动添加
-- 播放器设置：支持 HLS、DASH、原生播放器
-
-### 网络要求
-
-- **WiFi**: 最佳体验
-- **4G/5G**: 流畅播放（1080p）
-- **3G**: 可能卡顿，建议使用稳定模式
-
-### 兼容性
-
-- **推荐浏览器**: Chrome 90+, Safari 14+, Edge 90+, Firefox 88+
-- **操作系统**: iOS 14+, Android 8+, Chrome OS
-
-## 📝 开发规范
-
-### Git 提交规范
-
-```
-feat: 新功能
-fix: 修复 bug
-docs: 文档更新
-style: 代码格式调整
-refactor: 重构代码
-test: 测试相关
-chore: 构建/工具链相关
-```
-
-### 代码风格
-
-- 使用 ESLint 进行代码检查
-- 使用 Prettier 进行代码格式化
-- 遵循 JavaScript ES6+ 规范
-
-## 🔗 相关链接
-
-- **GitHub 仓库**: https://github.com/your-repo/birdtv
-- **Docker Hub**: https://hub.docker.com/r/kob/birdtv
-- **GitHub Container Registry**: https://github.com/kob/birdtv/pkgs/container/birdtv
-
-## 📄 许可证
+## 故障排查
+
+| 问题 | 解决方法 |
+|------|----------|
+| 按钮无响应 | 清除浏览器缓存，硬刷新（Ctrl+Shift+R） |
+| 页面白屏 | F12 查看 Console 错误，检查后端是否运行 |
+| 认证失败 | `localStorage.removeItem('authToken')` 后重新登录 |
+| 播放失败 | 切换播放器类型或代理模式，检查源地址 |
+| HTTPS 播放 HTTP 源失败 | 系统已内置自动 HTTPS 升级；不支持 HTTPS 的源设为"代理"模式 |
+| 端口占用 | 修改 `.env` 中的 `PORT` |
+| KVRocks 连接失败 | 确认 KVRocks 运行：`redis-cli -p 6666 ping` |
+| 数据丢失 | 确保 KVRocks 数据卷正常挂载，使用 `docker compose` 部署 |
+
+## 安全建议
+
+1. **修改默认密码**：生产环境必须修改 `AUTH_DEFAULT_PASSWORD`
+2. **使用强密钥**：`openssl rand -hex 32` 生成 JWT_SECRET
+3. **启用 HTTPS**：使用 Nginx 反向代理
+4. **限制访问**：配置防火墙规则
+5. **定期备份**：定时备份数据卷
+
+## 技术栈
+
+- **前端**：HTML5 / CSS3 / JavaScript ES6+ / Shaka Player / HLS.js / mpegts.js
+- **后端**：Node.js / JWT + bcrypt / KVRocks（Redis 兼容）
+- **部署**：Docker / Docker Compose / PM2 / Nginx
+
+## 许可证
 
 MIT License
-
----
-
-**版本**: v3.5.0
-**更新日期**: 2026-04-05

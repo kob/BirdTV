@@ -56,7 +56,6 @@ export async function initShakaPlayer(elements) {
             bufferingGoal: 5, // 减少缓冲目标（8→5）
             bufferBehind: 20, // 减少后方缓冲区（30→20）
             ignoreTextStreamFailures: true
-            // 注：liveSyncDuration 和 liveSyncInterval 在 Shaka Player v4.x 中已移除
         },
         abr: { 
             enabled: true,
@@ -64,7 +63,10 @@ export async function initShakaPlayer(elements) {
             switchInterval: 2, // 减少切换间隔（默认 5，减少到 2）
             bandwidthDowngradeTarget: 0.95, // 带宽降级目标
             bandwidthUpgradeTarget: 0.85 // 带宽升级目标
-        }
+        },
+        // 使用 NativeTextDisplayer 支持图形字幕（位图字幕）渲染
+        // UITextDisplayer 仅支持纯文本字幕，无法渲染 image-based subtitles
+        textDisplayFactory: shaka.text.NativeTextDisplayer
     });
 
     const networkingEngine = state.player.getNetworkingEngine();
@@ -137,10 +139,23 @@ export async function initShakaPlayer(elements) {
         if (elements.statusText) elements.statusText.textContent = formatPlaybackError(detail);
     });
     
-    // 性能监控
+    // 性能监控 & 自动启用字幕
     state.player.addEventListener('loaded', () => {
         const loadTime = performance.now() - startTime;
         console.log(`[Shaka] 播放器加载完成，耗时：${loadTime.toFixed(0)}ms`);
+        // 自动启用字幕显示（图形字幕/文本字幕均需要显式开启）
+        try {
+            const textTracks = state.player.getTextTracks();
+            if (textTracks && textTracks.length > 0) {
+                if (!state.player.isTextTrackVisible()) {
+                    state.player.selectTextTrack(textTracks[0]);
+                    state.player.setTextTrackVisibility(true);
+                    console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
+                }
+            }
+        } catch (e) {
+            console.warn('[Shaka] 自动启用字幕失败:', e.message || e);
+        }
     });
     
     state.player.addEventListener('playing', () => {

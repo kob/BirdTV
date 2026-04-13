@@ -1,15 +1,11 @@
-version: "3.8"
-
 services:
   birdtv:
-    build: .
-    image: birdtv:latest
+    image: ghcr.io/kob/birdtv:latest
     container_name: birdtv
     restart: unless-stopped
     ports:
       - "${PORT:-8771}:8771"
     environment:
-      # 服务器
       - HOST=0.0.0.0
       - PORT=8771
       # 认证
@@ -18,7 +14,7 @@ services:
       - AUTH_TOKEN_EXPIRE_DAYS=${AUTH_TOKEN_EXPIRE_DAYS:-7}
       - AUTH_DEFAULT_ADMIN=${AUTH_DEFAULT_ADMIN:-admin}
       - AUTH_DEFAULT_PASSWORD=${AUTH_DEFAULT_PASSWORD:-admin123}
-      # KVRocks (Redis 兼容数据库)
+      # KVRocks
       - AUTH_REDIS_HOST=kvrocks
       - AUTH_REDIS_PORT=${AUTH_REDIS_PORT:-6666}
       - AUTH_REDIS_PASSWORD=${AUTH_REDIS_PASSWORD:-}
@@ -31,7 +27,7 @@ services:
       - M3U_PROXY_TIMEOUT_MS=${M3U_PROXY_TIMEOUT_MS:-40000}
       - M3U_PROXY_REDIRECT_LIMIT=${M3U_PROXY_REDIRECT_LIMIT:-3}
       - M3U_PROXY_DEFAULT_UA=${M3U_PROXY_DEFAULT_UA:-okhttp/4.3}
-      # Cloudflare Worker (WAF 代理)
+      # Cloudflare Worker
       - CLOUDFLARE_WORKER_URL=${CLOUDFLARE_WORKER_URL:-}
     volumes:
       - birdtv-data:/app/data
