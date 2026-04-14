@@ -203,7 +203,17 @@ export async function initShakaPlayer(elements) {
             // 检查是否嵌入在 MP4 中（没有 URL）
             if (!currentSubtitleUrl) {
                 console.log('[Shaka] 字幕嵌入在 MP4 容器中，无独立 URL');
-                console.log('[Shaka] 尝试从 manifest 深层结构获取字幕 segment URL...');
+                console.log('[Shaka] 尝试通过 createSegmentIndex 获取字幕数据...');
+                
+                // 首先尝试通过 createSegmentIndex 获取
+                await extractSubtitlesViaSegmentIndex(textStreams);
+                
+                if (currentCues.length > 0) {
+                    console.log('[Shaka] 通过 createSegmentIndex 成功获取字幕');
+                    return;
+                }
+                
+                console.log('[Shaka] createSegmentIndex 方法未获取到字幕，尝试 manifest 深层结构...');
                 
                 // 尝试获取 DASH manifest 中的 AdaptationSet
                 let subtitleSegmentUrl = null;
@@ -292,6 +302,71 @@ export async function initShakaPlayer(elements) {
             }
         } catch (e) {
             console.warn('[Shaka] 获取字幕失败:', e.message);
+        }
+    };
+    
+    // 尝试通过 Shaka 的 createSegmentIndex 获取字幕数据
+    const extractSubtitlesViaSegmentIndex = async (textStreams) => {
+        console.log('[Shaka] 尝试通过 createSegmentIndex 获取字幕...');
+        
+        for (let i = 0; i < textStreams.length; i++) {
+            const stream = textStreams[i];
+            
+            if (typeof stream.createSegmentIndex === 'function') {
+                console.log(`[Shaka] Stream[${i}] 有 createSegmentIndex 方法`);
+                
+                try {
+                    // 创建段索引
+                    await stream.createSegmentIndex();
+                    console.log(`[Shaka] Stream[${i}] 段索引创建成功`);
+                    
+                    // 获取段信息
+                    const getInitSegment = stream.getSegmentReference?.(0);
+                    if (getInitSegment) {
+                        console.log(`[Shaka] Stream[${i}] 初始段:`, getInitSegment);
+                    }
+                    
+                    // 尝试获取第一个字幕 segment
+                    const segmentRef = stream.getSegmentReference?.(1);
+                    if (segmentRef) {
+                        console.log(`[Shaka] Stream[${i}] Segment[1]:`, segmentRef);
+                        
+                        // 获取 segment 数据
+                        if (segmentRef.getUris && segmentRef.getUris().length > 0) {
+                            const segmentUrl = segmentRef.getUris()[0];
+                            console.log(`[Shaka] 正在获取字幕 segment: ${segmentUrl}`);
+                            
+                            const response = await fetch(segmentUrl);
+                            const arrayBuffer = await response.arrayBuffer();
+                            console.log(`[Shaka] 获取到字幕数据，大小: ${arrayBuffer.byteLength}`);
+                            
+                            // 使用 Shaka 的 TtmlTextParser 解析
+                            if (shaka.text && shaka.text.TtmlParser) {
+                                const parser = new shaka.text.TtmlParser();
+                                const parsedCues = parser.parseMedia(arrayBuffer, {
+                                    stream: stream,
+                                    manifestType: 'DASH'
+                                });
+                                console.log(`[Shaka] TtmlTextParser 解析 cue 数: ${parsedCues?.length || 0}`);
+                                
+                                if (parsedCues && parsedCues.length > 0) {
+                                    // 转换 cue 格式
+                                    for (const cue of parsedCues) {
+                                        currentCues.push({
+                                            startTime: cue.startTime,
+                                            endTime: cue.endTime,
+                                            text: cue.payload || ''
+                                        });
+                                    }
+                                    console.log(`[Shaka] 通过 TtmlTextParser 转换了 ${currentCues.length} 个 cue`);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[Shaka] Stream[${i}] 段索引创建失败:`, e.message);
+                }
+            }
         }
     };
     
