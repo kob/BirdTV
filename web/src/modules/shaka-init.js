@@ -159,24 +159,45 @@ export async function initShakaPlayer(elements) {
     const loadSubtitlesFromManifest = async () => {
         try {
             const manifest = state.player.getManifest?.();
-            if (!manifest) return;
+            if (!manifest) {
+                console.log('[Shaka] Manifest 获取失败');
+                return;
+            }
+            console.log('[Shaka] Manifest 获取成功');
             
+            // 尝试多种方式获取文本流
+            const textStreams = manifest?.textStreams || [];
+            console.log('[Shaka] manifest.textStreams:', textStreams.length);
+            
+            // 尝试从 variants 获取
             const variants = manifest?.variants || [];
             for (const variant of variants) {
                 if (variant.textStreams) {
                     for (const stream of variant.textStreams) {
-                        console.log('[Shaka] 文本流:', stream.mimeType, stream.language, stream.url ? '有URL' : '无URL');
+                        console.log('[Shaka] Variant文本流:', {
+                            mimeType: stream.mimeType,
+                            language: stream.language,
+                            url: stream.url ? '有URL' : '无URL',
+                            id: stream.id
+                        });
                         if (stream.url && !currentSubtitleUrl) {
                             currentSubtitleUrl = stream.url;
-                            console.log('[Shaka] 加载 TTML:', stream.url);
+                            console.log('[Shaka] 加载字幕文件:', stream.url);
                             const response = await fetch(stream.url);
-                            const ttmlContent = await response.text();
-                            currentCues = parseTTML(ttmlContent);
+                            const content = await response.text();
+                            currentCues = parseTTML(content);
                             console.log('[Shaka] 解析 TTML cue 数:', currentCues.length);
                             break;
                         }
                     }
                 }
+            }
+            
+            // 如果没有 URL 但有 textStreams，尝试通过 getActiveStream
+            if (!currentSubtitleUrl && textStreams.length > 0) {
+                console.log('[Shaka] 没有字幕 URL，尝试 getActiveStream');
+                const activeStream = state.player.getActiveStream?.();
+                console.log('[Shaka] ActiveStream:', activeStream);
             }
         } catch (e) {
             console.warn('[Shaka] 获取字幕失败:', e.message);
@@ -391,9 +412,40 @@ export async function initShakaPlayer(elements) {
     });
     
     state.player.addEventListener('textchanged', () => {
-        console.log('[Shaka] 文本流已改变');
+        console.log('[Shaka] ★ 文本流已改变');
         currentCues = [];
         startSubtitleLoop();
+        
+        // 尝试获取活跃流的信息
+        try {
+            const textTracks = state.player.getTextTracks();
+            for (const track of textTracks) {
+                if (track.active) {
+                    console.log('[Shaka] 活跃字幕轨道:', {
+                        type: track.type,
+                        mimeType: track.mimeType,
+                        language: track.language,
+                        label: track.label,
+                        id: track.id
+                    });
+                    
+                    // 尝试获取流对象
+                    const stream = state.player.getActiveStream?.();
+                    console.log('[Shaka] getActiveStream 结果:', stream);
+                    if (stream) {
+                        console.log('[Shaka] Stream 详情:', {
+                            id: stream.id,
+                            type: stream.type,
+                            mimeType: stream.mimeType,
+                            language: stream.language,
+                            url: stream.url ? '有URL' : '无URL'
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[Shaka] textchanged 诊断失败:', e.message);
+        }
     });
     
     // 延迟检查字幕状态
