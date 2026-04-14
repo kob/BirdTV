@@ -165,39 +165,48 @@ export async function initShakaPlayer(elements) {
             }
             console.log('[Shaka] Manifest 获取成功');
             
-            // 尝试多种方式获取文本流
+            // 直接遍历 manifest.textStreams
             const textStreams = manifest?.textStreams || [];
             console.log('[Shaka] manifest.textStreams:', textStreams.length);
             
-            // 尝试从 variants 获取
-            const variants = manifest?.variants || [];
-            for (const variant of variants) {
-                if (variant.textStreams) {
-                    for (const stream of variant.textStreams) {
-                        console.log('[Shaka] Variant文本流:', {
-                            mimeType: stream.mimeType,
-                            language: stream.language,
-                            url: stream.url ? '有URL' : '无URL',
-                            id: stream.id
-                        });
-                        if (stream.url && !currentSubtitleUrl) {
-                            currentSubtitleUrl = stream.url;
-                            console.log('[Shaka] 加载字幕文件:', stream.url);
-                            const response = await fetch(stream.url);
-                            const content = await response.text();
-                            currentCues = parseTTML(content);
-                            console.log('[Shaka] 解析 TTML cue 数:', currentCues.length);
-                            break;
-                        }
+            // 检查每个文本流
+            for (let i = 0; i < textStreams.length; i++) {
+                const stream = textStreams[i];
+                console.log(`[Shaka] 文本流[${i}]:`, {
+                    mimeType: stream.mimeType,
+                    language: stream.language,
+                    label: stream.label,
+                    url: stream.url ? stream.url.substring(0, 80) + '...' : '无URL',
+                    id: stream.id,
+                    type: stream.type
+                });
+                
+                // 如果有 URL，尝试加载
+                if (stream.url && !currentSubtitleUrl) {
+                    currentSubtitleUrl = stream.url;
+                    console.log('[Shaka] 加载字幕文件:', stream.url);
+                    try {
+                        const response = await fetch(stream.url);
+                        const content = await response.text();
+                        currentCues = parseTTML(content);
+                        console.log('[Shaka] 解析 TTML cue 数:', currentCues.length);
+                    } catch (e) {
+                        console.warn('[Shaka] 字幕加载失败:', e.message);
                     }
                 }
             }
             
-            // 如果没有 URL 但有 textStreams，尝试通过 getActiveStream
-            if (!currentSubtitleUrl && textStreams.length > 0) {
-                console.log('[Shaka] 没有字幕 URL，尝试 getActiveStream');
-                const activeStream = state.player.getActiveStream?.();
-                console.log('[Shaka] ActiveStream:', activeStream);
+            // 检查是否嵌入在 MP4 中（没有 URL）
+            if (!currentSubtitleUrl) {
+                console.log('[Shaka] 字幕嵌入在 MP4 容器中，无独立 URL');
+                console.log('[Shaka] 需要使用其他方法提取 MP4 中的字幕');
+                
+                // 尝试获取当前选中的字幕轨道
+                const textTracks = state.player.getTextTracks();
+                console.log('[Shaka] 当前字幕轨道数:', textTracks.length);
+                for (const track of textTracks) {
+                    console.log(`[Shaka] 轨道: ${track.label || track.language}, active=${track.active}`);
+                }
             }
         } catch (e) {
             console.warn('[Shaka] 获取字幕失败:', e.message);
