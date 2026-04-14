@@ -94,6 +94,9 @@ export async function initShakaPlayer(elements) {
         };
     };
     
+    // 字幕 URL 缓存
+    let currentSubtitleUrl = null;
+    
     // 尝试通过 TextEngine 设置 displayer
     console.log('[Shaka] 检查 TextEngine API...');
     console.log('[Shaka] getTextEngine 类型:', typeof state.player.getTextEngine);
@@ -110,12 +113,75 @@ export async function initShakaPlayer(elements) {
             console.log('[Shaka] 通过 TextEngine.setDisplayer 设置');
             textEngine.setDisplayer(createSubtitleDisplayer());
         } else {
-            console.log('[Shaka] TextEngine.setDisplayer 不可用，尝试覆盖 createTextDisplayer');
-            state.player.createTextDisplayer = createSubtitleDisplayer;
+            console.log('[Shaka] TextEngine 不可用');
         }
     } catch (e) {
         console.warn('[Shaka] TextEngine 设置失败:', e.message);
     }
+    
+    // 解析 TTML 时间格式
+    const parseTTMLTime = (timeStr) => {
+        if (!timeStr) return 0;
+        const match = timeStr.match(/(\d+):(\d+):(\d+(?:\.\d+)?)/);
+        if (match) {
+            return parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
+        }
+        return 0;
+    };
+    
+    // 解析 TTML XML
+    const parseTTML = (xmlString) => {
+        const cues = [];
+        try {
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(xmlString, 'text/xml');
+            const paragraphs = xml.querySelectorAll('p');
+            console.log('[Shaka] TTML 段落数:', paragraphs.length);
+            
+            paragraphs.forEach((p, index) => {
+                const startTime = parseTTMLTime(p.getAttribute('begin') || '0');
+                const endTime = parseTTMLTime(p.getAttribute('end') || '0');
+                const text = p.textContent?.trim() || '';
+                if (text) {
+                    cues.push({ startTime, endTime, text });
+                    if (index < 3) {
+                        console.log(`[Shaka] TTML cue[${index}]: ${startTime}s - ${endTime}s: "${text.substring(0, 30)}..."`);
+                    }
+                }
+            });
+        } catch (e) {
+            console.warn('[Shaka] TTML 解析失败:', e.message);
+        }
+        return cues;
+    };
+    
+    // 从 Manifest 获取字幕 URL 并加载
+    const loadSubtitlesFromManifest = async () => {
+        try {
+            const manifest = state.player.getManifest?.();
+            if (!manifest) return;
+            
+            const variants = manifest?.variants || [];
+            for (const variant of variants) {
+                if (variant.textStreams) {
+                    for (const stream of variant.textStreams) {
+                        console.log('[Shaka] 文本流:', stream.mimeType, stream.language, stream.url ? '有URL' : '无URL');
+                        if (stream.url && !currentSubtitleUrl) {
+                            currentSubtitleUrl = stream.url;
+                            console.log('[Shaka] 加载 TTML:', stream.url);
+                            const response = await fetch(stream.url);
+                            const ttmlContent = await response.text();
+                            currentCues = parseTTML(ttmlContent);
+                            console.log('[Shaka] 解析 TTML cue 数:', currentCues.length);
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[Shaka] 获取字幕失败:', e.message);
+        }
+    };
 
     // 创建字幕更新循环
     let subtitleLoopId = null;
@@ -284,6 +350,9 @@ export async function initShakaPlayer(elements) {
         
         // 启动字幕循环
         startSubtitleLoop();
+        
+        // 尝试从 Manifest 获取字幕 URL 并解析 TTML
+        loadSubtitlesFromManifest();
         
         // 调试字幕
         try {
