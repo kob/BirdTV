@@ -96,7 +96,8 @@ export async function initShakaPlayer(elements) {
                 rebufferingGoal: 5,
                 bufferingGoal: 5,
                 bufferBehind: 20,
-                ignoreTextStreamFailures: true
+                alwaysStreamTextOn: true, // 始终传输字幕流
+                ignoreTextStreamFailures: false // 不忽略字幕错误
             },
             abr: { 
                 enabled: true,
@@ -237,9 +238,65 @@ export async function initShakaPlayer(elements) {
         const textTracks = state.player.getTextTracks();
         for (let i = 0; i < textTracks.length; i++) {
             const track = textTracks[i];
-            console.log(`[Shaka] 轨道[${i}]: type=${track.type}, mimeType=${track.mimeType}`);
+            console.log(`[Shaka] 轨道[${i}]: type=${track.type}, mimeType=${track.mimeType}, active=${track.active}`);
         }
     });
+    
+    // 监听文本流变化
+    state.player.addEventListener('textchanged', () => {
+        console.log('[Shaka] 文本流已改变');
+        try {
+            const activeTextStream = state.player.getText();
+            console.log('[Shaka] 当前文本流:', activeTextStream);
+            console.log('[Shaka] 文本流 mimeType:', activeTextStream?.mimeType);
+            console.log('[Shaka] 文本流 language:', activeTextStream?.language);
+        } catch (e) {
+            console.warn('[Shaka] 获取文本流失败:', e.message);
+        }
+    });
+    
+    // 监听 adaptation 变化（轨道切换）
+    state.player.addEventListener('adaptation', () => {
+        console.log('[Shaka] Adaptation 事件触发');
+        const textTracks = state.player.getTextTracks();
+        console.log(`[Shaka] 当前字幕轨道数: ${textTracks.length}`);
+    });
+    
+    // 延迟检查字幕状态
+    setTimeout(() => {
+        console.log('[Shaka] === 延迟检查字幕状态 ===');
+        try {
+            const textTracks = state.player.getTextTracks();
+            console.log(`[Shaka] 字幕轨道数: ${textTracks.length}`);
+            
+            for (let i = 0; i < textTracks.length; i++) {
+                const track = textTracks[i];
+                console.log(`[Shaka] 轨道[${i}]: ${JSON.stringify({
+                    type: track.type,
+                    mimeType: track.mimeType,
+                    language: track.language,
+                    active: track.active
+                })}`);
+            }
+            
+            const container = containerEl?.querySelector('.shaka-text-container');
+            if (container) {
+                console.log(`[Shaka] 字幕容器 childCount: ${container.children.length}`);
+                console.log(`[Shaka] 字幕容器 innerHTML: "${container.innerHTML.substring(0, 200)}"`);
+            }
+            
+            // 检查 video.textTracks
+            if (videoEl?.textTracks) {
+                console.log(`[Shaka] video.textTracks 数量: ${videoEl.textTracks.length}`);
+                for (let i = 0; i < videoEl.textTracks.length; i++) {
+                    const vt = videoEl.textTracks[i];
+                    console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, language=${vt.language}`);
+                }
+            }
+        } catch (e) {
+            console.warn('[Shaka] 延迟检查失败:', e.message);
+        }
+    }, 5000);
     
     state.player.addEventListener('playing', () => {
         const playTime = performance.now() - startTime;
