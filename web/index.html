@@ -8,16 +8,15 @@
     <link rel="preconnect" href="https://cdnjs.cloudflare.com">
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
 
-    <!-- 预加载关键 CDN 资源 -->
-    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.3/shaka-player.compiled.min.js" as="script">
+    <!-- 预加载关键资源 -->
+    <link rel="preload" href="/shaka-player/shaka-player.ui.min.js?v=5.0.9" as="script">
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" as="script">
     <link rel="preload" href="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js" as="script">
     <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js" as="script">
     <link rel="preload" href="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js" as="script">
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.3/controls.min.css">
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.3/shaka-player.compiled.min.js" onerror="handleScriptError('Shaka Player')"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.16.3/shaka-player.ui.min.js" onerror="handleScriptError('Shaka Player UI')"></script>
+    <link rel="stylesheet" href="/shaka-player/controls.min.css?v=5.0.9">
+    <script defer src="/shaka-player/shaka-player.ui.min.js?v=5.0.9" onerror="handleScriptError('Shaka Player')"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" onerror="handleScriptError('pako')"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js" onerror="handleScriptError('ArtPlayer')"></script>
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js" onerror="handleScriptError('HLS.js')"></script>
@@ -1011,7 +1010,7 @@
         </div>
     </div>
 
-    <script type="module" src="/src/modules/init.js?v=3.5.0"></script>
+    <script type="module" src="/src/modules/init.js?v=3.5.1"></script>
     <script defer src="/assets/theme-switcher.js"></script>
 </body>
 </html>

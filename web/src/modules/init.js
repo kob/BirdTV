@@ -41,6 +41,9 @@ import { refreshAllConfigUI, addConfig, removeConfig } from './config.js';
 async function init() {
     const elements = getElements();
 
+    // 绑定事件（尽早绑定，确保按钮可用）
+    bindEvents(elements);
+
     // 授权检查
     let authRequired = true;
     try {
@@ -75,7 +78,6 @@ async function init() {
             console.log('认证检查：验证成功', userData);
             localStorage.setItem('userInfo', JSON.stringify(userData.data || userData));
             
-            // 检查用户是否使用默认密码（需要调用API获取）
             try {
                 const checkResponse = await fetch('/api/auth/check-default-password', { 
                     headers: { 
@@ -140,9 +142,6 @@ async function init() {
         console.warn('UA 下拉框初始化失败:', e);
     }
 
-    // 绑定事件
-    bindEvents(elements);
-
     // 初始UI
     renderDiagnosticsPanel(elements);
     updateFallbackCooldownText(elements);
@@ -183,7 +182,6 @@ async function init() {
                 const m3uSources = (result.ok && Array.isArray(result.data)) ? result.data : [];
                 if (m3uSources.length > 0) {
                     if (!backendM3uUrl) backendM3uUrl = m3uSources.find(s => s.enabled !== false && s.url)?.url.trim() || "";
-                    // 记录匹配到的源信息，用于传递 defaultPlayerType 和 proxyMode
                     matchedM3uSource = m3uSources.find(s => s.url === backendM3uUrl) || m3uSources[0] || null;
                 }
             }
@@ -221,16 +219,17 @@ async function init() {
                     sourceInfo: matchedM3uSource ? { sourceId: matchedM3uSource.id, sourceDefaultPlayerType: matchedM3uSource.defaultPlayerType, sourceProxyMode: matchedM3uSource.proxyMode, sourceName: matchedM3uSource.name } : null
                 })
             ]);
-            return;
         }
     } catch (e) { console.warn("后端源同步失败:", e); }
 
     // 本地M3U回退
-    if (state.channels.length > 0) {
-        await selectChannel(elements, 0, false);
-    } else {
-        await tryLoadLocalM3U(elements, false);
-    }
+    try {
+        if (state.channels.length > 0) {
+            await selectChannel(elements, 0, false);
+        } else {
+            await tryLoadLocalM3U(elements, false);
+        }
+    } catch (e) { console.warn("本地M3U回退失败:", e); }
 
     // 忽略可恢复的 Promise 中断错误
     window.addEventListener("unhandledrejection", (event) => {
@@ -257,15 +256,12 @@ async function selectChannel(elements, index, autoplay) {
     if (index < 0 || index >= state.channels.length) return;
     state.currentIndex = index;
     const source = state.channels[index];
-    // 让搜索框失去焦点，避免输入法等干扰后续操作
     if (elements.searchInput && document.activeElement === elements.searchInput) {
         elements.searchInput.blur();
     }
     fillForm(elements, source);
     renderPlaylist(elements);
     updateCurrentInfo(elements, source);
-    updateVlcLinkModeLabel(source, elements);
-    // 确保代理模式选择器与状态同步（防止换台后 UI 值被意外重置）
     if (elements.tempProxyModeSelect) elements.tempProxyModeSelect.value = getTempProxyMode();
     if (autoplay) await playSource({ ...source }, elements);
 }
@@ -321,7 +317,6 @@ function readFormSource(elements) {
     if (userAgent) source.userAgent = userAgent;
     if (['mpd', 'ts', 'hls', 'unknown'].includes(streamType)) source.streamType = streamType;
     if (playerType && playerType !== 'auto') source.playerType = playerType;
-    // 兼容旧数据中的 vlc-proxy/vlc-direct，回退为 auto
     if (playerType === 'vlc-direct' || playerType === 'vlc-proxy' || playerType === 'vlc') {
         source.playerType = 'auto';
     }
@@ -465,11 +460,9 @@ function bindEvents(elements) {
     });
 
     // M3U 导入
-    // 彻底防止多次弹窗：只绑定一次 click，阻止事件冒泡和重复触发
     let m3uFileInputHandler = null;
     if (elements.loadM3UButton) {
         elements.loadM3UButton.addEventListener("click", (e) => {
-            // 阻止多次触发和冒泡
             e?.stopImmediatePropagation?.();
             e?.stopPropagation?.();
             if (elements.m3uFileInput) {
@@ -499,7 +492,7 @@ function bindEvents(elements) {
                 elements.m3uFileInput.addEventListener("change", m3uFileInputHandler);
                 elements.m3uFileInput.click();
             }
-        }, { capture: true }); // 用捕获阶段彻底兜底
+        }, { capture: true });
     }
 
     elements.loadM3UUrlButton?.addEventListener("click", async () => {
@@ -583,11 +576,9 @@ function bindEvents(elements) {
                 persistChannels(state.channels);
                 renderPlaylist(elements);
                 
-                // 直接使用当前频道的信息，而不是从表单读取
                 console.log('[PlayerTypeChange] 更新频道播放器类型:', channel.name, '->', channel.playerType || 'auto');
                 await playSource(channel, elements);
             } else {
-                // 没有正在播放的频道，从表单读取
                 const source = readFormSource(elements);
                 if (!source) { updateStatus(elements, '已切换播放器类型，请填写频道并点击播放', '已切换'); return; }
                 if (selected !== 'auto') source.playerType = selected;
@@ -604,9 +595,7 @@ function bindEvents(elements) {
 
     // 切换到移动版
     elements.switchToMobileButton?.addEventListener("click", () => {
-        // 设置 Cookie 保存用户偏好（移动版）
         document.cookie = 'birdtv_device=mobile; path=/; max-age=31536000';
-        // 重定向到移动版
         window.location.href = '/mobile.html';
     });
 
@@ -653,166 +642,28 @@ function bindEvents(elements) {
             elements.configCenterModal.classList.remove("open");
             elements.configCenterModal.setAttribute("aria-hidden", "true");
         }
-        // 配置列表内的删除按钮（事件委托）
-        const btn = e.target.closest('.config-delete-btn');
-        if (btn) {
-            const key = btn.dataset.configKey;
-            const name = btn.dataset.configName;
-            if (key && name) { removeConfig(key, name); refreshAllConfigUI(elements); }
-        }
     });
 
-    // 添加配置
-    elements.addM3uConfigButton?.addEventListener("click", () => {
-        const name = elements.newM3uName?.value.trim();
-        const url = elements.newM3uUrl?.value.trim();
-        if (!name || !url) { updateStatus(elements, "请填写配置名称和链接地址", "参数缺失", true); return; }
-        addConfig(M3U_CONFIGS_KEY, name, url);
-        elements.newM3uName.value = '';
-        elements.newM3uUrl.value = '';
-        refreshAllConfigUI(elements);
-    });
+    // 配置中心 - M3U 配置
+    elements.addM3uConfigButton?.addEventListener("click", () => addConfig(elements, 'm3u'));
+    elements.addEpgConfigButton?.addEventListener("click", () => addConfig(elements, 'epg'));
 
-    elements.addEpgConfigButton?.addEventListener("click", () => {
-        const name = elements.newEpgName?.value.trim();
-        const url = elements.newEpgUrl?.value.trim();
-        if (!name || !url) { updateStatus(elements, "请填写配置名称和链接地址", "参数缺失", true); return; }
-        addConfig(EPG_CONFIGS_KEY, name, url);
-        elements.newEpgName.value = '';
-        elements.newEpgUrl.value = '';
-        refreshAllConfigUI(elements);
-    });
-
-    // 下拉选择同步到输入框并自动导入
-    elements.m3uSourceSelect?.addEventListener("change", async () => {
-        const val = elements.m3uSourceSelect.value;
-        if (!val) return;
-        const m3uUrl = normalizeM3UUrl(val);
-        elements.m3uUrlInput.value = m3uUrl;
-        await importFromM3UUrl(m3uUrl, elements, {
-            showStatus: true, persistAutoUrl: true, sourceLabel: "配置源",
-            forcedStreamType: getSelectedM3UImportType(elements.m3uImportTypeSelect)
+    // 侧边栏切换
+    elements.sidebarToggleButton?.addEventListener("click", () => {
+        import('./dom.js').then(({ toggleSidebarCollapsedState }) => {
+            toggleSidebarCollapsedState(elements);
         });
     });
 
-    elements.epgSourceSelect?.addEventListener("change", async () => {
-        const val = elements.epgSourceSelect.value;
-        if (!val) return;
-        const epgUrl = normalizeM3UUrl(val);
-        elements.epgUrlInput.value = epgUrl;
-        const ok = await loadEpgData(elements, epgUrl, true);
-        if (ok) {
-            localStorage.setItem(AUTO_EPG_URL_KEY, epgUrl);
-            applyEpgUrlToChannels(epgUrl);
-            updateStatus(elements, "EPG 已加载", "EPG 就绪");
-        }
-    });
-
-    // 播放测试栏
-    const testPlayButton = document.getElementById('testPlayButton');
-    const testClearButton = document.getElementById('testClearButton');
-    const testImportButton = document.getElementById('testImportButton');
-    const testNameInput = document.getElementById('testNameInput');
-    const testUrlInput = document.getElementById('testUrlInput');
-    const testKidInput = document.getElementById('testKidInput');
-    const testKeyInput = document.getElementById('testKeyInput');
-    const testStreamTypeSelect = document.getElementById('testStreamTypeSelect');
-    const testImportTextarea = document.getElementById('testImportTextarea');
-
-    // 文本导入解析：从 M3U/KODIPROP 格式提取频道信息填充表单
-    if (testImportButton) {
-        testImportButton.addEventListener('click', () => {
-            const text = (testImportTextarea?.value || '').trim();
-            if (!text) {
-                updateStatus(elements, '请粘贴文本内容后再导入', '内容为空', true);
-                return;
-            }
-            try {
-                const sources = parseM3UToSources(text);
-                if (!sources.length) {
-                    updateStatus(elements, '未能解析出有效的频道信息', '解析失败', true);
-                    return;
-                }
-                // 取解析到的第一个频道填充表单
-                const s = sources[0];
-                if (testNameInput) testNameInput.value = s.name || '';
-                if (testUrlInput) testUrlInput.value = s.url || '';
-                const kid = s.drm?.clearKeys ? Object.keys(s.drm.clearKeys)[0] : '';
-                const key = kid ? s.drm.clearKeys[kid] : '';
-                if (testKidInput) testKidInput.value = kid || '';
-                if (testKeyInput) testKeyInput.value = key || '';
-                if (testStreamTypeSelect && s.streamType && ['mpd', 'ts', 'hls'].includes(s.streamType)) {
-                    testStreamTypeSelect.value = s.streamType;
-                }
-                updateStatus(elements, `已解析${sources.length}个频道，已填充第1个`, '导入成功');
-            } catch (e) {
-                updateStatus(elements, '文本解析出错：' + (e.message || e), '解析异常', true);
-            }
-        });
-    }
-
-    if (testPlayButton) {
-        testPlayButton.addEventListener('click', async () => {
-            const name = (testNameInput?.value || '').trim();
-            const url = (testUrlInput?.value || '').trim();
-            if (!name || !url) {
-                updateStatus(elements, '请填写频道名称和播放地址', '参数缺失', true);
-                return;
-            }
-            const source = { name, url };
-            const kid = (testKidInput?.value || '').trim();
-            const key = (testKeyInput?.value || '').trim();
-            if (kid || key) {
-                if (!kid || !key) {
-                    updateStatus(elements, 'KID 和 KEY 需要同时填写', 'DRM 参数不完整', true);
-                    return;
-                }
-                source.drm = { clearKeys: { [kid]: key } };
-            }
-            const streamType = testStreamTypeSelect?.value || 'auto';
-            if (['mpd', 'ts', 'hls'].includes(streamType)) source.streamType = streamType;
-
-            updateCurrentInfo(elements, source);
-            await playSource(source, elements);
-        });
-    }
-
-    if (testClearButton) {
-        testClearButton.addEventListener('click', () => {
-            if (testNameInput) testNameInput.value = '';
-            if (testUrlInput) testUrlInput.value = '';
-            if (testKidInput) testKidInput.value = '';
-            if (testKeyInput) testKeyInput.value = '';
-            if (testStreamTypeSelect) testStreamTypeSelect.value = 'auto';
-            if (testImportTextarea) testImportTextarea.value = '';
-        });
-    }
-
-    // 播放测试栏 Enter 键触发播放
-    [testNameInput, testUrlInput, testKidInput, testKeyInput].forEach(input => {
-        input?.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && testPlayButton) testPlayButton.click();
-        });
-    });
-
-    // 全局 ESC 关闭弹窗
-    document.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape") return;
-        if (elements.epgModal && elements.epgModal.classList.contains("open")) closeEpgModal(elements);
-        if (elements.configCenterModal && elements.configCenterModal.classList.contains("open")) {
-            elements.configCenterModal.classList.remove("open");
-            elements.configCenterModal.setAttribute("aria-hidden", "true");
-        }
-    });
-
-    // 页面关闭/隐藏时释放播放器资源（防止播放进程残留）
-    const cleanupOnPageExit = () => {
-        cleanupCurrentPlayer().catch(e => console.warn('页面关闭时清理失败:', e));
-    };
-    
-    window.addEventListener('beforeunload', cleanupOnPageExit);
-    window.addEventListener('pagehide', cleanupOnPageExit);
+    console.log('[init] 事件绑定完成');
 }
 
-// ES modules 自带 defer，DOM 已就绪，直接调用
+function playWithForcedVlcMode(elements, mode) {
+    const source = readFormSource(elements);
+    if (!source) return;
+    setTempProxyMode(mode);
+    if (elements.tempProxyModeSelect) elements.tempProxyModeSelect.value = mode;
+    playSource(source, elements);
+}
+
 init();

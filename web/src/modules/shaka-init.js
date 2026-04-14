@@ -32,51 +32,68 @@ export async function initShakaPlayer(elements) {
         state.player = null;
     }
 
+    // 创建 Player 实例
+    const videoEl = elements.video;
+    const containerEl = videoEl ? videoEl.parentElement : null;
+
+    // 先创建 Player，attach 到 video
     state.player = new shaka.Player();
-    await state.player.attach(elements.video);
-    state.overlay = new shaka.ui.Overlay(state.player, elements.video.parentElement, elements.video);
+    await state.player.attach(videoEl);
+
+    // 创建 Overlay（UI）
+    if (containerEl && shaka.ui && shaka.ui.Overlay) {
+        state.overlay = new shaka.ui.Overlay(state.player, containerEl, videoEl);
+    }
 
     // 优化配置：针对直播场景优化首屏速度
-    state.player.configure({
-        manifest: { 
-            retryParameters: SHAKA_RETRY, 
-            defaultPresentationDelay: 0,
-            availabilityWindowOverride: 30, // 限制可用窗口，减少加载时间
-            disableAudio: false,
-            disableVideo: false
-        },
-        drm: { retryParameters: SHAKA_RETRY },
-        streaming: { 
-            retryParameters: SHAKA_RETRY, 
-            stallEnabled: true, 
-            stallThreshold: 2, // 减少卡顿检测阈值（3→2）
-            stallSkip: 0.1, 
-            safeSeekOffset: 3, // 减少安全搜索偏移（5→3）
-            rebufferingGoal: 5, // 减少重缓冲目标（8→5）
-            bufferingGoal: 5, // 减少缓冲目标（8→5）
-            bufferBehind: 20, // 减少后方缓冲区（30→20）
-            ignoreTextStreamFailures: true
-        },
-        abr: { 
-            enabled: true,
-            defaultBandwidthEstimate: 5000000, // 默认带宽估计 5Mbps
-            switchInterval: 2, // 减少切换间隔（默认 5，减少到 2）
-            bandwidthDowngradeTarget: 0.95, // 带宽降级目标
-            bandwidthUpgradeTarget: 0.85 // 带宽升级目标
-        },
-        // 使用 NativeTextDisplayer 支持图形字幕（位图字幕）渲染
-        // UITextDisplayer 仅支持纯文本字幕，无法渲染 image-based subtitles
-        textDisplayFactory: shaka.text.NativeTextDisplayer
-    });
+    try {
+        state.player.configure({
+            manifest: { 
+                retryParameters: SHAKA_RETRY, 
+                defaultPresentationDelay: 0,
+                availabilityWindowOverride: 30,
+                disableAudio: false,
+                disableVideo: false
+            },
+            drm: { retryParameters: SHAKA_RETRY },
+            streaming: { 
+                retryParameters: SHAKA_RETRY, 
+                stallEnabled: true, 
+                stallThreshold: 2,
+                stallSkip: 0.1, 
+                safeSeekOffset: 3,
+                rebufferingGoal: 5,
+                bufferingGoal: 5,
+                bufferBehind: 20,
+                ignoreTextStreamFailures: true
+            },
+            abr: { 
+                enabled: true,
+                defaultBandwidthEstimate: 5000000,
+                switchInterval: 2,
+                bandwidthDowngradeTarget: 0.95,
+                bandwidthUpgradeTarget: 0.85
+            }
+        });
+    } catch (e) {
+        console.warn('[shaka-init] 播放器配置出错（非致命）:', e.message || e);
+    }
+
+    // 设置 textDisplayFactory 为 NativeTextDisplayer（支持图形字幕/DVB字幕）
+    try {
+        if (shaka.text && shaka.text.NativeTextDisplayer) {
+            state.player.configure('textDisplayFactory', shaka.text.NativeTextDisplayer);
+        }
+    } catch (e) {
+        console.warn('[shaka-init] textDisplayFactory 设置跳过:', e.message || e);
+    }
 
     const networkingEngine = state.player.getNetworkingEngine();
     if (networkingEngine) {
         networkingEngine.registerRequestFilter((type, request) => {
-            // 自动为所有 /m3u-proxy 相关请求加 Authorization 头
             const token = localStorage.getItem('authToken');
             if (Array.isArray(request?.uris) && request.uris.length > 0) {
                 request.uris = request.uris.map(uri => rewriteShakaProxyRelativeUri(uri));
-                // 只要是代理请求就加 token
                 if (request.uris.some(uri => String(uri).includes('/m3u-proxy?url=')) && token) {
                     request.headers = request.headers || {};
                     request.headers['Authorization'] = `Bearer ${token}`;
@@ -85,7 +102,6 @@ export async function initShakaPlayer(elements) {
             if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
                 request.headers = request.headers || {};
                 for (const [k, v] of Object.entries(state.shakaLicenseHeaders || {})) request.headers[k] = v;
-                // LICENSE 请求也加 token
                 if (token) request.headers['Authorization'] = `Bearer ${token}`;
                 return;
             }
@@ -126,11 +142,17 @@ export async function initShakaPlayer(elements) {
         });
     }
 
-    state.overlay.configure({
-        addBigPlayButton: true,
-        controlPanelElements: ["play_pause", "time_and_duration", "spacer", "mute", "volume", "fullscreen", "overflow_menu"],
-        overflowMenuButtons: ["quality", "language", "captions", "picture_in_picture"]
-    });
+    // 配置 Overlay UI
+    if (state.overlay) {
+        try {
+            state.overlay.configure({
+                controlPanelElements: ["play_pause", "time_and_duration", "spacer", "mute", "volume", "fullscreen", "overflow_menu"],
+                overflowMenuButtons: ["quality", "language", "captions", "picture_in_picture"]
+            });
+        } catch (e) {
+            console.warn('[shaka-init] Overlay 配置出错（非致命）:', e.message || e);
+        }
+    }
 
     state.player.addEventListener("error", (event) => {
         const detail = event.detail || event;
@@ -143,15 +165,14 @@ export async function initShakaPlayer(elements) {
     state.player.addEventListener('loaded', () => {
         const loadTime = performance.now() - startTime;
         console.log(`[Shaka] 播放器加载完成，耗时：${loadTime.toFixed(0)}ms`);
-        // 自动启用字幕显示（图形字幕/文本字幕均需要显式开启）
         try {
             const textTracks = state.player.getTextTracks();
             if (textTracks && textTracks.length > 0) {
-                if (!state.player.isTextTrackVisible()) {
-                    state.player.selectTextTrack(textTracks[0]);
+                state.player.selectTextTrack(textTracks[0]);
+                try {
                     state.player.setTextTrackVisibility(true);
-                    console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
-                }
+                } catch (e2) { /* ignore */ }
+                console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
             }
         } catch (e) {
             console.warn('[Shaka] 自动启用字幕失败:', e.message || e);

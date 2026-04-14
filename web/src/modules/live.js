@@ -52,7 +52,7 @@ export async function ensureShakaAttached() {
         const videoEl = document.getElementById("video");
         if (!videoEl || !window.shaka) return false;
         const statusText = document.getElementById("status-text");
-        const ok = await initShakaPlayer({ video: videoEl, video: videoEl, statusText });
+        const ok = await initShakaPlayer({ video: videoEl, statusText });
         if (!ok) { console.warn('[ensureShakaAttached] Shaka 重新初始化失败'); return false; }
     }
     const videoEl = document.getElementById("video");
