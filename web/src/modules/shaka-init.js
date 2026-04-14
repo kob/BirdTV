@@ -97,7 +97,6 @@ export async function initShakaPlayer(elements) {
                 rebufferingGoal: 5,
                 bufferingGoal: 5,
                 bufferBehind: 20,
-                alwaysStreamTextOn: true,
                 ignoreTextStreamFailures: false
             },
             abr: { 
@@ -252,10 +251,11 @@ export async function initShakaPlayer(elements) {
     state.player.addEventListener('textchanged', () => {
         console.log('[Shaka] 文本流已改变');
         try {
-            const activeTextStream = state.player.getText();
-            console.log('[Shaka] 当前文本流:', activeTextStream);
-            console.log('[Shaka] 文本流 mimeType:', activeTextStream?.mimeType);
-            console.log('[Shaka] 文本流 language:', activeTextStream?.language);
+            // Shaka 5.x 使用 activeTextStream
+            const textStream = state.player.getActiveStream?.();
+            if (textStream) {
+                console.log('[Shaka] 文本流:', textStream);
+            }
         } catch (e) {
             console.warn('[Shaka] 获取文本流失败:', e.message);
         }
@@ -297,18 +297,9 @@ export async function initShakaPlayer(elements) {
                 console.log(`[Shaka] video.textTracks 数量: ${videoEl.textTracks.length}`);
                 for (let i = 0; i < videoEl.textTracks.length; i++) {
                     const vt = videoEl.textTracks[i];
-                    console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, language=${vt.language}`);
-                    if (vt.cues && vt.cues.length > 0) {
-                        console.log(`[Shaka] video.textTracks[${i}] cues 数量: ${vt.cues.length}`);
-                        for (let j = 0; j < Math.min(vt.cues.length, 3); j++) {
-                            console.log(`[Shaka] cue[${j}]: "${vt.cues[j].text?.substring(0, 50)}"`);
-                        }
-                    }
+                    console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, language=${vt.language}, cues=${vt.cues?.length || 0}`);
                 }
             }
-            
-            // 检查 Shaka 内部状态
-            console.log(`[Shaka] isTextTrackVisible: ${state.player.isTextTrackVisible()}`);
         } catch (e) {
             console.warn('[Shaka] 延迟检查失败:', e.message);
         }
