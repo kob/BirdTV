@@ -866,10 +866,52 @@ export async function initShakaPlayer(elements) {
                     const textStreams = manifest?.textStreams || [];
                     console.log(`[Shaka] Manifest textStreams: ${textStreams.length}`);
                     
-                    // 检查每个流的解析器类型
+                    // 检查每个流的 segmentIndex
                     for (let i = 0; i < textStreams.length; i++) {
                         const stream = textStreams[i];
                         console.log(`[Shaka] Stream[${i}]: mimeType=${stream.mimeType}, codec=${stream.codecs || 'N/A'}`);
+                        
+                        // 检查 segmentIndex
+                        if (stream.segmentIndex) {
+                            console.log(`[Shaka] Stream[${i}] segmentIndex keys:`, Object.keys(stream.segmentIndex).join(', '));
+                            
+                            // 尝试 segmentIndex 的方法
+                            if (typeof stream.segmentIndex.find == 'function') {
+                                console.log(`[Shaka] Stream[${i}] segmentIndex.find 可用`);
+                                // find(time, duration) - 找到时间点附近的 segment
+                                try {
+                                    const result = stream.segmentIndex.find(0, 30);
+                                    console.log(`[Shaka] Stream[${i}] segmentIndex.find(0, 30):`, result);
+                                } catch (e) {
+                                    console.warn(`[Shaka] Stream[${i}] segmentIndex.find 失败:`, e.message);
+                                }
+                            }
+                            if (typeof stream.segmentIndex.get == 'function') {
+                                console.log(`[Shaka] Stream[${i}] segmentIndex.get 可用`);
+                                try {
+                                    // get 返回 segment reference
+                                    const seg0 = stream.segmentIndex.get(0);
+                                    const seg1 = stream.segmentIndex.get(1);
+                                    console.log(`[Shaka] Stream[${i}] segmentIndex.get(0):`, seg0);
+                                    console.log(`[Shaka] Stream[${i}] segmentIndex.get(1):`, seg1);
+                                } catch (e) {
+                                    console.warn(`[Shaka] Stream[${i}] segmentIndex.get 失败:`, e.message);
+                                }
+                            }
+                            // 检查 segmentIndex 的迭代器方法
+                            if (typeof stream.segmentIndex[Symbol.iterator] == 'function') {
+                                console.log(`[Shaka] Stream[${i}] segmentIndex 可迭代`);
+                                try {
+                                    const segments = [...stream.segmentIndex];
+                                    console.log(`[Shaka] Stream[${i}] 迭代 segment 数:`, segments.length);
+                                    if (segments.length > 0) {
+                                        console.log(`[Shaka] Stream[${i}] segment[0]:`, segments[0]);
+                                    }
+                                } catch (e) {
+                                    console.warn(`[Shaka] Stream[${i}] segmentIndex 迭代失败:`, e.message);
+                                }
+                            }
+                        }
                     }
                 }
             } catch (e) {
