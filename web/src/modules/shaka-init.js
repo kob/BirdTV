@@ -63,19 +63,107 @@ export async function initShakaPlayer(elements) {
     // attach 到 video
     await state.player.attach(videoEl);
 
-    // 设置 TextDisplayer（在 attach 之后）
-    if (shaka.text && shaka.text.SimpleTextDisplayer) {
-        state.player.createTextDisplayer = () => {
-            console.log('[Shaka] 创建 SimpleTextDisplayer');
-            const displayer = new shaka.text.SimpleTextDisplayer(subtitleContainer);
-            return displayer;
+    // 字幕状态管理
+    let currentCues = [];
+    let lastCueUpdateTime = 0;
+    let displayerCreated = false;
+    
+    // 创建字幕显示组件
+    const createSubtitleDisplayer = () => {
+        displayerCreated = true;
+        console.log('[Shaka] ★ createSubtitleDisplayer() 被调用!');
+        return {
+            append: (cue) => {
+                const now = performance.now();
+                if (now - lastCueUpdateTime > 100) {
+                    currentCues = [];
+                }
+                currentCues.push(cue);
+                lastCueUpdateTime = now;
+                console.log('[Shaka] ★ 字幕 cue 已添加! startTime:', cue.startTime, 'endTime:', cue.endTime, 'text:', (cue.text || '').substring(0, 50));
+                console.log('[Shaka] 当前 cue 数组长度:', currentCues.length);
+            },
+            remove: () => {
+                console.log('[Shaka] 字幕 remove() 被调用');
+                currentCues = [];
+            },
+            destroy: () => {
+                console.log('[Shaka] 字幕 destroy() 被调用');
+                currentCues = [];
+            }
         };
+    };
+    
+    // 尝试通过 TextEngine 设置 displayer
+    console.log('[Shaka] 检查 TextEngine API...');
+    console.log('[Shaka] getTextEngine 类型:', typeof state.player.getTextEngine);
+    
+    try {
+        const textEngine = state.player.getTextEngine?.();
+        console.log('[Shaka] TextEngine 获取结果:', textEngine ? '存在' : 'null/undefined');
+        
+        if (textEngine) {
+            console.log('[Shaka] TextEngine 方法:', Object.keys(textEngine).join(', '));
+        }
+        
+        if (textEngine && typeof textEngine.setDisplayer === 'function') {
+            console.log('[Shaka] 通过 TextEngine.setDisplayer 设置');
+            textEngine.setDisplayer(createSubtitleDisplayer());
+        } else {
+            console.log('[Shaka] TextEngine.setDisplayer 不可用，尝试覆盖 createTextDisplayer');
+            state.player.createTextDisplayer = createSubtitleDisplayer;
+        }
+    } catch (e) {
+        console.warn('[Shaka] TextEngine 设置失败:', e.message);
     }
 
+    // 创建字幕更新循环
+    let subtitleLoopId = null;
+    const updateSubtitles = () => {
+        if (!state.player || !videoEl) {
+            subtitleLoopId = null;
+            return;
+        }
+        
+        const currentTime = videoEl.currentTime;
+        let activeCue = null;
+        
+        for (const cue of currentCues) {
+            if (cue.startTime <= currentTime && cue.endTime >= currentTime) {
+                activeCue = cue;
+                break;
+            }
+        }
+        
+        subtitleContainer.innerHTML = '';
+        if (activeCue) {
+            const cueDiv = document.createElement('div');
+            cueDiv.style.cssText = `
+                background: rgba(0, 0, 0, 0.75);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 4px;
+                font-size: 18px;
+                text-align: center;
+                max-width: 80%;
+                margin: 0 auto;
+            `;
+            cueDiv.textContent = activeCue.text || '';
+            subtitleContainer.appendChild(cueDiv);
+        }
+        
+        subtitleLoopId = requestAnimationFrame(updateSubtitles);
+    };
+    
+    // 启动字幕循环
+    const startSubtitleLoop = () => {
+        if (!subtitleLoopId) {
+            console.log('[Shaka] 启动字幕更新循环');
+            subtitleLoopId = requestAnimationFrame(updateSubtitles);
+        }
+    };
+
     // 创建 Overlay（UI）
-    if (containerEl && shaka.ui && shaka.ui.Overlay) {
-        state.overlay = new shaka.ui.Overlay(state.player, containerEl, videoEl);
-    }
 
     // 优化配置：针对直播场景优化首屏速度
     try {
@@ -194,6 +282,9 @@ export async function initShakaPlayer(elements) {
         const loadTime = performance.now() - startTime;
         console.log(`[Shaka] 播放器加载完成，耗时：${loadTime.toFixed(0)}ms`);
         
+        // 启动字幕循环
+        startSubtitleLoop();
+        
         // 调试字幕
         try {
             const textTracks = state.player.getTextTracks();
@@ -207,24 +298,7 @@ export async function initShakaPlayer(elements) {
                 }
                 
                 state.player.selectTextTrack(textTracks[0]);
-                
-                // 尝试多种方法启用字幕
-                if (typeof state.player.setTextTrackVisibility === 'function') {
-                    state.player.setTextTrackVisibility(true);
-                } else if (typeof state.player.setTextVisibility === 'function') {
-                    state.player.setTextVisibility(true);
-                }
-                
                 console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
-                
-                // 检查字幕容器内容
-                setTimeout(() => {
-                    const container = containerEl?.querySelector('.shaka-text-container');
-                    if (container) {
-                        console.log(`[Shaka] 字幕容器 childCount: ${container.children.length}`);
-                        console.log(`[Shaka] 字幕容器 HTML: ${container.innerHTML.substring(0, 300)}`);
-                    }
-                }, 3000);
             }
             
             // 检查字幕容器
@@ -247,25 +321,10 @@ export async function initShakaPlayer(elements) {
         }
     });
     
-    // 监听文本流变化
     state.player.addEventListener('textchanged', () => {
         console.log('[Shaka] 文本流已改变');
-        try {
-            // Shaka 5.x 使用 activeTextStream
-            const textStream = state.player.getActiveStream?.();
-            if (textStream) {
-                console.log('[Shaka] 文本流:', textStream);
-            }
-        } catch (e) {
-            console.warn('[Shaka] 获取文本流失败:', e.message);
-        }
-    });
-    
-    // 监听 adaptation 变化（轨道切换）
-    state.player.addEventListener('adaptation', () => {
-        console.log('[Shaka] Adaptation 事件触发');
-        const textTracks = state.player.getTextTracks();
-        console.log(`[Shaka] 当前字幕轨道数: ${textTracks.length}`);
+        currentCues = [];
+        startSubtitleLoop();
     });
     
     // 延迟检查字幕状态
@@ -274,22 +333,16 @@ export async function initShakaPlayer(elements) {
         try {
             const textTracks = state.player.getTextTracks();
             console.log(`[Shaka] 字幕轨道数: ${textTracks.length}`);
+            console.log(`[Shaka] displayerCreated: ${displayerCreated}`);
             
             for (let i = 0; i < textTracks.length; i++) {
                 const track = textTracks[i];
-                console.log(`[Shaka] 轨道[${i}]: ${JSON.stringify({
-                    type: track.type,
-                    mimeType: track.mimeType,
-                    language: track.language,
-                    active: track.active,
-                    id: track.id
-                })}`);
+                console.log(`[Shaka] 轨道[${i}]: active=${track.active}, mimeType=${track.mimeType}, language=${track.language}`);
             }
             
             const container = containerEl?.querySelector('.shaka-text-container');
             if (container) {
                 console.log(`[Shaka] 字幕容器 childCount: ${container.children.length}`);
-                console.log(`[Shaka] 字幕容器 innerHTML: "${container.innerHTML.substring(0, 200)}"`);
             }
             
             // 检查 video.textTracks 和 cues
@@ -297,7 +350,7 @@ export async function initShakaPlayer(elements) {
                 console.log(`[Shaka] video.textTracks 数量: ${videoEl.textTracks.length}`);
                 for (let i = 0; i < videoEl.textTracks.length; i++) {
                     const vt = videoEl.textTracks[i];
-                    console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, language=${vt.language}, cues=${vt.cues?.length || 0}`);
+                    console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, cues=${vt.cues?.length || 0}`);
                 }
             }
         } catch (e) {
@@ -307,42 +360,20 @@ export async function initShakaPlayer(elements) {
     
     state.player.addEventListener('playing', () => {
         const playTime = performance.now() - startTime;
-        console.log(`[Shaka] 开始播放，总耗时：${playTime.toFixed(0)}ms`);
+        console.log(`[Shaka] ★ playing 事件触发，总耗时：${playTime.toFixed(0)}ms`);
+        console.log(`[Shaka] displayerCreated: ${displayerCreated}`);
+        console.log(`[Shaka] 字幕循环状态: ${subtitleLoopId ? '运行中' : '未启动'}`);
+        console.log(`[Shaka] 当前存储 cue 数: ${currentCues.length}`);
         
-        // 监听原生字幕 cuechange
-        if (videoEl?.textTracks) {
-            videoEl.textTracks.addEventListener('cuechange', () => {
-                console.log('[Shaka] 原生 cuechange 触发');
-                subtitleContainer.innerHTML = '';
-                
-                for (let i = 0; i < videoEl.textTracks.length; i++) {
-                    const track = videoEl.textTracks[i];
-                    if (track.mode === 'showing' && track.cues) {
-                        console.log(`[Shaka] track[${i}] cues: ${track.cues.length}`);
-                        for (let j = 0; j < track.cues.length; j++) {
-                            const cue = track.cues[j];
-                            if (cue.startTime <= videoEl.currentTime && cue.endTime >= videoEl.currentTime) {
-                                console.log(`[Shaka] 活动 cue: "${cue.text?.substring(0, 50)}"`);
-                                
-                                const cueDiv = document.createElement('div');
-                                cueDiv.style.cssText = `
-                                    background: rgba(0, 0, 0, 0.75);
-                                    color: white;
-                                    padding: 4px 12px;
-                                    border-radius: 4px;
-                                    font-size: 18px;
-                                    text-align: center;
-                                    max-width: 80%;
-                                    margin: 0 auto;
-                                `;
-                                cueDiv.textContent = cue.text;
-                                subtitleContainer.appendChild(cueDiv);
-                            }
-                        }
-                    }
-                }
-            });
-            console.log('[Shaka] 已添加原生 cuechange 监听');
+        // 强制检查字幕状态
+        try {
+            const textTracks = state.player.getTextTracks();
+            for (let i = 0; i < textTracks.length; i++) {
+                const track = textTracks[i];
+                console.log(`[Shaka] playing时字幕轨道[${i}]: active=${track.active}, mimeType=${track.mimeType}`);
+            }
+        } catch (e) {
+            console.warn('[Shaka] 检查字幕轨道失败:', e.message);
         }
     });
 
