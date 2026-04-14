@@ -110,15 +110,6 @@ export async function initShakaPlayer(elements) {
         console.warn('[shaka-init] 播放器配置出错（非致命）:', e.message || e);
     }
 
-    // 设置 textDisplayFactory 为 NativeTextDisplayer（支持图形字幕/DVB字幕）
-    try {
-        if (shaka.text && shaka.text.NativeTextDisplayer) {
-            state.player.configure('textDisplayFactory', shaka.text.NativeTextDisplayer);
-        }
-    } catch (e) {
-        console.warn('[shaka-init] textDisplayFactory 设置跳过:', e.message || e);
-    }
-
     const networkingEngine = state.player.getNetworkingEngine();
     if (networkingEngine) {
         networkingEngine.registerRequestFilter((type, request) => {
@@ -210,9 +201,24 @@ export async function initShakaPlayer(elements) {
                 }
                 
                 state.player.selectTextTrack(textTracks[0]);
-                state.player.setTextTrackVisibility(true);
+                
+                // 尝试多种方法启用字幕
+                if (typeof state.player.setTextTrackVisibility === 'function') {
+                    state.player.setTextTrackVisibility(true);
+                } else if (typeof state.player.setTextVisibility === 'function') {
+                    state.player.setTextVisibility(true);
+                }
+                
                 console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
-                console.log(`[Shaka] isTextTrackVisible: ${state.player.isTextTrackVisible()}`);
+                
+                // 检查字幕容器内容
+                setTimeout(() => {
+                    const container = containerEl?.querySelector('.shaka-text-container');
+                    if (container) {
+                        console.log(`[Shaka] 字幕容器 childCount: ${container.children.length}`);
+                        console.log(`[Shaka] 字幕容器 HTML: ${container.innerHTML.substring(0, 300)}`);
+                    }
+                }, 3000);
             }
             
             // 检查字幕容器
