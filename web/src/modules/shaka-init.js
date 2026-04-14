@@ -60,16 +60,17 @@ export async function initShakaPlayer(elements) {
     // 先创建 Player
     state.player = new shaka.Player();
 
-    // 设置 TextDisplayer（支持 TTML 字幕）
+    // attach 到 video
+    await state.player.attach(videoEl);
+
+    // 设置 TextDisplayer（在 attach 之后）
     if (shaka.text && shaka.text.SimpleTextDisplayer) {
         state.player.createTextDisplayer = () => {
             console.log('[Shaka] 创建 SimpleTextDisplayer');
-            return new shaka.text.SimpleTextDisplayer(subtitleContainer);
+            const displayer = new shaka.text.SimpleTextDisplayer(subtitleContainer);
+            return displayer;
         };
     }
-
-    // attach 到 video
-    await state.player.attach(videoEl);
 
     // 创建 Overlay（UI）
     if (containerEl && shaka.ui && shaka.ui.Overlay) {
@@ -301,6 +302,42 @@ export async function initShakaPlayer(elements) {
     state.player.addEventListener('playing', () => {
         const playTime = performance.now() - startTime;
         console.log(`[Shaka] 开始播放，总耗时：${playTime.toFixed(0)}ms`);
+        
+        // 监听原生字幕 cuechange
+        if (videoEl?.textTracks) {
+            videoEl.textTracks.addEventListener('cuechange', () => {
+                console.log('[Shaka] 原生 cuechange 触发');
+                subtitleContainer.innerHTML = '';
+                
+                for (let i = 0; i < videoEl.textTracks.length; i++) {
+                    const track = videoEl.textTracks[i];
+                    if (track.mode === 'showing' && track.cues) {
+                        console.log(`[Shaka] track[${i}] cues: ${track.cues.length}`);
+                        for (let j = 0; j < track.cues.length; j++) {
+                            const cue = track.cues[j];
+                            if (cue.startTime <= videoEl.currentTime && cue.endTime >= videoEl.currentTime) {
+                                console.log(`[Shaka] 活动 cue: "${cue.text?.substring(0, 50)}"`);
+                                
+                                const cueDiv = document.createElement('div');
+                                cueDiv.style.cssText = `
+                                    background: rgba(0, 0, 0, 0.75);
+                                    color: white;
+                                    padding: 4px 12px;
+                                    border-radius: 4px;
+                                    font-size: 18px;
+                                    text-align: center;
+                                    max-width: 80%;
+                                    margin: 0 auto;
+                                `;
+                                cueDiv.textContent = cue.text;
+                                subtitleContainer.appendChild(cueDiv);
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('[Shaka] 已添加原生 cuechange 监听');
+        }
     });
 
     return true;
