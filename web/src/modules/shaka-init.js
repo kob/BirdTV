@@ -63,6 +63,28 @@ export async function initShakaPlayer(elements) {
     // attach 到 video
     await state.player.attach(videoEl);
 
+    // ★★★ 关键：在加载前强制配置原生字幕显示
+    // 这会覆盖任何 UI 默认配置
+    state.player.configure({
+        text: {
+            // 强制使用原生 textTracks 显示字幕（不是 UI 组件）
+            useNativeTextDisplayer: true,
+            // 确保字幕可见
+            visible: true,
+            // 自动选择字幕轨道
+            autoSelect: true,
+            // 允许文本流自动切换
+            trackAutoManualSwitch: true
+        },
+        streaming: {
+            // 启用文本流缓冲
+            alwaysStreamTextOn: false,  // 不要总是流式传输文本
+            // 文本流失败时继续播放
+            ignoreTextStreamFailures: false
+        }
+    });
+    console.log('[Shaka] 已强制配置 useNativeTextDisplayer: true');
+
     // 字幕状态管理
     let currentCues = [];
     let lastCueUpdateTime = 0;
@@ -624,6 +646,11 @@ export async function initShakaPlayer(elements) {
         
         // 检查可用的文本解析器
         console.log('[Shaka] 可用的文本解析器:', Object.keys(shaka.text || {}).join(', '));
+        
+        // 验证 NativeTextDisplayer 可用性
+        if (shaka.text && shaka.text.NativeTextDisplayer) {
+            console.log('[Shaka] NativeTextDisplayer 可用');
+        }
         
         // 注册 MP4 TTML 解析器
         if (shaka.text && shaka.text.TtmlParser) {
