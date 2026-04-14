@@ -182,6 +182,9 @@ export async function initShakaPlayer(elements) {
                     codecs: stream.codecs
                 });
                 
+                // 检查 stream 的完整属性（用于调试）
+                console.log(`[Shaka] Stream[${i}] 完整属性:`, Object.keys(stream));
+                
                 // 如果有 URL，尝试加载
                 if (stream.url && !currentSubtitleUrl) {
                     currentSubtitleUrl = stream.url;
@@ -200,9 +203,50 @@ export async function initShakaPlayer(elements) {
             // 检查是否嵌入在 MP4 中（没有 URL）
             if (!currentSubtitleUrl) {
                 console.log('[Shaka] 字幕嵌入在 MP4 容器中，无独立 URL');
-                console.log('[Shaka] 尝试通过 Shaka manifest 获取视频流 URL...');
+                console.log('[Shaka] 尝试从 manifest 深层结构获取字幕 segment URL...');
                 
-                // 尝试从 manifest 获取视频流 URL
+                // 尝试获取 DASH manifest 中的 AdaptationSet
+                let subtitleSegmentUrl = null;
+                
+                // 检查 manifest.variants 是否有 baseUrl
+                const variants = manifest?.variants || [];
+                if (variants.length > 0) {
+                    console.log('[Shaka] Variants 数量:', variants.length);
+                    const variant = variants[0];
+                    if (variant.baseUrl) {
+                        console.log('[Shaka] Variant baseUrl:', variant.baseUrl);
+                    }
+                    if (variant.video) {
+                        console.log('[Shaka] Variant video:', {
+                            baseUrl: variant.video.baseUrl,
+                            mimeType: variant.video.mimeType
+                        });
+                    }
+                }
+                
+                // 检查 textStreams 是否有更多信息
+                for (let i = 0; i < textStreams.length; i++) {
+                    const stream = textStreams[i];
+                    
+                    // 检查是否有 segmentTemplate 或 segmentList
+                    if (stream.segmentTemplate) {
+                        console.log(`[Shaka] Stream[${i}] 有 SegmentTemplate:`, stream.segmentTemplate);
+                    }
+                    if (stream.segmentList) {
+                        console.log(`[Shaka] Stream[${i}] 有 SegmentList`);
+                    }
+                    if (stream.baseUrl) {
+                        console.log(`[Shaka] Stream[${i}] baseUrl:`, stream.baseUrl);
+                        if (!subtitleSegmentUrl && stream.baseUrl.startsWith('http')) {
+                            subtitleSegmentUrl = stream.baseUrl;
+                        }
+                    }
+                    if (stream.initSegmentUrl) {
+                        console.log(`[Shaka] Stream[${i}] initSegmentUrl:`, stream.initSegmentUrl);
+                    }
+                }
+                
+                // 尝试获取视频流 URL（用于 MP4box 解析）
                 let videoMp4Url = null;
                 
                 // 检查视频流
@@ -213,24 +257,21 @@ export async function initShakaPlayer(elements) {
                         videoMp4Url = stream.url;
                         break;
                     }
-                }
-                
-                // 检查所有流（包括音频）
-                if (!videoMp4Url) {
-                    const allStreams = manifest?.textStreams || [];
-                    for (const stream of allStreams) {
-                        if (stream.mimeType === 'video/mp4' && stream.url) {
-                            videoMp4Url = stream.url;
-                            break;
-                        }
+                    if (stream.baseUrl && stream.baseUrl.startsWith('http')) {
+                        videoMp4Url = stream.baseUrl;
+                        break;
                     }
                 }
                 
-                if (videoMp4Url) {
+                if (subtitleSegmentUrl) {
+                    console.log('[Shaka] 找到字幕 baseUrl:', subtitleSegmentUrl);
+                    // 尝试获取第一个 segment
+                    await extractSubtitlesFromMP4(subtitleSegmentUrl, textStreams);
+                } else if (videoMp4Url) {
                     console.log('[Shaka] 找到视频流 URL，使用 MP4box 提取字幕');
                     await extractSubtitlesFromMP4(videoMp4Url, textStreams);
                 } else {
-                    console.log('[Shaka] 无法获取视频流 URL');
+                    console.log('[Shaka] 无法获取任何流 URL');
                     
                     // 尝试从 videoEl.src 获取（可能是代理 URL）
                     const mediaSrc = videoEl?.src || '';
@@ -433,9 +474,7 @@ export async function initShakaPlayer(elements) {
                 rebufferingGoal: 5,
                 bufferingGoal: 5,
                 bufferBehind: 20,
-                ignoreTextStreamFailures: false,
-                // 强制启用文本流加载
-                alwaysStreamTextOn: true
+                ignoreTextStreamFailures: false
             },
             abr: { 
                 enabled: true,
@@ -558,30 +597,9 @@ export async function initShakaPlayer(elements) {
                     console.log(`[Shaka] 字幕轨道[${i}]: type=${track.type}, mimeType=${track.mimeType}, language=${track.language}, kind=${track.kind}`);
                 }
                 
-                // ★ 关键：尝试多种方法启用字幕
-                
-                // 方法 1: selectTextTrack
+                // ★ 启用字幕
                 state.player.selectTextTrack(textTracks[0]);
-                console.log(`[Shaka] 已调用 selectTextTrack`);
-                
-                // 方法 2: selectTextLanguage (更可靠)
-                try {
-                    state.player.selectTextLanguage('cmn');
-                    console.log('[Shaka] 已调用 selectTextLanguage("cmn")');
-                } catch (e) {
-                    console.warn('[Shaka] selectTextLanguage 失败:', e.message);
-                }
-                
-                // 方法 3: 设置 preferForcedSubs
-                try {
-                    if (state.player.setVideoSource) {
-                        console.log('[Shaka] setVideoSource 方法存在');
-                    }
-                } catch (e) {
-                    // ignore
-                }
-                
-                console.log(`[Shaka] 字幕激活尝试完成`);
+                console.log(`[Shaka] 已调用 selectTextTrack 启用字幕`);
             }
             
             // 检查字幕容器
@@ -701,16 +719,6 @@ export async function initShakaPlayer(elements) {
                             console.log(`[Shaka] ★ cuechange 事件触发! cues=${vt.cues?.length || 0}`);
                         };
                     }
-                }
-            }
-            
-            // ★ 关键检查：尝试通过 selectTextLanguage 选择字幕
-            if (textTracks.length > 0 && !textTracks[0].active) {
-                console.log('[Shaka] 尝试通过 selectTextLanguage 激活字幕...');
-                try {
-                    state.player.selectTextLanguage('cmn');
-                } catch (e) {
-                    console.warn('[Shaka] selectTextLanguage 失败:', e.message);
                 }
             }
             
