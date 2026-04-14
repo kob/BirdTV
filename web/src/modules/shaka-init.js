@@ -36,8 +36,39 @@ export async function initShakaPlayer(elements) {
     const videoEl = elements.video;
     const containerEl = videoEl ? videoEl.parentElement : null;
 
-    // 先创建 Player，attach 到 video
+    // 创建字幕容器（用于 TTML/文本字幕渲染）
+    let subtitleContainer = containerEl?.querySelector('.shaka-text-container');
+    if (!subtitleContainer) {
+        subtitleContainer = document.createElement('div');
+        subtitleContainer.className = 'shaka-text-container';
+        subtitleContainer.style.cssText = `
+            position: absolute;
+            left: 5%;
+            right: 5%;
+            bottom: 10%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            z-index: 10;
+        `;
+        containerEl?.appendChild(subtitleContainer);
+        console.log('[Shaka] 已创建字幕容器');
+    }
+
+    // 先创建 Player
     state.player = new shaka.Player();
+
+    // 设置 TextDisplayer（支持 TTML 字幕）
+    if (shaka.text && shaka.text.SimpleTextDisplayer) {
+        state.player.createTextDisplayer = () => {
+            console.log('[Shaka] 创建 SimpleTextDisplayer');
+            return new shaka.text.SimpleTextDisplayer(subtitleContainer);
+        };
+    }
+
+    // attach 到 video
     await state.player.attach(videoEl);
 
     // 创建 Overlay（UI）
@@ -165,17 +196,42 @@ export async function initShakaPlayer(elements) {
     state.player.addEventListener('loaded', () => {
         const loadTime = performance.now() - startTime;
         console.log(`[Shaka] 播放器加载完成，耗时：${loadTime.toFixed(0)}ms`);
+        
+        // 调试字幕
         try {
             const textTracks = state.player.getTextTracks();
+            console.log(`[Shaka] 字幕轨道数量: ${textTracks?.length || 0}`);
+            
             if (textTracks && textTracks.length > 0) {
+                // 打印所有轨道详情
+                for (let i = 0; i < textTracks.length; i++) {
+                    const track = textTracks[i];
+                    console.log(`[Shaka] 字幕轨道[${i}]: type=${track.type}, mimeType=${track.mimeType}, language=${track.language}, kind=${track.kind}`);
+                }
+                
                 state.player.selectTextTrack(textTracks[0]);
-                try {
-                    state.player.setTextTrackVisibility(true);
-                } catch (e2) { /* ignore */ }
+                state.player.setTextTrackVisibility(true);
                 console.log(`[Shaka] 已自动启用字幕: ${textTracks[0].language || textTracks[0].label || 'unknown'}`);
+                console.log(`[Shaka] isTextTrackVisible: ${state.player.isTextTrackVisible()}`);
+            }
+            
+            // 检查字幕容器
+            const container = containerEl?.querySelector('.shaka-text-container');
+            if (container) {
+                console.log(`[Shaka] 字幕容器已创建，z-index: ${container.style.zIndex}`);
             }
         } catch (e) {
             console.warn('[Shaka] 自动启用字幕失败:', e.message || e);
+        }
+    });
+    
+    // 监听字幕轨道变化
+    state.player.addEventListener('trackschanged', () => {
+        console.log('[Shaka] 字幕轨道列表已变化');
+        const textTracks = state.player.getTextTracks();
+        for (let i = 0; i < textTracks.length; i++) {
+            const track = textTracks[i];
+            console.log(`[Shaka] 轨道[${i}]: type=${track.type}, mimeType=${track.mimeType}`);
         }
     });
     
