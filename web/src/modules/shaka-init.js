@@ -97,8 +97,8 @@ export async function initShakaPlayer(elements) {
                 rebufferingGoal: 5,
                 bufferingGoal: 5,
                 bufferBehind: 20,
-                alwaysStreamTextOn: true, // 始终传输字幕流
-                ignoreTextStreamFailures: false // 不忽略字幕错误
+                alwaysStreamTextOn: true,
+                ignoreTextStreamFailures: false
             },
             abr: { 
                 enabled: true,
@@ -108,6 +108,11 @@ export async function initShakaPlayer(elements) {
                 bandwidthUpgradeTarget: 0.85
             }
         });
+        
+        // 注册 MP4 TTML 解析器
+        if (shaka.text && shaka.text.TtmlParser) {
+            console.log('[Shaka] TTML 解析器已可用');
+        }
     } catch (e) {
         console.warn('[shaka-init] 播放器配置出错（非致命）:', e.message || e);
     }
@@ -276,7 +281,8 @@ export async function initShakaPlayer(elements) {
                     type: track.type,
                     mimeType: track.mimeType,
                     language: track.language,
-                    active: track.active
+                    active: track.active,
+                    id: track.id
                 })}`);
             }
             
@@ -286,14 +292,23 @@ export async function initShakaPlayer(elements) {
                 console.log(`[Shaka] 字幕容器 innerHTML: "${container.innerHTML.substring(0, 200)}"`);
             }
             
-            // 检查 video.textTracks
+            // 检查 video.textTracks 和 cues
             if (videoEl?.textTracks) {
                 console.log(`[Shaka] video.textTracks 数量: ${videoEl.textTracks.length}`);
                 for (let i = 0; i < videoEl.textTracks.length; i++) {
                     const vt = videoEl.textTracks[i];
                     console.log(`[Shaka] video.textTracks[${i}]: mode=${vt.mode}, label=${vt.label}, language=${vt.language}`);
+                    if (vt.cues && vt.cues.length > 0) {
+                        console.log(`[Shaka] video.textTracks[${i}] cues 数量: ${vt.cues.length}`);
+                        for (let j = 0; j < Math.min(vt.cues.length, 3); j++) {
+                            console.log(`[Shaka] cue[${j}]: "${vt.cues[j].text?.substring(0, 50)}"`);
+                        }
+                    }
                 }
             }
+            
+            // 检查 Shaka 内部状态
+            console.log(`[Shaka] isTextTrackVisible: ${state.player.isTextTrackVisible()}`);
         } catch (e) {
             console.warn('[Shaka] 延迟检查失败:', e.message);
         }
