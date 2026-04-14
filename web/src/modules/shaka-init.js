@@ -381,10 +381,11 @@ export async function initShakaPlayer(elements) {
                 switchInterval: 2,
                 bandwidthDowngradeTarget: 0.95,
                 bandwidthUpgradeTarget: 0.85
-            },
-            // 启用 CEA-608 字幕（某些 MP4 嵌入字幕可能使用此格式）
-            textDisplayer: 'none'  // 禁用内置文本显示，强制使用原生 track
+            }
         });
+        
+        // 检查可用的文本解析器
+        console.log('[Shaka] 可用的文本解析器:', Object.keys(shaka.text || {}).join(', '));
         
         // 注册 MP4 TTML 解析器
         if (shaka.text && shaka.text.TtmlParser) {
@@ -666,6 +667,43 @@ export async function initShakaPlayer(elements) {
                 }
             } catch (e) {
                 console.warn('[Shaka] Manifest 检查失败:', e.message);
+            }
+            
+            // ★ 检查 streaming engine 状态
+            try {
+                const streamingEngine = state.player.getStreamingEngine?.();
+                if (streamingEngine) {
+                    console.log('[Shaka] StreamingEngine 可用');
+                    
+                    // 检查是否有文本流缓冲
+                    if (streamingEngine.getTextBuffersInfo) {
+                        const textBuffers = streamingEngine.getTextBuffersInfo?.();
+                        console.log('[Shaka] 文本缓冲信息:', textBuffers);
+                    }
+                } else {
+                    console.log('[Shaka] StreamingEngine 不可用');
+                }
+            } catch (e) {
+                console.warn('[Shaka] StreamingEngine 检查失败:', e.message);
+            }
+            
+            // ★ 检查 MediaSource 状态
+            try {
+                const mediaElement = videoEl;
+                if (mediaElement) {
+                    console.log('[Shaka] MediaSource:', mediaElement.mediaSource ? '可用' : '不可用');
+                    
+                    // 检查 sourceBuffer 数量
+                    if (mediaElement.mediaSource?.sourceBuffers) {
+                        console.log('[Shaka] SourceBuffers 数量:', mediaElement.mediaSource.sourceBuffers.length);
+                        for (let i = 0; i < mediaElement.mediaSource.sourceBuffers.length; i++) {
+                            const sb = mediaElement.mediaSource.sourceBuffers[i];
+                            console.log(`[Shaka] SourceBuffer[${i}]: mimeType=${sb.mimeType}, updating=${sb.updating}`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('[Shaka] MediaSource 检查失败:', e.message);
             }
         } catch (e) {
             console.warn('[Shaka] 延迟检查失败:', e.message);
