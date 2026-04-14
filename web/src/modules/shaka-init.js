@@ -200,38 +200,46 @@ export async function initShakaPlayer(elements) {
             // 检查是否嵌入在 MP4 中（没有 URL）
             if (!currentSubtitleUrl) {
                 console.log('[Shaka] 字幕嵌入在 MP4 容器中，无独立 URL');
-                console.log('[Shaka] 检查是否可以获取字幕流的 URL...');
+                console.log('[Shaka] 尝试通过 Shaka manifest 获取视频流 URL...');
                 
-                // 尝试从 stream 对象获取更多信息
-                for (let i = 0; i < textStreams.length; i++) {
-                    const stream = textStreams[i];
-                    
-                    // 检查 stream 上是否有 findTransientsBuffer 或类似方法
-                    if (stream.findTransientsBuffer) {
-                        console.log(`[Shaka] Stream[${i}] 有 findTransientsBuffer 方法`);
-                    }
-                    
-                    // 尝试检查 mpsId (MP4 字幕轨道的 ID)
-                    if (stream.mpsId) {
-                        console.log(`[Shaka] Stream[${i}] mpsId: ${stream.mpsId}`);
+                // 尝试从 manifest 获取视频流 URL
+                let videoMp4Url = null;
+                
+                // 检查视频流
+                const videoStreams = manifest?.videoStreams || [];
+                for (const stream of videoStreams) {
+                    console.log(`[Shaka] 视频流: mimeType=${stream.mimeType}, url=${stream.url ? '有' : '无'}`);
+                    if (stream.url && stream.url.startsWith('http')) {
+                        videoMp4Url = stream.url;
+                        break;
                     }
                 }
                 
-                // 尝试通过 video.currentSrc 获取 MP4 URL 并解析
-                try {
-                    const mediaSrc = videoEl?.src || '';
-                    if (mediaSrc && !mediaSrc.startsWith('blob:')) {
-                        console.log('[Shaka] 尝试从视频 src 提取字幕...');
-                        // 注意：这个方法需要 MP4box.js 支持
-                        // 如果可用，尝试解析 MP4 容器中的字幕轨道
-                        if (window.MP4Box) {
-                            await extractSubtitlesFromMP4(mediaSrc, textStreams);
-                        } else {
-                            console.log('[Shaka] MP4box.js 未加载，跳过直接 MP4 解析');
+                // 检查所有流（包括音频）
+                if (!videoMp4Url) {
+                    const allStreams = manifest?.textStreams || [];
+                    for (const stream of allStreams) {
+                        if (stream.mimeType === 'video/mp4' && stream.url) {
+                            videoMp4Url = stream.url;
+                            break;
                         }
                     }
-                } catch (e) {
-                    console.warn('[Shaka] MP4 字幕提取失败:', e.message);
+                }
+                
+                if (videoMp4Url) {
+                    console.log('[Shaka] 找到视频流 URL，使用 MP4box 提取字幕');
+                    await extractSubtitlesFromMP4(videoMp4Url, textStreams);
+                } else {
+                    console.log('[Shaka] 无法获取视频流 URL');
+                    
+                    // 尝试从 videoEl.src 获取（可能是代理 URL）
+                    const mediaSrc = videoEl?.src || '';
+                    if (mediaSrc && !mediaSrc.startsWith('blob:') && mediaSrc.startsWith('http')) {
+                        console.log('[Shaka] 使用 videoEl.src 提取字幕...');
+                        await extractSubtitlesFromMP4(mediaSrc, textStreams);
+                    } else {
+                        console.log('[Shaka] videoEl.src 是 blob URL 或无效，无法提取');
+                    }
                 }
                 
                 // 尝试获取当前选中的字幕轨道
@@ -249,7 +257,7 @@ export async function initShakaPlayer(elements) {
     // 从 MP4 容器中提取字幕（需要 MP4box.js）
     const extractSubtitlesFromMP4 = async (mp4Url, textStreams) => {
         if (!window.MP4Box) {
-            console.log('[Shaka] MP4box.js 未加载');
+            console.log('[Shaka] MP4box.js 未加载，跳过 MP4 字幕提取');
             return;
         }
         
@@ -260,6 +268,9 @@ export async function initShakaPlayer(elements) {
             const MP4Box = window.MP4Box;
             const mp4boxFile = MP4Box.createFile();
             
+            // 用于存储提取的字幕
+            const extractedCues = [];
+            
             // 设置回调
             mp4boxFile.onReady = (info) => {
                 console.log('[Shaka] MP4box 解析完成，轨道数:', info.tracks.length);
@@ -268,30 +279,81 @@ export async function initShakaPlayer(elements) {
                 for (const track of info.tracks) {
                     console.log(`[Shaka] MP4box 轨道: id=${track.id}, type=${track.type}, codec=${track.codec}`);
                     
-                    if (track.type === 'subtitle') {
+                    // 检查是否是字幕轨道（可能是 stpp, wvtt, tx3g 等）
+                    if (track.type === 'subtitle' || 
+                        track.codec?.includes('stpp') || 
+                        track.codec?.includes('wvtt') ||
+                        track.codec?.includes('tx3g')) {
                         console.log(`[Shaka] 发现字幕轨道: id=${track.id}, codec=${track.codec}`);
                         
-                        // 提取字幕样本
-                        const onSamples = (samples) => {
-                            console.log(`[Shaka] 字幕样本数: ${samples.length}`);
-                            for (const sample of samples) {
-                                if (sample.data) {
-                                    const text = new TextDecoder('utf-8').decode(sample.data);
-                                    console.log(`[Shaka] 字幕数据: ${text.substring(0, 100)}...`);
-                                }
-                            }
-                        };
-                        
-                        mp4boxFile.setExtractionOptions(track.id, null, { nbSamples: 100 });
-                        mp4boxFile.start();
-                        mp4boxFile.stop();
+                        // 设置提取选项
+                        mp4boxFile.setExtractionOptions(track.id, null, { nbSamples: 500 });
                     }
+                }
+                
+                mp4boxFile.start();
+            };
+            
+            // 提取字幕样本
+            mp4boxFile.onSamples = (id, user, samples) => {
+                console.log(`[Shaka] 字幕样本数: ${samples.length}`);
+                
+                for (const sample of samples) {
+                    if (sample.data) {
+                        // stpp (TTML) 格式
+                        if (sample.timescale) {
+                            const data = new Uint8Array(sample.data);
+                            const text = new TextDecoder('utf-8').decode(data);
+                            
+                            // 解析 TTML XML
+                            try {
+                                const parser = new DOMParser();
+                                const xml = parser.parseFromString(text, 'text/xml');
+                                const paragraphs = xml.querySelectorAll('p');
+                                
+                                for (const p of paragraphs) {
+                                    const begin = parseTTMLTime(p.getAttribute('begin') || '0');
+                                    const end = parseTTMLTime(p.getAttribute('end') || '0');
+                                    const content = p.textContent?.trim() || '';
+                                    
+                                    if (content) {
+                                        extractedCues.push({
+                                            startTime: begin,
+                                            endTime: end,
+                                            text: content
+                                        });
+                                    }
+                                }
+                            } catch (e) {
+                                // 如果不是 XML，直接使用文本
+                                extractedCues.push({
+                                    startTime: sample.cts / sample.timescale,
+                                    endTime: (sample.cts + sample.duration) / sample.timescale,
+                                    text: text.trim()
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                console.log(`[Shaka] 已提取 ${extractedCues.length} 个字幕 cue`);
+                
+                // 如果有提取的字幕，使用它们
+                if (extractedCues.length > 0) {
+                    currentCues = extractedCues;
+                    console.log('[Shaka] MP4box 字幕提取成功!');
                 }
             };
             
             // 获取 MP4 数据
+            console.log('[Shaka] 正在获取 MP4 数据:', mp4Url.substring(0, 100));
             const response = await fetch(mp4Url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
             const arrayBuffer = await response.arrayBuffer();
+            console.log('[Shaka] 获取到 MP4 数据，大小:', arrayBuffer.byteLength);
             
             // 告诉 MP4box 这是一个流
             arrayBuffer.fileStart = 0;
