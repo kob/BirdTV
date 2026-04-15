@@ -551,6 +551,18 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       return false;
     }
 
+    // 检测是否为 segment URL
+    // Segment URL（.cmfa, .cmfv, .cmft, .stpp 等）应该直接访问，不走任何代理
+    function isSegmentUrl(url) {
+      if (!url) return false;
+      const lower = String(url).toLowerCase();
+      // 检测 segment 扩展名
+      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.)/i.test(lower)) {
+        return true;
+      }
+      return false;
+    }
+
     // 处理 BaseURL 标签
     result = result.replace(/<BaseURL[^>]*>([^<]*)<\/BaseURL>/gi, (match, url) => {
       const trimmedUrl = url.trim();
@@ -560,6 +572,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       if (isWorkerUrl(abs)) {
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 BaseURL:', abs.substring(0, 80));
         return match;
+      }
+      // Segment URL 直接访问原始 CDN，不走代理
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return `<BaseURL>${abs}</BaseURL>`;
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return `<BaseURL>${proxyUrl}</BaseURL>`;
@@ -573,6 +590,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 Initialization:', abs.substring(0, 80));
         return match;
       }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(url, abs);
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
@@ -583,6 +605,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       if (isWorkerUrl(abs)) {
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 Initialization:', abs.substring(0, 80));
         return match;
+      }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(url, abs);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
@@ -596,6 +623,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL media:', abs.substring(0, 80));
         return match;
       }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(`media="${url}"`, `media="${abs}"`);
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
@@ -607,6 +639,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL media:', abs.substring(0, 80));
         return match;
       }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(`media="${url}"`, `media="${abs}"`);
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
@@ -617,6 +654,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       if (isWorkerUrl(abs)) {
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL index:', abs.substring(0, 80));
         return match;
+      }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(`index="${url}"`, `index="${abs}"`);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`index="${url}"`, `index="${proxyUrl}"`);
@@ -630,6 +672,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 initialization:', abs.substring(0, 80));
         return match;
       }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(url, abs);
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
@@ -640,6 +687,11 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       if (isWorkerUrl(abs)) {
         console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 media:', abs.substring(0, 80));
         return match;
+      }
+      // Segment URL 直接访问原始 CDN
+      if (isSegmentUrl(abs)) {
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
+        return match.replace(url, abs);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
