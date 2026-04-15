@@ -538,11 +538,29 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     // 匹配 BaseURL、Initialization、SegmentURL 等标签中的 URL
     let result = inputText;
 
+    // 检测 URL 是否已经是 Worker URL（不完整的 Worker URL 格式）
+    // 如果是，直接返回原始 URL，不再次包装
+    function isWorkerUrl(url) {
+      if (!url) return false;
+      const lower = String(url).toLowerCase();
+      // 检测不完整的 Worker URL（如 birdtv-proxy.xxx.workers.dev/8/au1_341/init.cmfa）
+      // 这种 URL 缺少 ?url= 参数，是无效的
+      if (lower.includes('birdtv-proxy') && lower.includes('.workers.dev') && !lower.includes('?url=')) {
+        return true;
+      }
+      return false;
+    }
+
     // 处理 BaseURL 标签
     result = result.replace(/<BaseURL[^>]*>([^<]*)<\/BaseURL>/gi, (match, url) => {
       const trimmedUrl = url.trim();
       if (!trimmedUrl || !/^https?:/i.test(trimmedUrl)) return match;
       const abs = toAbsoluteUrl(trimmedUrl, baseUrl);
+      // 如果已经是 Worker URL，不重写
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 BaseURL:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return `<BaseURL>${proxyUrl}</BaseURL>`;
     });
@@ -551,6 +569,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/<Initialization\s+SourceURL="([^"]+)"[^>]*(?:\/>|>\s*<\/Initialization>)/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 Initialization:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
@@ -558,6 +580,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/<Initialization\s+[^>]*SourceURL="([^"]+)"[^>]*(?:\/>|>\s*<\/Initialization>)/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 Initialization:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
@@ -566,6 +592,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/<SegmentURL\s+media="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL media:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
@@ -573,6 +603,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/<SegmentURL\s+[^>]*media="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL media:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
@@ -580,6 +614,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/<SegmentURL\s+index="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 SegmentURL index:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`index="${url}"`, `index="${proxyUrl}"`);
     });
@@ -588,6 +626,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/initialization="([^"]+)"/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 initialization:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
@@ -595,6 +637,10 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     result = result.replace(/media="([^"]+)"/gi, (match, url) => {
       if (!url || !/^https?:/i.test(url)) return match;
       const abs = toAbsoluteUrl(url, baseUrl);
+      if (isWorkerUrl(abs)) {
+        console.log('[MPD Rewrite] 跳过已经是 Worker URL 的 media:', abs.substring(0, 80));
+        return match;
+      }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
     });
