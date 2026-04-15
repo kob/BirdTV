@@ -630,6 +630,8 @@
         let epgCache = new Map(); // EPG 缓存
         const EPG_CACHE_TTL = 5 * 60 * 1000; // EPG 缓存 5 分钟
         let currentNavPage = 'home'; // 当前导航页面：home 或 channels
+        let currentSearchKeyword = ''; // 当前搜索关键词
+        let imgObserver = null; // 保存图片观察器实例
 
         // 工具函数
         function showToast(message) {
@@ -637,6 +639,17 @@
             toast.textContent = message;
             toast.classList.add('active');
             setTimeout(() => toast.classList.remove('active'), 2000);
+        }
+
+        // HTML转义函数，防止XSS攻击
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return unsafe;
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
 
         function getAuthToken() {
@@ -722,6 +735,7 @@
                     // 强制刷新时清除旧缓存
                     if (reset) {
                         localStorage.removeItem('birdtv_channels');
+                        currentPage = 1;
                     }
 
                     const cached = getCachedChannels();
@@ -770,28 +784,9 @@
         // 更新单个频道的EPG显示
         function updateChannelCardEpg(channel) {
             const channelList = document.getElementById('channelList');
-            const card = channelList.querySelector(`[data-channel-name="${channel.name}"]`);
+            const card = channelList.querySelector(`[data-channel-name="${escapeHtml(channel.name)}"]`);
             if (card) {
-                const epgArea = card.querySelector('.channel-epg-empty');
-                if (epgArea && channel.nowPlaying) {
-                    const epgHtml = `
-                        <div class="channel-epg-now">
-                            <span class="epg-time">${channel.nowPlaying.startTime || ''}</span>
-                            <span class="epg-title">${channel.nowPlaying.title || '无节目信息'}</span>
-                        </div>
-                        ${channel.nextPlaying ? `
-                        <div class="channel-epg-next">
-                            <span class="epg-time">${channel.nextPlaying.startTime || ''}</span>
-                            <span class="epg-title">${channel.nextPlaying.title || ''}</span>
-                        </div>
-                        ` : ''}
-                    `;
-                    const cardInfo = card.querySelector('.channel-info');
-                    const existingEpg = cardInfo.querySelector('.channel-epg-now');
-                    if (!existingEpg) {
-                        epgArea.outerHTML = epgHtml;
-                    }
-                }
+                updateCardEpg(card, channel);
             }
         }
 
@@ -892,7 +887,11 @@
             if (currentNavPage === 'home') {
                 if (allChannels.length > 0) {
                     // 从缓存或已加载的频道中随机选择 6 个
-                    const shuffled = [...allChannels].sort(() => Math.random() - 0.5);
+                    const shuffled = [...allChannels];
+                    for (let i = shuffled.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                    }
                     filtered = shuffled.slice(0, 6);
                     showDetails = true; // 首页显示台标和 EPG
                 }
@@ -936,33 +935,33 @@
                 // 根据页面决定是否显示台标和 EPG
                 const epgInfo = showDetails && channel.nowPlaying ? `
                     <div class="channel-epg-now">
-                        <span class="epg-time">${channel.nowPlaying.startTime || ''}</span>
-                        <span class="epg-title">${channel.nowPlaying.title || '无节目信息'}</span>
+                        <span class="epg-time">${escapeHtml(channel.nowPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nowPlaying.title || '无节目信息')}</span>
                     </div>
                     ${channel.nextPlaying ? `
                     <div class="channel-epg-next">
-                        <span class="epg-time">${channel.nextPlaying.startTime || ''}</span>
-                        <span class="epg-title">${channel.nextPlaying.title || ''}</span>
+                        <span class="epg-time">${escapeHtml(channel.nextPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nextPlaying.title || '')}</span>
                     </div>
                     ` : ''}
                 ` : (showDetails ? `
-                    <div class="channel-epg-empty" data-channel-name="${channel.name}">加载中...</div>
+                    <div class="channel-epg-empty" data-channel-name="${escapeHtml(channel.name)}">加载中...</div>
                 ` : '');
 
                 // 台标使用 data-src 懒加载，初始显示占位符（仅在首页显示）
                 const posterHtml = showDetails && channel.tvgLogo ? `
-                    <img data-src="${channel.tvgLogo}" alt="${channel.name}" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='block'">
+                    <img data-src="${escapeHtml(channel.tvgLogo)}" alt="${escapeHtml(channel.name)}" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='block'">
                     <span class="placeholder">📺</span>
                 ` : `
                     <span class="placeholder">📺</span>
                 `;
 
                 return `
-                <div class="channel-card ${currentChannel && currentChannel.name === channel.name ? 'playing' : ''}" data-index="${index}" data-channel-name="${channel.name}">
+                <div class="channel-card ${currentChannel && currentChannel.name === channel.name ? 'playing' : ''}" data-index="${index}" data-channel-name="${escapeHtml(channel.name)}">
                     <div class="channel-poster">${posterHtml}</div>
                     <div class="channel-info">
-                        <div class="channel-name">${channel.name}</div>
-                        <div class="channel-group">${channel.group || '未分组'}</div>
+                        <div class="channel-name">${escapeHtml(channel.name)}</div>
+                        <div class="channel-group">${escapeHtml(channel.group || '未分组')}</div>
                         ${epgInfo}
                     </div>
                 </div>
@@ -1007,7 +1006,7 @@
                 const countInfo = document.createElement('div');
                 countInfo.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 10px; color: var(--text-muted); font-size: 12px;';
                 if (currentSearchKeyword.trim()) {
-                    countInfo.innerHTML = `搜索 "${currentSearchKeyword}" 找到 ${filtered.length} 个频道`;
+                    countInfo.innerHTML = `搜索 "${escapeHtml(currentSearchKeyword)}" 找到 ${filtered.length} 个频道`;
                 } else {
                     countInfo.innerHTML = `共 ${filtered.length} 个频道`;
                 }
@@ -1020,12 +1019,9 @@
             }
         }
 
-        // 设置加载更多触发器监听
+        // 设置加载更多触发器监听（已移除，因为不需要单独的触发器元素）
         function setupLoadMoreTrigger() {
-            const loadMoreTrigger = document.getElementById('loadMoreTrigger');
-            if (loadMoreTrigger && scrollObserver) {
-                scrollObserver.observe(loadMoreTrigger);
-            }
+            // 无限滚动直接监听 channelList 容器，不需要单独的触发器
         }
 
         // 更新单个卡片的 EPG 显示
@@ -1034,13 +1030,13 @@
             if (epgArea && channel.nowPlaying) {
                 const epgHtml = `
                     <div class="channel-epg-now">
-                        <span class="epg-time">${channel.nowPlaying.startTime || ''}</span>
-                        <span class="epg-title">${channel.nowPlaying.title || '无节目信息'}</span>
+                        <span class="epg-time">${escapeHtml(channel.nowPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nowPlaying.title || '无节目信息')}</span>
                     </div>
                     ${channel.nextPlaying ? `
                     <div class="channel-epg-next">
-                        <span class="epg-time">${channel.nextPlaying.startTime || ''}</span>
-                        <span class="epg-title">${channel.nextPlaying.title || ''}</span>
+                        <span class="epg-time">${escapeHtml(channel.nextPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nextPlaying.title || '')}</span>
                     </div>
                     ` : ''}
                 `;
@@ -1105,7 +1101,9 @@
                         uaSelect.appendChild(opt);
                     });
                 }
-            } catch {}
+            } catch (e) {
+                console.warn('加载自定义 UA 失败:', e);
+            }
         }
 
         // 播放控制栏：切换播放器/UA后自动重播当前频道
@@ -1119,7 +1117,9 @@
                 changeTimer = setTimeout(async () => {
                     if (currentChannel) {
                         console.log('[MobilePlayer] 播放设置变更，重新播放:', currentChannel.name);
-                        try { await closeMobilePlayer(); } catch {}
+                        try { await closeMobilePlayer(); } catch (e) {
+                            console.warn('关闭播放器失败:', e);
+                        }
                         await playMobileChannel(currentChannel, (error) => {
                             showToast('播放失败：' + error.message);
                         });
@@ -1327,9 +1327,12 @@
 
             if (!channelList) return;
 
-            // 使用 Intersection Observer 实现无限滚动
+            // 由于 loadChannels 一次性加载所有频道，不需要真正的无限滚动
+            // 但保留 scrollObserver 以备将来需要分页加载时使用
             scrollObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
+                    // 当前实现中 hasMore 始终为 false，所以不会触发加载
+                    // 如果将来需要分页加载，可以在这里实现
                     if (entry.isIntersecting && hasMore && !isLoading && currentTab === 'all' && currentNavPage === 'channels') {
                         loadChannels(false);
                     }
@@ -1340,10 +1343,10 @@
                 threshold: 0.1
             });
 
-            // 使用 MutationObserver 监听 DOM 变化，确保新加载的触发器也被监听
+            // 使用 MutationObserver 监听 DOM 变化，确保新加载的图片也能被懒加载
             const mutationObserver = new MutationObserver(() => {
-                if (currentNavPage === 'channels') {
-                    setupLoadMoreTrigger();
+                if (currentNavPage === 'home') {
+                    observeLazyImages();
                 }
             });
 
@@ -1360,7 +1363,12 @@
 
         // 图片懒加载
         function observeLazyImages() {
-            const imgObserver = new IntersectionObserver((entries) => {
+            // 断开之前的观察器连接
+            if (imgObserver) {
+                imgObserver.disconnect();
+            }
+
+            imgObserver = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const img = entry.target;
