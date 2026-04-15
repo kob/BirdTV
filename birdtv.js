@@ -651,20 +651,16 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
           return;
         }
 
-        // Cloudflare WAF 错误重试
+        // Cloudflare WAF 错误重试（所有 403/520 都尝试）
         if ((code === 403 || code === 520) && !workerRetry && workerUrl) {
-          const cfChallenge = resp.headers['cf-mitigated'] === 'challenge' ||
-                            String(resp.headers['server'] || '').toLowerCase().includes('cloudflare');
-          if (cfChallenge) {
-            console.log('[Cloudflare WAF] 检测到 WAF 拦截 (403/520)，尝试使用 Worker 代理重试', {
-              url: target,
-              statusCode: code
-            });
-            resp.resume();
-            workerRetry = true;
-            run(target, insecureTls, family, useProxy, forceGetForHeadFallback);
-            return;
-          }
+          console.log('[Cloudflare WAF] 检测到 403/520 错误，尝试使用 Worker 代理重试', {
+            url: target,
+            statusCode: code
+          });
+          resp.resume();
+          workerRetry = true;
+          run(target, insecureTls, family, useProxy, forceGetForHeadFallback);
+          return;
         }
 
         const chunks = [];
