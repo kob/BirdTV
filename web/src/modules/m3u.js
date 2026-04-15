@@ -208,7 +208,9 @@ export async function importFromM3UUrl(m3uUrl, elements, options = {}) {
                 if (imported && persistAutoUrl) localStorage.setItem("tvplayer.autoM3uUrl.v1", m3uUrl);
                 return imported;
             }
-        } catch {}
+        } catch (err) {
+            console.warn('[M3U] 同源代理获取失败:', err?.message || err);
+        }
     }
 
     // 尝试直接访问（如果可用）
@@ -221,6 +223,7 @@ export async function importFromM3UUrl(m3uUrl, elements, options = {}) {
         if (imported && persistAutoUrl) localStorage.setItem("tvplayer.autoM3uUrl.v1", m3uUrl);
         return imported;
     } catch (err) {
+        console.warn('[M3U] 直连获取失败:', err?.message || err);
         // 如果是 HTTP 链接且部署在 HTTPS 环境，尝试转换为 HTTPS
         const httpsUrl = m3uUrl.replace(/^http:/i, 'https:');
         if (httpsUrl !== m3uUrl && window.location.protocol === 'https:') {
@@ -232,7 +235,9 @@ export async function importFromM3UUrl(m3uUrl, elements, options = {}) {
                     if (imported && persistAutoUrl) localStorage.setItem("tvplayer.autoM3uUrl.v1", m3uUrl);
                     return imported;
                 }
-            } catch {}
+            } catch (httpsErr) {
+                console.warn('[M3U] HTTPS转换获取失败:', httpsErr?.message || httpsErr);
+            }
         }
     }
 
@@ -247,7 +252,9 @@ export async function importFromM3UUrl(m3uUrl, elements, options = {}) {
                 return imported;
             }
         }
-    } catch {}
+    } catch (proxyErr) {
+        console.warn('[M3U] 代理获取失败:', proxyErr?.message || proxyErr);
+    }
     return false;
 }
 
@@ -274,5 +281,8 @@ export async function tryLoadLocalM3U(elements, showStatus) {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const text = await response.text();
         return doImportFromM3UText(text, elements, { sourceLabel: "mytv.m3u", baseUrl: window.location.href });
-    } catch { return false; }
+    } catch (err) {
+        console.warn('[M3U] 本地m3u加载失败:', err?.message || err);
+        return false;
+    }
 }

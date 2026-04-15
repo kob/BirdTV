@@ -2,7 +2,15 @@
  * 错误处理中间件
  */
 function errorMiddleware(err, req, res, next) {
-  console.error('[Error]', err);
+  const context = {
+    message: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip || req.connection?.remoteAddress || 'unknown',
+    userAgent: req.headers?.['user-agent'] || 'unknown'
+  };
+  console.error('[Error]', JSON.stringify(context, null, 2));
 
   const statusCode = err.statusCode || 500;
   const message = err.message || '内部服务器错误';

@@ -162,9 +162,9 @@ async function init() {
         // 并行请求：settings、m3u sources、epg sources
         try {
             const [settingsRes, m3uRes, epgRes] = await Promise.all([
-                fetch("/api/settings", { headers }).catch(() => ({ ok: false })),
-                fetch("/api/sources/m3u", { headers }).catch(() => ({ ok: false })),
-                fetch("/api/sources/epg", { headers }).catch(() => ({ ok: false }))
+                fetch("/api/settings", { headers }).catch((err) => { console.warn('[Init] settings请求失败:', err?.message || err); return { ok: false }; }),
+                fetch("/api/sources/m3u", { headers }).catch((err) => { console.warn('[Init] m3u源请求失败:', err?.message || err); return { ok: false }; }),
+                fetch("/api/sources/epg", { headers }).catch((err) => { console.warn('[Init] epg源请求失败:', err?.message || err); return { ok: false }; })
             ]);
 
             // 处理 settings

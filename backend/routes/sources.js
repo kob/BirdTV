@@ -42,7 +42,7 @@ function createSourcesRoutes(sourceController) {
     }
 
     // POST /api/sources/m3u/parse - 解析 M3U 链接并返回频道列表
-    if (url.startsWith('/api/sources/m3u/parse') && method === 'POST') {
+    if (url === '/api/sources/m3u/parse' && method === 'POST') {
       return sourceController.parseM3uUrl(req, res);
     }
 

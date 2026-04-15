@@ -283,9 +283,11 @@ class ChannelController {
 
   async searchChannels(req, res) {
     try {
-      const q = req.query.get('q');
-      const streamType = req.query.get('streamType');
-      const playerType = req.query.get('playerType');
+      // 兼容 URLSearchParams 和普通对象两种格式
+      const _q = req.query && typeof req.query.get === 'function' ? req.query : (req.query || {});
+      const q = _q.get ? _q.get('q') : _q.q;
+      const streamType = _q.get ? _q.get('streamType') : _q.streamType;
+      const playerType = _q.get ? _q.get('playerType') : _q.playerType;
       const channels = await this.storage.getChannels();
 
       let filtered = channels;

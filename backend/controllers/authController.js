@@ -155,7 +155,11 @@ class AuthController {
         if (memoryStorage && memoryStorage.users) {
           const data = memoryStorage.users.get(currentUser.username);
           if (data) {
-            userData = JSON.parse(data);
+            try {
+              userData = JSON.parse(data);
+            } catch (parseErr) {
+              console.warn('[AuthController] 用户数据解析失败，降级到默认值:', parseErr.message);
+            }
           }
         }
       }

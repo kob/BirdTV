@@ -225,7 +225,11 @@ class StorageService {
       try {
         const data = await this.redisClient.get(this.redisPrefix + key);
         if (data !== null) {
-          return JSON.parse(data);
+          try {
+            return JSON.parse(data);
+          } catch (parseError) {
+            console.warn(`[StorageService] Redis 数据解析失败 ${key}:`, parseError.message);
+          }
         }
       } catch (error) {
         console.warn(`[StorageService] Redis 读取 ${key} 失败:`, error.message);
