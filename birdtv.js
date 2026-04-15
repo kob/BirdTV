@@ -633,6 +633,18 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         }
 
         if (normalizedMethod === 'HEAD' && !forceGetForHeadFallback && shouldHeadFallbackToGet(code)) {
+          // HEAD 请求失败时，优先尝试 Worker 代理
+          if ((code === 403 || code === 520) && !workerRetry && workerUrl) {
+            console.log('[Cloudflare WAF] HEAD 请求返回错误，尝试使用 Worker 代理重试', {
+              url: target,
+              statusCode: code
+            });
+            resp.resume();
+            workerRetry = true;
+            run(target, insecureTls, family, useProxy, forceGetForHeadFallback);
+            return;
+          }
+          // 如果没有 Worker 代理或已重试过，使用 GET fallback
           resp.resume();
           run(target, insecureTls, family, useProxy, true);
           return;
