@@ -402,10 +402,12 @@ function rewriteShakaProxyRelativeUri(uri) {
 
     try {
         // 如果已经是 BirdTV Worker URL，直接返回，不再次包装
+        // Worker URL 应该直接访问，不走 m3u-proxy
         try {
             const testParsed = new URL(raw);
             const hostname = String(testParsed.hostname || '').toLowerCase();
             if (hostname.includes('birdtv-proxy') && hostname.includes('.workers.dev')) {
+                console.log('[Shaka] Segment URL 是 Worker URL，直接访问不代理:', hostname);
                 return raw;
             }
         } catch {}
@@ -435,9 +437,18 @@ function rewriteShakaProxyRelativeUri(uri) {
             const finalParsed = new URL(absoluteTarget);
             const finalHostname = String(finalParsed.hostname || '').toLowerCase();
             if (finalHostname.includes('birdtv-proxy') && finalHostname.includes('.workers.dev')) {
+                console.log('[Shaka] 转换后是 Worker URL，直接访问不代理:', finalHostname);
                 return absoluteTarget;
             }
         } catch {}
+
+        // 关键修复：segment URL（cmfa, cmfv, cmft, stpp 等）不代理
+        // 只有 manifest 需要通过 Worker 代理解决 WAF，segment 直接访问 CDN
+        const segmentPatterns = /\.(cmfa|cmfv|cmft|stpp|_stpp\.)/i;
+        if (segmentPatterns.test(absoluteTarget)) {
+            console.log('[Shaka] Segment URL 不代理，直接访问:', absoluteTarget.substring(0, 100) + '...');
+            return absoluteTarget;
+        }
 
         return toSameOriginM3UProxyUrl(absoluteTarget) || absoluteTarget;
     } catch { return raw; }
