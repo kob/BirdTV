@@ -446,8 +446,10 @@ function rewriteShakaProxyRelativeUri(uri) {
         // 只有 manifest 需要通过 Worker 代理解决 WAF，segment 直接访问 CDN
         const segmentPatterns = /\.(cmfa|cmfv|cmft|stpp|_stpp\.)/i;
         if (segmentPatterns.test(absoluteTarget)) {
-            console.log('[Shaka] Segment URL 不代理，直接访问:', absoluteTarget.substring(0, 100) + '...');
-            return absoluteTarget;
+            // HTTP→HTTPS 升级：避免 Mixed Content 阻断
+            const upgraded = absoluteTarget.replace(/^http:/i, 'https:');
+            console.log('[Shaka] Segment URL 不代理，直接访问:', upgraded.substring(0, 100) + '...');
+            return upgraded;
         }
 
         return toSameOriginM3UProxyUrl(absoluteTarget) || absoluteTarget;

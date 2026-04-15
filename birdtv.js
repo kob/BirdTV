@@ -563,6 +563,12 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       return false;
     }
 
+    // 将 segment URL 升级为 HTTPS，避免 Mixed Content 阻断
+    function upgradeToHttps(url) {
+      if (!url) return url;
+      return String(url).replace(/^http:/i, 'https:');
+    }
+
     // 处理 BaseURL 标签
     result = result.replace(/<BaseURL[^>]*>([^<]*)<\/BaseURL>/gi, (match, url) => {
       const trimmedUrl = url.trim();
@@ -575,8 +581,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN，不走代理
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return `<BaseURL>${abs}</BaseURL>`;
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return `<BaseURL>${https}</BaseURL>`;
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return `<BaseURL>${proxyUrl}</BaseURL>`;
@@ -592,8 +599,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(url, abs);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(url, https);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
@@ -608,8 +616,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(url, abs);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(url, https);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
@@ -625,8 +634,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(`media="${url}"`, `media="${abs}"`);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(`media="${url}"`, `media="${https}"`);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
@@ -641,8 +651,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(`media="${url}"`, `media="${abs}"`);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(`media="${url}"`, `media="${https}"`);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
@@ -657,8 +668,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(`index="${url}"`, `index="${abs}"`);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(`index="${url}"`, `index="${https}"`);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(`index="${url}"`, `index="${proxyUrl}"`);
@@ -674,8 +686,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(url, abs);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(url, https);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
@@ -690,8 +703,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       }
       // Segment URL 直接访问原始 CDN
       if (isSegmentUrl(abs)) {
-        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', abs.substring(0, 80));
-        return match.replace(url, abs);
+        const https = upgradeToHttps(abs);
+        console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
+        return match.replace(url, https);
       }
       const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
       return match.replace(url, proxyUrl);
