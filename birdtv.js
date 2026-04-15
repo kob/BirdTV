@@ -1871,7 +1871,10 @@ async function handleProxyRequest(req, res, url, config) {
       allowedHosts: Array.from(config.allowedHosts)
     });
     res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-    res.end(`Blocked by policy: ${allowed.reason}`);
+    const errorDetail = allowed.reason === 'host_not_allowed' 
+      ? `Host "${sourceUrl}" is not in allowedHosts list. Set BIRDTV_ALLOWED_HOSTS environment variable or leave empty to allow all.`
+      : allowed.reason;
+    res.end(`Blocked by policy: ${errorDetail}`);
     return;
   }
 

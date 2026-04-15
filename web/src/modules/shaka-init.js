@@ -681,12 +681,27 @@ export async function initShakaPlayer(elements) {
     const networkingEngine = state.player.getNetworkingEngine();
     if (networkingEngine) {
         networkingEngine.registerRequestFilter((type, request) => {
-            const token = localStorage.getItem('authToken');
+            // 尝试获取认证 token（优先 localStorage，备用 cookie）
+            let token = localStorage.getItem('authToken');
+            if (!token) {
+                const cookies = document.cookie.split(';');
+                for (const cookie of cookies) {
+                    const [name, value] = cookie.trim().split('=');
+                    if (name === 'authToken' && value) { token = value; break; }
+                }
+            }
+            
             if (Array.isArray(request?.uris) && request.uris.length > 0) {
                 request.uris = request.uris.map(uri => rewriteShakaProxyRelativeUri(uri));
-                if (request.uris.some(uri => String(uri).includes('/m3u-proxy?url=')) && token) {
+                const isProxyRequest = request.uris.some(uri => String(uri).includes('/m3u-proxy?url='));
+                if (isProxyRequest) {
                     request.headers = request.headers || {};
-                    request.headers['Authorization'] = `Bearer ${token}`;
+                    if (token) {
+                        request.headers['Authorization'] = `Bearer ${token}`;
+                        console.log('[Shaka] 为代理请求添加认证 token');
+                    } else {
+                        console.warn('[Shaka] 警告：代理请求无认证 token，可能导致 403');
+                    }
                 }
             }
             if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {

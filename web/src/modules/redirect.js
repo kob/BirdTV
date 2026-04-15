@@ -6,6 +6,23 @@ import { state } from './state.js';
 import { getProxyUrl } from './proxy.js';
 import { getEffectiveUserAgent } from './ua.js';
 
+/**
+ * 获取当前有效的认证 token
+ */
+function getAuthToken() {
+    // 优先从 localStorage 获取 authToken
+    const token = localStorage.getItem('authToken');
+    if (token) return token;
+    
+    // 备用：从 cookie 获取
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+        const [name, value] = cookie.trim().split('=');
+        if (name === 'authToken' && value) return value;
+    }
+    return null;
+}
+
 export async function detectAndHandleRedirect(url, options = {}) {
     const { timeout = 3000, followRedirects = true, skipIfInterrupted = true } = options;
 
@@ -31,10 +48,17 @@ export async function detectAndHandleRedirect(url, options = {}) {
 
         const ua = getEffectiveUserAgent();
         const proxyUrl = getProxyUrl(url, ua) + '&redirect-check=true';
+        const token = getAuthToken();
+
+        // 构建请求 headers
+        const headers = { 'Accept': '*/*' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
 
         const response = await fetch(proxyUrl, {
             method: 'GET', mode: 'cors', redirect: 'manual',
-            signal: controller.signal, headers: { 'Accept': '*/*' }
+            signal: controller.signal, headers
         });
 
         clearTimeout(timeoutId);
