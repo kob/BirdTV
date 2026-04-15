@@ -458,6 +458,14 @@ function shouldRewriteM3u(payload, remoteUrl) {
   if (contentType.includes('mpegurl') || contentType.includes('application/x-mpegurl')) {
     return true;
   }
+  // DASH MPD manifest 也需要重写 segment URL
+  if (contentType.includes('dash') || contentType.includes('xml')) {
+    const finalLower = String(payload.finalUrl || '').toLowerCase();
+    const remoteLower = String(remoteUrl || '').toLowerCase();
+    if (finalLower.includes('.mpd') || remoteLower.includes('.mpd')) {
+      return true;
+    }
+  }
   const finalLower = String(payload.finalUrl || '').toLowerCase();
   const remoteLower = String(remoteUrl || '').toLowerCase();
   return finalLower.includes('.m3u8') || finalLower.includes('.m3u') || remoteLower.includes('.m3u8') || remoteLower.includes('.m3u');
@@ -518,6 +526,84 @@ function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId 
       return buildLocalProxyUrl(abs, userAgent, authToken, linkId);
     })
     .join('\n');
+}
+
+/**
+ * 重写 DASH MPD manifest 中的 segment URL
+ * 将所有绝对 URL 替换为通过 BirdTV 代理的 URL
+ */
+function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId = null) {
+  try {
+    // 使用简单的字符串替换来重写 XML 中的 URL 属性
+    // 匹配 BaseURL、Initialization、SegmentURL 等标签中的 URL
+    let result = inputText;
+
+    // 处理 BaseURL 标签
+    result = result.replace(/<BaseURL[^>]*>([^<]*)<\/BaseURL>/gi, (match, url) => {
+      const trimmedUrl = url.trim();
+      if (!trimmedUrl || !/^https?:/i.test(trimmedUrl)) return match;
+      const abs = toAbsoluteUrl(trimmedUrl, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return `<BaseURL>${proxyUrl}</BaseURL>`;
+    });
+
+    // 处理 Initialization 标签的 SourceURL 和 Range 属性
+    result = result.replace(/<Initialization\s+SourceURL="([^"]+)"[^>]*(?:\/>|>\s*<\/Initialization>)/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(url, proxyUrl);
+    });
+
+    result = result.replace(/<Initialization\s+[^>]*SourceURL="([^"]+)"[^>]*(?:\/>|>\s*<\/Initialization>)/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(url, proxyUrl);
+    });
+
+    // 处理 SegmentURL 标签的 media 和 index 属性
+    result = result.replace(/<SegmentURL\s+media="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
+    });
+
+    result = result.replace(/<SegmentURL\s+[^>]*media="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
+    });
+
+    result = result.replace(/<SegmentURL\s+index="([^"]+)"[^>]*(?:\/>|>\s*<\/SegmentURL>)/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(`index="${url}"`, `index="${proxyUrl}"`);
+    });
+
+    // 处理 SegmentTemplate 标签的 initialization 和 media 属性
+    result = result.replace(/initialization="([^"]+)"/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(url, proxyUrl);
+    });
+
+    result = result.replace(/media="([^"]+)"/gi, (match, url) => {
+      if (!url || !/^https?:/i.test(url)) return match;
+      const abs = toAbsoluteUrl(url, baseUrl);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return match.replace(url, proxyUrl);
+    });
+
+    return result;
+  } catch (error) {
+    console.error('[MPD Rewrite] 重写失败:', error);
+    return inputText;
+  }
 }
 
 async function readCache(config, key) {
@@ -921,29 +1007,47 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
       const reqUrl = new URL(clientReq.url, `http://${clientReq.headers.host || 'localhost'}`);
       const authToken = reqUrl.searchParams.get('auth_token');
       const linkId = reqUrl.searchParams.get('link_id');
-      console.log('[M3U Rewrite] Request URL:', clientReq.url);
-      console.log('[M3U Rewrite] Extracted auth_token:', authToken ? 'YES (' + authToken.substring(0, 20) + '...)' : 'NO');
-      console.log('[M3U Rewrite] Extracted link_id:', linkId || 'NO');
-      
+      console.log('[M3U/MPD Rewrite] Request URL:', clientReq.url);
+      console.log('[M3U/MPD Rewrite] Extracted auth_token:', authToken ? 'YES (' + authToken.substring(0, 20) + '...)' : 'NO');
+      console.log('[M3U/MPD Rewrite] Extracted link_id:', linkId || 'NO');
+
       // 构建包含 auth_token 和 link_id 的代理 URL
       const rewriteAuthToken = authToken;
       const rewriteLinkId = linkId;
-      
-      const rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
-      console.log('[M3U Rewrite] First 10 lines of rewritten content:');
-      const lines = rewritten.split('\n').slice(0, 10);
-      lines.forEach((line, i) => console.log(`  Line ${i}: ${line}`));
+
+      // 判断是否为 MPD (DASH) manifest
+      const contentType = String((payload.headers && (payload.headers['content-type'] || payload.headers['Content-Type'])) || '').toLowerCase();
+      const isMpd = contentType.includes('dash') || contentType.includes('xml') ||
+        String(payload.finalUrl || '').toLowerCase().includes('.mpd');
+
+      let rewritten;
+      if (isMpd) {
+        // MPD manifest 重写
+        console.log('[M3U/MPD Rewrite] 检测到 MPD manifest，执行 URL 重写');
+        rewritten = rewriteMpdText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
+        console.log('[M3U/MPD Rewrite] MPD 重写后的前 500 字符:');
+        console.log(rewritten.substring(0, 500));
+      } else {
+        // M3U 播放列表重写
+        rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
+        console.log('[M3U Rewrite] First 10 lines of rewritten content:');
+        const lines = rewritten.split('\n').slice(0, 10);
+        lines.forEach((line, i) => console.log(`  Line ${i}: ${line}`));
+      }
+
       payload.body = Buffer.from(rewritten, 'utf8');
-      payload.headers = {
-        ...payload.headers,
-        'content-type': 'application/vnd.apple.mpegurl; charset=utf-8'
-      };
+      if (!isMpd) {
+        payload.headers = {
+          ...payload.headers,
+          'content-type': 'application/vnd.apple.mpegurl; charset=utf-8'
+        };
+      }
       delete payload.headers['Content-Encoding'];
       delete payload.headers['content-encoding'];
       delete payload.headers['Content-Length'];
       delete payload.headers['content-length'];
     } catch (error) {
-      log('warn', 'failed to rewrite m3u response', {
+      log('warn', 'failed to rewrite m3u/mpd response', {
         remoteUrl,
         finalUrl: payload.finalUrl,
         error: String(error && error.message ? error.message : error)
