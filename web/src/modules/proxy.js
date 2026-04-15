@@ -183,6 +183,17 @@ export function getProxyUrl(url, userAgent = null) {
 
 export function toSameOriginM3UProxyUrl(m3uUrl, userAgent = null) {
     if (!m3uUrl) return null;
+    
+    // 如果已经是 BirdTV Worker URL，不再包装，直接返回原始 URL
+    try {
+        const parsedUrl = new URL(m3uUrl);
+        const hostname = String(parsedUrl.hostname || '').toLowerCase();
+        // 检测 BirdTV Worker URL（格式：birdtv-proxy.xxx.workers.dev）
+        if (hostname.includes('birdtv-proxy') && hostname.includes('.workers.dev')) {
+            return m3uUrl;
+        }
+    } catch {}
+    
     let proxyUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(m3uUrl)}`;
     if (userAgent && userAgent.trim()) {
         proxyUrl += `&ua=${encodeURIComponent(userAgent.trim())}`;

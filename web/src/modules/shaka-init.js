@@ -1042,6 +1042,15 @@ function rewriteShakaProxyRelativeUri(uri) {
     if (/^(data:|blob:|file:)/i.test(raw) || raw.includes('/m3u-proxy?url=')) return raw;
 
     try {
+        // 如果已经是 BirdTV Worker URL，直接返回，不再次包装
+        try {
+            const testParsed = new URL(raw);
+            const hostname = String(testParsed.hostname || '').toLowerCase();
+            if (hostname.includes('birdtv-proxy') && hostname.includes('.workers.dev')) {
+                return raw;
+            }
+        } catch {}
+
         const upstreamManifestUrl = state.shakaProxyRewriteContext.upstreamManifestUrl || '';
         const upstreamOrigin = state.shakaProxyRewriteContext.upstreamOrigin || '';
         const baseUrl = upstreamManifestUrl || upstreamOrigin || window.location.href;
@@ -1061,6 +1070,15 @@ function rewriteShakaProxyRelativeUri(uri) {
 
         const absoluteTarget = parsed.toString();
         if (!/^https?:\/\//i.test(absoluteTarget)) return raw;
+
+        // 再次检查转换后的 URL 是否是 Worker URL
+        try {
+            const finalParsed = new URL(absoluteTarget);
+            const finalHostname = String(finalParsed.hostname || '').toLowerCase();
+            if (finalHostname.includes('birdtv-proxy') && finalHostname.includes('.workers.dev')) {
+                return absoluteTarget;
+            }
+        } catch {}
 
         return toSameOriginM3UProxyUrl(absoluteTarget) || absoluteTarget;
     } catch { return raw; }
