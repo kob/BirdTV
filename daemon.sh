@@ -55,6 +55,14 @@ start_service() {
     # 清理可能的僵尸进程
     pkill -9 -f "node.*${SERVICE_NAME}\.js" 2>/dev/null
 
+    # 每次启动前拉取最新代码
+    log "INFO" "正在拉取最新代码..."
+    if git pull origin $(git rev-parse --abbrev-ref HEAD) 2>&1 | tee -a "${LOG_FILE}"; then
+        log "INFO" "代码已更新"
+    else
+        log "WARN" "代码更新失败，继续启动..."
+    fi
+
     # 启动服务
     [ ! -d "node_modules" ] && log "INFO" "安装依赖..." && npm install --production --silent
 
