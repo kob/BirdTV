@@ -65,6 +65,8 @@ async function handleRequest(request) {
 
     // 添加自定义头
     responseHeaders.set('X-Worker-Proxy', 'true');
+    // 记录最终 URL（重定向后的真实地址），供后端解析使用
+    responseHeaders.set('X-Worker-Final-Url', response.url || targetUrl);
     responseHeaders.set('Access-Control-Allow-Origin', '*');
     responseHeaders.set('Access-Control-Expose-Headers', '*');
 

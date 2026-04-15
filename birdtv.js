@@ -836,11 +836,20 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
 
         if (normalizedMethod === 'HEAD') {
           resp.resume();
+          // Worker 代理时，从 X-Worker-Final-Url 获取真实最终 URL
+          let effectiveFinalUrl = useWorkerProxy ? target : parsed.href;
+          if (useWorkerProxy && resp.headers) {
+            const workerFinalUrl = resp.headers['x-worker-final-url'] || resp.headers['X-Worker-Final-Url'];
+            if (workerFinalUrl) {
+              effectiveFinalUrl = workerFinalUrl;
+              console.log('[Worker Proxy] HEAD 从 X-Worker-Final-Url 获取最终 URL:', workerFinalUrl.substring(0, 100));
+            }
+          }
           resolve({
             statusCode: code,
             headers: resp.headers,
             body: Buffer.alloc(0),
-            finalUrl: parsed.href,
+            finalUrl: effectiveFinalUrl,
             redirected: redirectCount > 0,
             redirectCount
           });
@@ -862,11 +871,21 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         const chunks = [];
         resp.on('data', (chunk) => chunks.push(chunk));
         resp.on('end', () => {
+          // Worker 代理时，从 X-Worker-Final-Url 获取真实最终 URL
+          // 这样 rewriteMpdText 和前端 Shaka 才能正确解析相对 URL
+          let effectiveFinalUrl = useWorkerProxy ? target : parsed.href;
+          if (useWorkerProxy && resp.headers) {
+            const workerFinalUrl = resp.headers['x-worker-final-url'] || resp.headers['X-Worker-Final-Url'];
+            if (workerFinalUrl) {
+              effectiveFinalUrl = workerFinalUrl;
+              console.log('[Worker Proxy] GET 从 X-Worker-Final-Url 获取最终 URL:', workerFinalUrl.substring(0, 100));
+            }
+          }
           resolve({
             statusCode: code,
             headers: resp.headers,
             body: Buffer.concat(chunks),
-            finalUrl: parsed.href,
+            finalUrl: effectiveFinalUrl,
             redirected: redirectCount > 0,
             redirectCount
           });
