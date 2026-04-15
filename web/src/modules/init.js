@@ -528,6 +528,20 @@ function bindEvents(elements) {
         }
     });
 
+    // 节目源下拉选择 - 同步URL到输入框
+    elements.m3uSourceSelect?.addEventListener("change", function () {
+        if (this.value) {
+            elements.m3uUrlInput.value = this.value;
+        }
+    });
+
+    // EPG源下拉选择 - 同步URL到输入框
+    elements.epgSourceSelect?.addEventListener("change", function () {
+        if (this.value) {
+            elements.epgUrlInput.value = this.value;
+        }
+    });
+
     elements.openEpgListButton?.addEventListener("click", () => {
         openEpgModal(elements, state.channels[state.currentIndex] || null);
     });

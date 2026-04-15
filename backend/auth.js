@@ -1144,7 +1144,9 @@ module.exports = {
   changePassword,
   KEYS,
   isEnabled: () => authEnabled,
-  redisClient,
+  // 使用 getter 函数确保获取最新值（解决模块导出初始值的问题）
+  getRedisClient: () => redisClient,
+  getRedisReady: () => redisReady,
   memoryStorage,
   /**
    * 同步内存存储数据到 Redis（auth 模块独立管理的数据）

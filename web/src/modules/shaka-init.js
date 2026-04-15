@@ -63,27 +63,59 @@ export async function initShakaPlayer(elements) {
     // attach 到 video
     await state.player.attach(videoEl);
 
-    // ★★★ 关键：在加载前强制配置原生字幕显示
-    // 这会覆盖任何 UI 默认配置
-    state.player.configure({
-        text: {
-            // 强制使用原生 textTracks 显示字幕（不是 UI 组件）
-            useNativeTextDisplayer: true,
-            // 确保字幕可见
-            visible: true,
-            // 自动选择字幕轨道
-            autoSelect: true,
-            // 允许文本流自动切换
-            trackAutoManualSwitch: true
-        },
-        streaming: {
-            // 启用文本流缓冲
-            alwaysStreamTextOn: false,  // 不要总是流式传输文本
-            // 文本流失败时继续播放
-            ignoreTextStreamFailures: false
+    // 创建 Overlay（UI）
+    if (containerEl && shaka.ui && shaka.ui.Overlay) {
+        state.overlay = new shaka.ui.Overlay(state.player, containerEl, videoEl);
+    }
+
+    // 配置 textDisplayFactory：确保字幕能正确渲染
+    // Shaka v5 的 UITextDisplayer 内部调用 fd() 获取容器 DOM 元素
+    // 但 Player.fd() 返回 EventManager 而非 DOM 元素，导致字幕渲染失败
+    // 解决方案：创建代理对象，确保 fd() 返回正确的 DOM 容器元素
+    try {
+        const videoElement = videoEl;
+        const containerElement = containerEl;
+        if (shaka.text && shaka.text.UITextDisplayer && containerElement) {
+            state.player.configure({
+                textDisplayFactory: (playerObj) => {
+                    const proxy = {
+                        Jb: () => videoElement,      // 返回 video 元素
+                        fd: () => containerElement,   // 返回容器 DOM 元素（修复 Shaka v5 bug）
+                    };
+                    const handler = {
+                        get(target, prop) {
+                            if (prop in proxy) return proxy[prop];
+                            const val = target[prop];
+                            return typeof val === 'function' ? val.bind(target) : val;
+                        }
+                    };
+                    return new shaka.text.UITextDisplayer(new Proxy(playerObj, handler));
+                }
+            });
+            console.log('[Shaka] textDisplayFactory 已设置为 UITextDisplayer（代理模式）');
+        } else if (shaka.text && shaka.text.NativeTextDisplayer) {
+            state.player.configure({
+                textDisplayFactory: (playerObj) => new shaka.text.NativeTextDisplayer(playerObj)
+            });
+            console.log('[Shaka] textDisplayFactory 已设置为 NativeTextDisplayer');
+        } else {
+            console.warn('[Shaka] 无可用的 TextDisplayer 类');
         }
-    });
-    console.log('[Shaka] 已强制配置 useNativeTextDisplayer: true');
+    } catch (e) {
+        console.warn('[Shaka] 设置 textDisplayFactory 失败:', e.message || e);
+    }
+
+    // 优化配置：针对直播场景优化首屏速度
+    try {
+        state.player.configure({
+            preferredAudioLanguage: 'zh',
+            preferredTextLanguage: 'zh',
+            preferForcedSubs: false
+        });
+        console.log('[Shaka] 已配置语言偏好');
+    } catch (e) {
+        console.warn('[Shaka] 语言偏好配置失败（非致命）:', e.message || e);
+    }
 
     // 字幕状态管理
     let currentCues = [];
@@ -611,8 +643,6 @@ export async function initShakaPlayer(elements) {
         }
     };
 
-    // 创建 Overlay（UI）
-
     // 优化配置：针对直播场景优化首屏速度
     try {
         state.player.configure({
@@ -643,24 +673,7 @@ export async function initShakaPlayer(elements) {
                 bandwidthUpgradeTarget: 0.85
             }
         });
-        
-        // 检查可用的文本解析器
-        console.log('[Shaka] 可用的文本解析器:', Object.keys(shaka.text || {}).join(', '));
-        
-        // 验证 NativeTextDisplayer 可用性
-        if (shaka.text && shaka.text.NativeTextDisplayer) {
-            console.log('[Shaka] NativeTextDisplayer 可用');
-        }
-        
-        // 注册 MP4 TTML 解析器
-        if (shaka.text && shaka.text.TtmlParser) {
-            console.log('[Shaka] TTML 解析器已可用');
-        }
-        
-        // 尝试注册 MP4 字幕解析器
-        if (shaka.text && shaka.text.Mp4Parser) {
-            console.log('[Shaka] MP4 字幕解析器已可用');
-        }
+        console.log('[Shaka] 播放器配置完成');
     } catch (e) {
         console.warn('[shaka-init] 播放器配置出错（非致命）:', e.message || e);
     }

@@ -136,9 +136,10 @@ class AuthController {
 
       // 从存储中获取用户信息
       let userData = null;
-      const redisClient = this.auth.redisClient || null;
+      const redisClient = this.auth.getRedisClient ? this.auth.getRedisClient() : null;
+      const redisReady = this.auth.getRedisReady ? this.auth.getRedisReady() : false;
       
-      if (redisClient && this.auth.redisReady !== false) {
+      if (redisClient && redisReady) {
         try {
           const data = await redisClient.get((this.auth.KEYS || { USER_PREFIX: 'auth:user:' }).USER_PREFIX + currentUser.username);
           if (data) {
