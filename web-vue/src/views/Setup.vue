@@ -24,10 +24,9 @@
         <label>后端服务器地址</label>
         <input
           v-model="serverUrl"
-          type="url"
+          type="text"
           placeholder="http://127.0.0.1:8771"
           @keyup.enter="save"
-          autofocus
         />
         <span class="hint">例如：http://192.168.1.100:8771</span>
       </div>
