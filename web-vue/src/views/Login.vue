@@ -35,6 +35,8 @@
           {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
+
+      <button class="btn-link" @click="$router.push('/setup')">⚙️ 重设服务器地址</button>
     </div>
   </div>
 </template>
@@ -150,5 +152,22 @@ async function handleLogin() {
 .login-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 16px;
+  padding: 0;
+  text-align: center;
+  width: 100%;
+  transition: color 0.2s;
+}
+
+.btn-link:hover {
+  color: #888;
 }
 </style>
