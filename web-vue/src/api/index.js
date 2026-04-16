@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '',  // 同源或由 Vite proxy 转发
+  baseURL: localStorage.getItem('birdtv_api_base_url') || import.meta.env.VITE_API_BASE_URL || '',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

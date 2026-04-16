@@ -8,6 +8,12 @@ const routes = [
     meta: { requiresAuth: false },
   },
   {
+    path: '/setup',
+    name: 'Setup',
+    component: () => import('@/views/Setup.vue'),
+    meta: { requiresAuth: false },
+  },
+  {
     path: '/',
     name: 'Player',
     component: () => import('@/views/Player.vue'),
@@ -36,8 +42,26 @@ const router = createRouter({
   routes,
 });
 
-// 路由守卫 - 认证检查
+const API_URL_KEY = 'birdtv_api_base_url';
+
+function getApiBaseUrl() {
+  return localStorage.getItem(API_URL_KEY) || '';
+}
+
+// 路由守卫
 router.beforeEach((to, from, next) => {
+  // /setup 页面跳过检查
+  if (to.name === 'Setup') {
+    next();
+    return;
+  }
+
+  // 未配置后端地址 → 跳转设置向导
+  if (!getApiBaseUrl()) {
+    next({ name: 'Setup', query: { redirect: to.fullPath } });
+    return;
+  }
+
   const token = localStorage.getItem('birdtv_token');
 
   if (to.meta.requiresAuth !== false && !token) {
@@ -47,4 +71,5 @@ router.beforeEach((to, from, next) => {
   next();
 });
 
+export { API_URL_KEY, getApiBaseUrl };
 export default router;

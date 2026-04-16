@@ -11,6 +11,13 @@
 // 加载 .env 环境变量（必须在最前面）
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
+// 自动注入 NODE_PATH，让 backend/ 下的 require 能找到 server/node_modules 中的模块
+if (!process.env.NODE_PATH) {
+  const path = require('path');
+  process.env.NODE_PATH = path.resolve(__dirname, 'node_modules');
+  require('module')._initPaths();
+}
+
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
