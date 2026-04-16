@@ -3,8 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="/favicon.ico" />
-  <title>BirdTV</title>
+  <title>BirdTV 播放器</title>
+  <link rel="icon" href="/favicon-Cp3VK451.ico" />
+
+  <!-- Shaka Player -->
+  <link rel="stylesheet" href="/shaka-player/controls.min.css">
+  <script src="/shaka-player/shaka-player.compiled.min.js"></script>
+  <script src="/shaka-player/shaka-player.ui.min.js"></script>
+
+  <!-- HLS.js -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+
+  <!-- UA 预设 -->
+  <script>
+    window.BirdTVConstants = window.BirdTVConstants || {};
+    window.BirdTVConstants.UA_PRESETS = [
+      { name: "默认 (okhttp)", value: "okhttp" },
+      { name: "MX Player", value: "MXPlayer/1.58.1" },
+      { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+      { name: "Chrome Desktop", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36" },
+      { name: "Safari iOS", value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) Safari/604.1" },
+      { name: "Firefox", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0" },
+    ];
+  </script>
 </head>
 <body>
   <div id="app"></div>

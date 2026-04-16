@@ -42,6 +42,10 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
-    // 构建后的文件可直接由后端 Express serve
+  },
+
+  // 外部化播放器库，通过 CDN 加载
+  optimizeDeps: {
+    exclude: ['shaka-player'],
   },
 });
