@@ -18,7 +18,15 @@
     function buildImportChannel(cb, opts) {
       const { proxyMode, playerType, userAgent, group } = opts;
       let channelUrl = cb.dataset.url || '';
-      if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(cb.dataset.url || '')}`;
+      // 防止双重包装：如果 URL 已经是代理地址，先提取原始 URL
+      const isProxyUrl = /\/m3u-proxy\?url=/.test(channelUrl);
+      if (isProxyUrl) {
+        try {
+          const match = channelUrl.match(/[?&]url=([^&]+)/);
+          if (match) channelUrl = decodeURIComponent(match[1]);
+        } catch (e) { /* ignore */ }
+      }
+      if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(channelUrl)}`;
       const channel = {
         name: cb.dataset.name || '',
         url: channelUrl,
@@ -543,7 +551,7 @@
         showModal('批量修改频道', `
           <div class="form-row">
             <div class="form-group"><label>代理方式</label><select id="batchProxyMode"><option value="">保持不变</option><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option></select></div>
-            <div class="form-group"><label>播放器</label><select id="batchPlayer"><option value="">保持不变</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option></select></div>
+            <div class="form-group"><label>播放器</label><select id="batchPlayer"><option value="">保持不变</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option><option value="mpegts">MPEG-TS</option><option value="native">原生</option></select></div>
           </div>
           <div class="form-row"><div class="form-group"><label>分组</label><select id="batchGroup"><option value="">保持不变</option>${allGroups.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join('')}<option value="未分组">未分组</option></select></div></div>
           <div class="form-group"><label>User Agent</label><select id="batchUserAgent"><option value="">保持不变</option>${UA_PRESETS.map(ua => `<option value="${esc(ua.value)}">${esc(ua.name)}</option>`).join('')}</select></div>

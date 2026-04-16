@@ -393,6 +393,41 @@ class ChannelController {
           try {
             const channelObj = new Channel(channel);
             channelObj.update(data);
+
+            // 当 proxyMode 变化时，同步转换 URL
+            if (data.proxyMode) {
+              const oldProxyMode = channel.proxyMode;
+              const newProxyMode = data.proxyMode;
+              const url = channelObj.url || '';
+
+              // 提取原始 URL（从代理地址中解包）
+              const extractOriginalUrl = (proxyUrl) => {
+                try {
+                  const match = proxyUrl.match(/[?&]url=([^&]+)/);
+                  if (match) return decodeURIComponent(match[1]);
+                } catch (e) { /* ignore */ }
+                return proxyUrl;
+              };
+
+              // 判断 URL 是否为代理地址
+              const isProxyUrl = (u) => /\/m3u-proxy\?url=/.test(u);
+
+              const originalUrl = isProxyUrl(url) ? extractOriginalUrl(url) : url;
+              const wasProxy = isProxyUrl(url);
+
+              if (newProxyMode === 'proxy' || newProxyMode === 'auto') {
+                // 新模式需要代理：如果 URL 还不是代理地址，包装它
+                if (!isProxyUrl(channelObj.url)) {
+                  channelObj.url = `/m3u-proxy?url=${encodeURIComponent(originalUrl)}`;
+                }
+              } else if (newProxyMode === 'direct') {
+                // 新模式是直连：解包代理地址
+                if (isProxyUrl(channelObj.url)) {
+                  channelObj.url = originalUrl;
+                }
+              }
+            }
+
             channelObj.updatedAt = new Date().toISOString();
             // 更新数组中的对象（原地修改）
             Object.assign(channel, channelObj.toJSON());
