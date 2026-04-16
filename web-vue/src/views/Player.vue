@@ -1,295 +1,251 @@
 <template>
-  <div class="shell">
-    <!-- 侧边栏 -->
-    <aside class="panel sidebar">
-      <!-- 头部快捷入口 -->
-      <section class="sidebar-head">
-        <div class="sidebar-brand">
-          <strong>BirdTV 播放器</strong>
-        </div>
-        <div class="sidebar-actions">
-          <router-link to="/admin" class="button secondary sidebar-link-btn">进入后台管理</router-link>
-          <router-link to="/mobile" class="button secondary sidebar-link-btn">手机端入口</router-link>
-        </div>
-      </section>
+  <div class="player-wrapper">
+    <!-- 使用 iframe 加载原始播放器以保持完整功能 -->
+    <iframe
+      v-if="useLegacyPlayer"
+      ref="legacyPlayerRef"
+      :src="legacyPlayerUrl"
+      class="legacy-player-frame"
+      allow="fullscreen; picture-in-picture"
+      @load="onLegacyPlayerLoad"
+    ></iframe>
 
-      <!-- 播放测试 -->
-      <details class="card collapsible">
-        <summary>
-          <span class="summary-title">播放测试</span>
-          <span class="summary-hint">点击展开</span>
-        </summary>
-        <div class="grid collapsible-content">
-          <label>频道名称
-            <input v-model="testChannel.name" type="text" placeholder="例如：CCTV-1" />
-          </label>
-          <label>播放地址
-            <input v-model="testChannel.url" type="text" placeholder="http://example.com/stream.m3u8" />
-          </label>
-          <label>流类型
-            <select v-model="testChannel.streamType">
-              <option value="auto">自动检测</option>
-              <option value="hls">HLS</option>
-              <option value="mpd">DASH/MPD</option>
-              <option value="ts">TS</option>
-            </select>
-          </label>
-          <label>文本导入
-            <textarea v-model="testChannel.importText" rows="4" placeholder="粘贴 #EXTINF 格式"></textarea>
-          </label>
-          <div style="display:flex;gap:6px;justify-content:flex-end;">
-            <button class="secondary" @click="importTestText">解析</button>
-            <button class="secondary" @click="clearTest">清空</button>
-            <button class="primary" @click="playTest">播放</button>
+    <!-- Vue 重构版播放器（功能精简版） -->
+    <div v-else class="shell">
+      <!-- 侧边栏 -->
+      <aside class="panel sidebar">
+        <section class="sidebar-head">
+          <div class="sidebar-brand">
+            <strong>BirdTV 播放器</strong>
+            <span class="summary-hint">快捷入口</span>
           </div>
-        </div>
-      </details>
+          <div class="sidebar-actions">
+            <button class="secondary sidebar-link-btn" @click="router.push('/admin')">进入后台管理</button>
+            <button class="secondary sidebar-link-btn" @click="router.push('/mobile')">手机端入口</button>
+          </div>
+        </section>
 
-      <!-- 节目源与EPG -->
-      <details class="card collapsible">
-        <summary>
-          <span class="summary-title">节目源与EPG</span>
-          <span class="summary-hint">点击展开</span>
-        </summary>
-        <div class="grid collapsible-content">
-          <div class="config-source-section">
-            <h3 class="config-sub-title">节目源</h3>
-            <select v-model="selectedM3uSource" @change="onM3uSourceChange">
-              <option value="">-- 请选择 --</option>
-              <option v-for="src in m3uSources" :key="src.id" :value="src.id">{{ src.name }}</option>
-            </select>
-          </div>
-
-          <div class="config-source-section">
-            <h3 class="config-sub-title">EPG 源</h3>
-            <select v-model="selectedEpgSource" @change="onEpgSourceChange">
-              <option value="">-- 请选择 --</option>
-              <option v-for="src in epgSources" :key="src.id" :value="src.id">{{ src.name }}</option>
-            </select>
-            <input v-model="customEpgUrl" type="text" placeholder="自定义 EPG URL" style="margin-top:8px;" />
-            <button class="secondary" @click="loadCustomEpg" style="margin-top:4px;width:100%;">加载自定义EPG</button>
-          </div>
-
-          <div class="button-row">
-            <button class="secondary" @click="loadChannelsFromApi">从后端加载</button>
-            <button class="secondary" @click="triggerM3uFile">上传文件</button>
-          </div>
-          <input ref="m3uFileRef" type="file" accept=".m3u,.m3u8,text/plain" style="display:none" @change="handleM3uFile" />
-        </div>
-      </details>
-
-      <!-- 频道分组 -->
-      <details class="card collapsible">
-        <summary>
-          <span class="summary-title">频道分组</span>
-          <span class="summary-hint">{{ channelGroups.length }} 个分组</span>
-        </summary>
-        <div class="grid collapsible-content">
-          <div class="button-row" style="flex-wrap:wrap;">
-            <button class="secondary" :class="{ active: currentGroup === '' }" @click="currentGroup = ''">全部</button>
-            <button v-for="group in channelGroups" :key="group" class="secondary" :class="{ active: currentGroup === group }" @click="currentGroup = group">{{ group }}</button>
-          </div>
-        </div>
-      </details>
-
-      <!-- 频道列表 -->
-      <section class="card grid">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-          <h2 class="section-title" style="margin:0;">频道列表</h2>
-          <span class="muted">{{ filteredChannels.length }} / {{ channels.length }}</span>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <input v-model="searchQuery" type="text" placeholder="搜索频道..." style="flex:1;" />
-          <button class="secondary" @click="toggleFavorites" :title="showFavoritesOnly ? '显示全部' : '只看收藏'">
-            {{ showFavoritesOnly ? '★' : '☆' }}
-          </button>
-        </div>
-        <div class="playlist">
-          <div
-            v-for="(ch, idx) in filteredChannels"
-            :key="ch.id || idx"
-            class="playlist-item"
-            :class="{ active: currentIndex === idx, favorited: ch.favorite }"
-            @click="selectChannel(ch, idx)"
-            @contextmenu.prevent="toggleFavorite(ch)"
-          >
-            <span class="ch-num">{{ ch.num || idx + 1 }}</span>
-            <span v-if="ch.favorite" class="ch-live" style="color:#f59e0b;">★</span>
-            <span v-else class="ch-live"></span>
-            <strong>{{ ch.name }}</strong>
-            <span v-if="ch.codecHint === 'hevc-risk'" class="codec-badge warn">HEVC</span>
-            <span v-if="ch.groupName" class="codec-badge" style="background:var(--primary);">{{ ch.groupName }}</span>
-          </div>
-          <div v-if="channels.length === 0" class="muted" style="padding:20px;text-align:center;">
-            暂无频道，请从后端加载或上传节目文件
-          </div>
-        </div>
-      </section>
-
-      <!-- 快捷键提示 -->
-      <div class="shortcuts-hint">
-        <small>快捷键: ←/→切台 | 空格暂停 | F全屏 | P画中画 | M静音</small>
-      </div>
-    </aside>
-
-    <!-- 主区域 -->
-    <main class="panel main">
-      <section class="panel stage">
-        <div class="stage-head">
-          <div>
-            <h2 id="currentTitle">{{ currentChannel?.name || '未开始播放' }}</h2>
-            <p class="stage-sub" id="playerTypeDesc">{{ playerDesc }}</p>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <button class="button secondary" @click="handleLogout" style="font-size:12px;padding:6px 12px;">退出</button>
-            <router-link to="/mobile" class="button secondary" style="font-size:12px;padding:6px 12px;">移动版</router-link>
-            <div class="status-badge" :class="statusClass">{{ playerStatus }}</div>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;">
-              播放器
-              <select v-model="preferredPlayer" style="min-width:100px;padding:4px 24px 4px 8px;font-size:12px;">
-                <option value="auto">自动</option>
-                <option value="shaka">Shaka</option>
-                <option value="hls">HLS.js</option>
-                <option value="native">原生</option>
-              </select>
+        <!-- 播放测试 -->
+        <details class="card collapsible" :open="testSectionOpen">
+          <summary>
+            <span class="summary-title">播放测试</span>
+            <span class="summary-hint">默认收起，点击展开</span>
+          </summary>
+          <div class="grid collapsible-content" style="gap:8px;">
+            <label>频道名称
+              <input v-model="testChannel.name" type="text" placeholder="例如：CCTV-1" class="play-test-input">
             </label>
-            <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;">
-              UA
-              <select v-model="selectedUa" style="min-width:120px;padding:4px 24px 4px 8px;font-size:12px;">
-                <option v-for="ua in uaList" :key="ua.value" :value="ua.value">{{ ua.name }}</option>
-              </select>
+            <label>播放地址
+              <input v-model="testChannel.url" type="text" placeholder="http://example.com/stream.m3u8" class="play-test-input">
             </label>
-          </div>
-        </div>
-
-        <div class="video-shell" ref="videoContainerRef">
-          <video
-            ref="videoRef"
-            id="video"
-            autoplay
-            controls
-            playsinline
-            style="width:100%;height:100%;object-fit:contain;"
-          ></video>
-        </div>
-
-        <!-- 播放控制栏 -->
-        <div class="player-controls-bar">
-          <button class="ctrl-btn" @click="prevChannel" title="上一个频道 (←)">◀◀</button>
-          <button class="ctrl-btn" @click="togglePlay" :title="isPlaying ? '暂停 (空格)' : '播放 (空格)'">
-            {{ isPlaying ? '⏸' : '▶' }}
-          </button>
-          <button class="ctrl-btn" @click="nextChannel" title="下一个频道 (→)">▶▶</button>
-          <button class="ctrl-btn" @click="toggleMute" :title="isMuted ? '取消静音 (M)' : '静音 (M)'">
-            {{ isMuted ? '🔇' : '🔊' }}
-          </button>
-          <span class="ctrl-volume" v-if="!isMuted">{{ volume }}%</span>
-          <input type="range" class="ctrl-volume-slider" v-model="volume" min="0" max="100" @input="setVolume" />
-          <div style="flex:1;"></div>
-          <button class="ctrl-btn" @click="togglePip" title="画中画 (P)">📺</button>
-          <button class="ctrl-btn" @click="toggleFullscreen" title="全屏 (F)">{{ isFullscreen ? '⛶' : '⛶' }}</button>
-          <button class="ctrl-btn" @click="toggleFavorite(currentChannel)" title="收藏" :style="{ color: currentChannel?.favorite ? '#f59e0b' : '' }">
-            {{ currentChannel?.favorite ? '★' : '☆' }}
-          </button>
-        </div>
-      </section>
-
-      <!-- EPG 节目单 -->
-      <section class="info-grid" v-if="currentEpgProgram || epgPrograms.length > 0">
-        <div class="info-item epg-wide">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <small>当前节目</small>
-            <button class="secondary" @click="showEpgModal = true" style="font-size:11px;padding:2px 8px;">节目单</button>
-          </div>
-          <div class="epg-progress" v-if="currentEpgProgram">
-            <div class="epg-progress-bar" :style="{ width: epgProgress + '%' }"></div>
-          </div>
-          <div class="epg-now-title" v-if="currentEpgProgram">{{ currentEpgProgram.title }}</div>
-          <div class="epg-now-time" v-if="currentEpgProgram">
-            {{ formatEpgTime(currentEpgProgram.start) }} - {{ formatEpgTime(currentEpgProgram.end) }}
-          </div>
-          <div class="epg-now-desc" v-if="currentEpgProgram">{{ currentEpgProgram.desc }}</div>
-        </div>
-        <div class="info-item" v-if="nextEpgProgram">
-          <small>下一个节目</small>
-          <strong>{{ nextEpgProgram.title }}</strong>
-          <small class="muted">{{ formatEpgTime(nextEpgProgram.start) }}</small>
-        </div>
-      </section>
-
-      <!-- 信息面板 -->
-      <section class="info-grid">
-        <div class="info-item">
-          <small>播放地址</small>
-          <details class="mpd-fold">
-            <summary></summary>
-            <strong class="mpd-url">{{ currentUrl || '无' }}</strong>
-          </details>
-        </div>
-        <div class="info-item">
-          <small>分辨率</small>
-          <strong>{{ videoResolution }}</strong>
-        </div>
-        <div class="info-item">
-          <small>码率</small>
-          <strong>{{ videoBitrate }}</strong>
-        </div>
-        <div class="info-item">
-          <small>缓冲</small>
-          <strong>{{ bufferStatus }}</strong>
-        </div>
-        <div class="info-item">
-          <small>已播放</small>
-          <strong>{{ playTime }}</strong>
-        </div>
-      </section>
-
-      <!-- 诊断面板 -->
-      <details class="diag-panel">
-        <summary class="diag-head">
-          <strong>诊断日志</strong>
-          <span class="diag-count">{{ diagnosticEvents.length }} 条</span>
-          <div class="diag-actions">
-            <button class="secondary" @click="clearDiagnostics">清空</button>
-          </div>
-        </summary>
-        <div class="diag-list">
-          <div
-            v-for="(evt, idx) in diagnosticEvents.slice(-20)"
-            :key="idx"
-            class="diag-item"
-            :class="{ 'is-warn': evt.level === 'warn', 'is-error': evt.level === 'error' }"
-          >
-            <span class="diag-time">{{ evt.time }}</span>
-            <span class="diag-text">{{ evt.message }}</span>
-          </div>
-        </div>
-      </details>
-    </main>
-
-    <!-- EPG 弹窗 -->
-    <Teleport to="body">
-      <div v-if="showEpgModal" class="epg-modal-overlay" @click.self="showEpgModal = false">
-        <div class="epg-modal">
-          <div class="epg-modal-header">
-            <h3>节目单 · {{ currentChannel?.name || '未知频道' }}</h3>
-            <button class="secondary" @click="showEpgModal = false">关闭</button>
-          </div>
-          <div class="epg-modal-content">
-            <div v-if="epgPrograms.length === 0" class="muted" style="padding:40px;text-align:center;">
-              暂无节目信息
+            <div style="display:flex;gap:6px;">
+              <label style="flex:1;">KID
+                <input v-model="testChannel.kid" type="text" placeholder="可选" class="play-test-input">
+              </label>
+              <label style="flex:1;">KEY
+                <input v-model="testChannel.key" type="text" placeholder="可选" class="play-test-input">
+              </label>
             </div>
-            <div v-for="program in epgPrograms" :key="program.start" class="epg-program-item" :class="{ current: isCurrentProgram(program) }">
-              <div class="epg-program-time">
-                {{ formatEpgTime(program.start) }} - {{ formatEpgTime(program.end) }}
+            <label>流类型
+              <select v-model="testChannel.streamType" class="play-test-select">
+                <option value="auto">自动检测</option>
+                <option value="hls">HLS</option>
+                <option value="mpd">DASH/MPD</option>
+                <option value="ts">TS</option>
+              </select>
+            </label>
+            <label>文本导入
+              <textarea v-model="testChannel.importText" rows="5" placeholder="粘贴 #EXTINF / #KODIPROP 等格式文本" class="play-test-input" style="resize:vertical;font-size:12px;font-family:monospace;"></textarea>
+            </label>
+            <div style="display:flex;gap:6px;justify-content:flex-end;">
+              <button class="secondary" @click="importTestText">导入解析</button>
+              <button class="secondary" @click="clearTest">清空</button>
+              <button class="primary" @click="playTest">播放</button>
+            </div>
+          </div>
+        </details>
+
+        <!-- 节目源与EPG -->
+        <details class="card collapsible">
+          <summary>
+            <span class="summary-title">节目源与EPG</span>
+            <span class="summary-hint">默认收起，点击展开</span>
+          </summary>
+          <div class="grid collapsible-content">
+            <div class="config-source-section">
+              <h3 class="config-sub-title">节目源</h3>
+              <select v-model="selectedM3uSource" @change="onM3uSourceChange" style="width:100%;">
+                <option value="">-- 请选择或手动输入 --</option>
+                <option v-for="src in m3uSources" :key="src.id" :value="src.id">{{ src.name }}</option>
+              </select>
+              <input v-model="m3uUrlInput" type="text" placeholder="例如：http://127.0.0.1:8881/mytv.m3u" style="margin-top:6px;">
+            </div>
+
+            <div class="config-source-section">
+              <h3 class="config-sub-title">EPG 源</h3>
+              <select v-model="selectedEpgSource" @change="onEpgSourceChange" style="width:100%;">
+                <option value="">-- 请选择或手动覆盖 --</option>
+                <option v-for="src in epgSources" :key="src.id" :value="src.id">{{ src.name }}</option>
+              </select>
+              <input v-model="epgUrlInput" type="text" placeholder="例如：https://example.com/guide.xml" style="margin-top:6px;">
+            </div>
+
+            <div class="button-row">
+              <button class="secondary" @click="triggerM3uFile">上传节目文件</button>
+              <button class="secondary" @click="loadM3uUrl">导入节目链接</button>
+              <button class="secondary" @click="loadEpg">加载 EPG</button>
+            </div>
+            <input ref="m3uFileRef" type="file" accept=".m3u,.m3u8,text/plain" style="display:none;" @change="handleM3uFile">
+          </div>
+        </details>
+
+        <!-- 频道列表 -->
+        <section class="card grid">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <h2 class="section-title" style="margin:0;">频道列表</h2>
+            <span class="muted">{{ filteredChannels.length }} / {{ channels.length }} 个</span>
+          </div>
+          <label>
+            搜索
+            <input v-model="searchQuery" type="text" placeholder="输入频道名过滤">
+          </label>
+          <div class="playlist" ref="playlistRef">
+            <div
+              v-for="(ch, idx) in filteredChannels"
+              :key="ch.id || idx"
+              class="playlist-item"
+              :class="{ active: currentIndex === idx }"
+              @click="selectChannel(ch, idx)"
+            >
+              <span class="ch-num">{{ ch.num || idx + 1 }}</span>
+              <span class="ch-live"></span>
+              <strong>{{ ch.name }}</strong>
+              <span v-if="ch.codecHint === 'hevc-risk'" class="codec-badge warn">HEVC</span>
+            </div>
+            <div v-if="channels.length === 0" class="muted" style="padding:20px;text-align:center;">
+              暂无频道，请从后端加载或上传节目文件
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- 主区域 -->
+      <main class="panel main">
+        <section class="panel stage">
+          <div class="stage-head">
+            <div>
+              <h2 id="currentTitle">{{ currentChannel?.name || '未开始播放' }}</h2>
+              <p class="stage-sub" id="playerTypeDesc">{{ playerDesc }}</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <button class="secondary" @click="handleLogout" style="font-size:12px;padding:6px 12px;">退出登录</button>
+              <button class="secondary" @click="router.push('/mobile')" style="font-size:12px;padding:6px 12px;">切换到移动版</button>
+              <button class="secondary" @click="switchToLegacyPlayer" style="font-size:12px;padding:6px 12px;">切换到完整版</button>
+              <div class="status-badge" :style="statusBadgeStyle">{{ playerStatus }}</div>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                播放器
+                <select v-model="preferredPlayer" style="width:auto;min-width:124px;padding:6px 30px 6px 10px;font-size:12px;">
+                  <option value="auto">自动</option>
+                  <option value="shaka">Shaka</option>
+                  <option value="hls">Art(HLS)</option>
+                  <option value="mpegts">mpegts</option>
+                  <option value="native">原生</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                代理模式
+                <select v-model="proxyMode" style="width:auto;min-width:140px;padding:6px 30px 6px 10px;font-size:12px;">
+                  <option value="auto">自动（智能选择）</option>
+                  <option value="m3u-proxy">m3u-proxy（通用）</option>
+                  <option value="direct">本地直连（无代理）</option>
+                </select>
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                UA
+                <select v-model="selectedUa" style="width:auto;min-width:160px;padding:6px 30px 6px 10px;font-size:12px;">
+                  <option v-for="ua in uaList" :key="ua.value" :value="ua.value">{{ ua.name }}</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div class="video-shell" data-shaka-player-container>
+            <video
+              ref="videoRef"
+              id="video"
+              autoplay
+              controls
+              playsinline
+              data-shaka-player
+              style="width:100%;height:100%;object-fit:contain;"
+            ></video>
+            <div id="artplayer-container" style="position:absolute;inset:0;display:none;z-index:10;"></div>
+          </div>
+        </section>
+
+        <!-- 信息面板 -->
+        <section class="info-grid">
+          <div class="info-item">
+            <small>当前播放地址</small>
+            <details class="mpd-fold">
+              <summary></summary>
+              <strong class="mpd-url">{{ currentUrl || '-' }}</strong>
+            </details>
+          </div>
+          <div class="info-item">
+            <small>播放状态</small>
+            <strong id="statusText">{{ playerStatus }}</strong>
+          </div>
+          <div class="info-item epg-wide">
+            <small>EPG 节目单</small>
+            <strong id="epgNow" class="epg-now-title">{{ epgNowText }}</strong>
+            <div id="epgNowDesc" class="epg-now-desc">{{ epgDescText }}</div>
+            <div class="mpd-url" id="epgMeta">EPG：{{ epgStatus }}</div>
+            <div class="epg-progress" id="epgProgress" v-if="currentEpgProgram">
+              <div class="epg-progress-bar" id="epgProgressBar" :style="{ width: epgProgress + '%' }"></div>
+            </div>
+            <div class="epg-progress-text" id="epgProgressText" v-if="currentEpgProgram">进度：{{ epgProgress }}%</div>
+            <div class="button-row" style="margin-top:8px;">
+              <button class="secondary" @click="showEpgModal = true">查看节目单</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 状态栏 -->
+        <section class="status-line" aria-label="播放状态栏">
+          <div class="status-chip"><small>DRM</small><strong>{{ drmText }}</strong></div>
+          <div class="status-chip"><small>播放模式</small><strong>{{ preferredPlayer }}</strong></div>
+          <div class="status-chip"><small>编排</small><strong id="orchestrationText">{{ orchestrationText }}</strong></div>
+          <div class="status-chip"><small>冷却</small><strong id="fallbackCooldownText">{{ fallbackCooldownText }}</strong></div>
+          <div class="status-chip"><small>分辨率</small><strong id="resolutionText">{{ videoResolution }}</strong></div>
+          <div class="status-chip"><small>码率</small><strong id="bitrateText">{{ videoBitrate }}</strong></div>
+          <div class="status-chip"><small>丢帧/总帧</small><strong id="framesText">{{ framesText }}</strong></div>
+        </section>
+      </main>
+
+      <!-- EPG 弹窗 -->
+      <Teleport to="body">
+        <div v-if="showEpgModal" class="epg-modal-overlay" @click.self="showEpgModal = false">
+          <div class="epg-modal">
+            <div class="epg-modal-header">
+              <h3>节目单 · {{ currentChannel?.name || '未知频道' }}</h3>
+              <button class="secondary" @click="showEpgModal = false">关闭</button>
+            </div>
+            <div class="epg-modal-content">
+              <div v-if="epgPrograms.length === 0" class="muted" style="padding:40px;text-align:center;">
+                暂无节目信息
               </div>
-              <div class="epg-program-title">{{ program.title }}</div>
-              <div class="epg-program-desc">{{ program.desc }}</div>
+              <div v-for="program in epgPrograms" :key="program.start" class="epg-program-item" :class="{ current: isCurrentProgram(program) }">
+                <div class="epg-program-time">
+                  {{ formatEpgTime(program.start) }} - {{ formatEpgTime(program.end) }}
+                </div>
+                <div class="epg-program-title">{{ program.title }}</div>
+                <div class="epg-program-desc">{{ program.desc }}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Teleport>
+      </Teleport>
+    </div>
   </div>
 </template>
 
@@ -305,11 +261,9 @@ const STORAGE_KEY = 'tvplayer.channels.v1';
 const M3U_CONFIGS_KEY = 'tvplayer.m3uConfigs.v1';
 const EPG_CONFIGS_KEY = 'tvplayer.epgConfigs.v1';
 const GLOBAL_UA_KEY = 'tvplayer.globalUserAgent.v1';
-const FAVORITES_KEY = 'tvplayer.favorites.v1';
-const HISTORY_KEY = 'tvplayer.history.v1';
+const EPG_CACHE_TTL = 30 * 60 * 1000;
 const HEVC_PATTERN = /(?:^|[\s_.\-|()\[\]])(hevc|h\.?265|x265)(?:$|[\s_.\-|()\[\]])/i;
 const UHD_PATTERN = /(4k|uhd|2160p)/i;
-const EPG_CACHE_TTL = 60 * 60 * 1000; // 1小时
 
 // ─── 路由与状态 ───
 const router = useRouter();
@@ -317,62 +271,62 @@ const authStore = useAuthStore();
 
 // ─── DOM refs ───
 const videoRef = ref(null);
-const videoContainerRef = ref(null);
 const m3uFileRef = ref(null);
+const playlistRef = ref(null);
+const legacyPlayerRef = ref(null);
+
+// ─── Legacy Player 模式 ───
+const useLegacyPlayer = ref(false);
+const legacyPlayerUrl = computed(() => {
+  const baseUrl = getApiBaseUrl();
+  // 使用原始播放器页面
+  return `${baseUrl}/index.html`;
+});
+
+function switchToLegacyPlayer() {
+  useLegacyPlayer.value = true;
+}
+
+function onLegacyPlayerLoad() {
+  console.log('[Player] Legacy player loaded');
+}
 
 // ─── 播放器状态 ───
-const playerStatus = ref('空闲');
-const playerDesc = ref('等待播放');
+const playerStatus = ref('等待输入');
+const playerDesc = ref('DASH MPD · Clear Key DRM · Shaka Player');
 const currentUrl = ref('');
-const videoResolution = ref('未知');
-const videoBitrate = ref('未知');
-const bufferStatus = ref('无');
+const videoResolution = ref('-');
+const videoBitrate = ref('-');
+const framesText = ref('-');
+const drmText = ref('未配置');
+const orchestrationText = ref('-');
+const fallbackCooldownText = ref('-');
 const preferredPlayer = ref('auto');
+const proxyMode = ref('auto');
 const currentPlayerType = ref(null);
 const isPlaying = ref(false);
-const isMuted = ref(false);
-const volume = ref(100);
-const playTime = ref('00:00:00');
-const isFullscreen = ref(false);
-const showFavoritesOnly = ref(false);
-const showEpgModal = ref(false);
+
+// ─── 状态徽章样式 ───
+const statusBadgeStyle = computed(() => {
+  if (playerStatus.value.includes('失败') || playerStatus.value.includes('错误')) {
+    return { color: '#ff8090', background: 'rgba(255, 92, 114, 0.12)', borderColor: 'rgba(255, 92, 114, 0.3)' };
+  }
+  if (playerStatus.value.includes('播放') || playerStatus.value.includes('正在播放')) {
+    return { color: '#22d399', background: 'rgba(34, 211, 153, 0.1)', borderColor: 'rgba(34, 211, 153, 0.3)' };
+  }
+  return { color: '', background: 'rgba(255, 255, 255, 0.06)', borderColor: 'rgba(255, 255, 255, 0.09)' };
+});
 
 // ─── 频道数据 ───
 const channels = ref([]);
 const currentIndex = ref(-1);
 const currentChannel = computed(() => channels.value[currentIndex.value] || null);
 const searchQuery = ref('');
-const currentGroup = ref('');
-
-// ─── 频道分组 ───
-const channelGroups = computed(() => {
-  const groups = new Set();
-  channels.value.forEach(ch => {
-    if (ch.groupName) groups.add(ch.groupName);
-  });
-  return Array.from(groups).sort();
-});
 
 const filteredChannels = computed(() => {
-  let list = channels.value;
-  
-  // 过滤分组
-  if (currentGroup.value) {
-    list = list.filter(ch => ch.groupName === currentGroup.value);
-  }
-  
-  // 过滤搜索
   const q = searchQuery.value.toLowerCase().trim();
-  if (q) {
-    list = list.filter(ch => ch.name.toLowerCase().includes(q));
-  }
-  
-  // 过滤收藏
-  if (showFavoritesOnly.value) {
-    list = list.filter(ch => ch.favorite);
-  }
-  
-  return list;
+  if (!q) return channels.value;
+  return channels.value.filter(ch => ch.name.toLowerCase().includes(q));
 });
 
 // ─── 节目源 ───
@@ -380,99 +334,54 @@ const m3uSources = ref([]);
 const epgSources = ref([]);
 const selectedM3uSource = ref('');
 const selectedEpgSource = ref('');
-const customEpgUrl = ref('');
-const epgUrl = ref('');
-const epgLoadedAt = ref(0);
-const epgProgramsByChannelId = ref(new Map());
-const epgNameToChannelId = ref(new Map());
-
-// ─── EPG 节目列表 ───
-const epgPrograms = computed(() => {
-  if (!currentChannel.value) return [];
-  const channelId = resolveEpgChannelId(currentChannel.value);
-  if (!channelId) return [];
-  return epgProgramsByChannelId.value.get(channelId) || [];
-});
-
-const currentEpgProgram = computed(() => {
-  const programs = epgPrograms.value;
-  if (!programs.length) return null;
-  const now = Date.now();
-  for (const program of programs) {
-    if (program.start <= now && now < program.end) {
-      return program;
-    }
-  }
-  return null;
-});
-
-const nextEpgProgram = computed(() => {
-  const programs = epgPrograms.value;
-  if (!programs.length) return null;
-  const now = Date.now();
-  for (const program of programs) {
-    if (program.start > now) {
-      return program;
-    }
-  }
-  return null;
-});
-
-const epgProgress = computed(() => {
-  const program = currentEpgProgram.value;
-  if (!program) return 0;
-  const total = program.end - program.start;
-  const elapsed = Date.now() - program.start;
-  return Math.min(100, Math.max(0, (elapsed / total) * 100));
-});
+const m3uUrlInput = ref('');
+const epgUrlInput = ref('');
 
 // ─── 测试播放 ───
+const testSectionOpen = ref(false);
 const testChannel = ref({
   name: '',
   url: '',
+  kid: '',
+  key: '',
   streamType: 'auto',
   importText: ''
 });
 
 // ─── UA ───
 const uaList = ref([
-  { name: '默认 (okhttp)', value: 'okhttp' },
-  { name: 'Chrome Desktop', value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
-  { name: 'Safari iOS', value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) Safari/604.1' },
+  { name: 'Default (okhttp)', value: 'okhttp' },
+  { name: 'Chrome Desktop', value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' },
+  { name: 'Safari iOS', value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1' },
 ]);
+const selectedUa = ref('okhttp');
 
-const selectedUa = ref(uaList.value[0]?.value || '');
+// ─── EPG ───
+const epgPrograms = ref([]);
+const currentEpgProgram = ref(null);
+const epgProgress = ref(0);
+const epgStatus = ref('未加载');
+const epgNowText = computed(() => currentEpgProgram.value ? `当前：${formatEpgTime(currentEpgProgram.value.start)}-${formatEpgTime(currentEpgProgram.value.end)} ${currentEpgProgram.value.title}` : '当前：-');
+const epgDescText = computed(() => currentEpgProgram.value ? `简介：${currentEpgProgram.value.desc || '暂无简介'}` : '简介：-');
+const showEpgModal = ref(false);
+
+// ─── EPG 内部状态 ───
+let epgProgramsByChannelId = new Map();
+let epgNameToChannelId = new Map();
+let epgLoadedAt = 0;
+let epgUrl = '';
 
 // ─── 诊断 ───
 const diagnosticEvents = ref([]);
-
-const statusClass = computed(() => {
-  if (playerStatus.value.includes('失败') || playerStatus.value.includes('错误')) return 'status-error';
-  if (playerStatus.value.includes('播放')) return 'status-playing';
-  return '';
-});
 
 // ─── 初始化 ───
 onMounted(async () => {
   addDiag('lifecycle', 'info', 'Player.vue 初始化');
 
-  // 加载收藏
-  loadFavorites();
-
-  // 加载历史
-  loadHistory();
-
   // 加载保存的频道
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const savedChannels = JSON.parse(saved);
-      // 合并收藏状态
-      channels.value = savedChannels.map(ch => ({
-        ...ch,
-        favorite: favorites.value.has(String(ch.id || ch.name))
-      }));
-    }
+    if (saved) channels.value = JSON.parse(saved);
     addDiag('init', 'info', `从本地加载 ${channels.value.length} 个频道`);
   } catch (e) {
     addDiag('init', 'warn', '读取本地频道失败');
@@ -486,7 +395,7 @@ onMounted(async () => {
     if (epgSaved) {
       const epgConfig = JSON.parse(epgSaved);
       epgSources.value = epgConfig.sources || [];
-      if (epgConfig.url) epgUrl.value = epgConfig.url;
+      if (epgConfig.url) epgUrlInput.value = epgConfig.url;
     }
   } catch (e) {}
 
@@ -503,9 +412,6 @@ onMounted(async () => {
   // 初始化键盘快捷键
   initKeyboardShortcuts();
 
-  // 初始化全屏监听
-  initFullscreenListener();
-
   // 启动定时更新
   startStatsLoop();
 
@@ -515,70 +421,10 @@ onMounted(async () => {
   addDiag('lifecycle', 'info', '播放器就绪');
 });
 
-// ─── 收藏功能 ───
-const favorites = ref(new Set());
-
-function loadFavorites() {
-  try {
-    const saved = localStorage.getItem(FAVORITES_KEY);
-    if (saved) favorites.value = new Set(JSON.parse(saved));
-  } catch (e) {}
-}
-
-function saveFavorites() {
-  localStorage.setItem(FAVORITES_KEY, JSON.stringify([...favorites.value]));
-}
-
-function toggleFavorite(channel) {
-  if (!channel) return;
-  const key = String(channel.id || channel.name);
-  if (favorites.value.has(key)) {
-    favorites.value.delete(key);
-  } else {
-    favorites.value.add(key);
-  }
-  channel.favorite = favorites.value.has(key);
-  saveFavorites();
-  addDiag('fav', 'info', channel.favorite ? `已收藏: ${channel.name}` : `已取消收藏: ${channel.name}`);
-}
-
-function toggleFavorites() {
-  showFavoritesOnly.value = !showFavoritesOnly.value;
-}
-
-// ─── 历史记录 ───
-const history = ref([]);
-
-function loadHistory() {
-  try {
-    const saved = localStorage.getItem(HISTORY_KEY);
-    if (saved) history.value = JSON.parse(saved);
-  } catch (e) {}
-}
-
-function saveHistory() {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history.value.slice(0, 50)));
-}
-
-function addToHistory(channel) {
-  if (!channel) return;
-  history.value = history.value.filter(h => h.id !== channel.id);
-  history.value.unshift({
-    id: channel.id,
-    name: channel.name,
-    url: channel.url,
-    playedAt: Date.now()
-  });
-  saveHistory();
-}
-
 // ─── 视频事件 ───
 function initVideoEvents() {
   const video = videoRef.value;
   if (!video) return;
-
-  // 音量设置
-  video.volume = volume.value / 100;
 
   video.addEventListener('loadedmetadata', () => {
     videoResolution.value = `${video.videoWidth}x${video.videoHeight}`;
@@ -586,10 +432,7 @@ function initVideoEvents() {
   });
 
   video.addEventListener('progress', () => {
-    if (video.buffered.length > 0) {
-      const buffered = video.buffered.end(video.buffered.length - 1);
-      bufferStatus.value = `${Math.round(buffered - video.currentTime)}s`;
-    }
+    updateBufferStatus();
   });
 
   video.addEventListener('error', (e) => {
@@ -603,9 +446,9 @@ function initVideoEvents() {
   });
 
   video.addEventListener('playing', () => {
-    playerStatus.value = '播放中';
+    playerStatus.value = '正在播放';
     isPlaying.value = true;
-    playerDesc.value = getPlayerDesc();
+    updatePlayerDesc();
   });
 
   video.addEventListener('pause', () => {
@@ -619,19 +462,13 @@ function initVideoEvents() {
     playerStatus.value = '播放结束';
     isPlaying.value = false;
   });
+}
 
-  video.addEventListener('timeupdate', () => {
-    const t = video.currentTime;
-    const h = Math.floor(t / 3600);
-    const m = Math.floor((t % 3600) / 60);
-    const s = Math.floor(t % 60);
-    playTime.value = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  });
-
-  video.addEventListener('volumechange', () => {
-    isMuted.value = video.muted;
-    volume.value = Math.round(video.volume * 100);
-  });
+function updateBufferStatus() {
+  const video = videoRef.value;
+  if (!video || !video.buffered.length) return;
+  const buffered = video.buffered.end(video.buffered.length - 1);
+  // 可以在此更新缓冲状态
 }
 
 // ─── 键盘快捷键 ───
@@ -640,7 +477,6 @@ function initKeyboardShortcuts() {
 }
 
 function handleKeydown(e) {
-  // 如果在输入框中，不响应快捷键
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
   switch (e.key) {
@@ -674,27 +510,9 @@ function handleKeydown(e) {
   }
 }
 
-// ─── 全屏 ───
-function initFullscreenListener() {
-  document.addEventListener('fullscreenchange', () => {
-    isFullscreen.value = !!document.fullscreenElement;
-  });
-}
-
-function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    videoContainerRef.value?.requestFullscreen().catch(e => {
-      addDiag('fullscreen', 'error', `全屏失败: ${e.message}`);
-    });
-  } else {
-    document.exitFullscreen();
-  }
-}
-
 // ─── 播放控制 ───
 async function selectChannel(channel, index) {
   currentIndex.value = index;
-  addToHistory(channel);
   await playChannel(channel);
 }
 
@@ -707,6 +525,7 @@ async function playChannel(channel) {
   addDiag('play', 'info', `播放: ${channel.name}`);
   playerStatus.value = '加载中...';
   currentUrl.value = channel.url;
+  drmText.value = '无 DRM';
 
   const video = videoRef.value;
   if (!video) return;
@@ -716,66 +535,85 @@ async function playChannel(channel) {
     const url = channel.url;
     const streamType = detectStreamType(url);
 
-    if (streamType === 'mpd' || (preferredPlayer.value === 'shaka' && window.shaka)) {
-      await playWithShaka(url, channel);
+    // 更新编排文本
+    orchestrationText.value = `${preferredPlayer.value} · ${streamType}`;
+
+    if (streamType === 'mpd' || preferredPlayer.value === 'shaka') {
+      // Shaka Player 需要外部加载
+      addDiag('shaka', 'warn', 'Shaka Player 需要在完整版播放器中使用');
+      await playDirect(url);
     } else if (streamType === 'hls' || url.includes('.m3u')) {
       await playWithHls(url);
-    } else if (streamType === 'ts' || url.includes('.ts')) {
-      await playDirect(url);
+    } else if (streamType === 'ts' || url.includes('.ts') || preferredPlayer.value === 'mpegts') {
+      await playWithMpegts(url);
     } else {
-      // 自动检测
-      if (url.includes('.mpd')) {
-        await playWithShaka(url, channel);
-      } else if (url.includes('.m3u')) {
-        await playWithHls(url);
-      } else {
-        await playDirect(url);
-      }
+      await playDirect(url);
     }
 
-    playerStatus.value = '播放中';
+    playerStatus.value = '正在播放';
     isPlaying.value = true;
     currentPlayerType.value = detectPlayerType();
-    playerDesc.value = getPlayerDesc();
+    updatePlayerDesc();
 
     // 更新 EPG
     updateEpgDisplay();
   } catch (e) {
-    playerStatus.value = '播放失败';
+    playerStatus.value = `播放失败: ${e.message}`;
     isPlaying.value = false;
     addDiag('play', 'error', `播放错误: ${e.message}`);
-  }
-}
-
-async function playWithShaka(url, channel) {
-  if (!window.shaka) {
-    addDiag('shaka', 'warn', 'Shaka Player 未加载，尝试其他方式');
-    return playDirect(url);
-  }
-
-  addDiag('shaka', 'info', '使用 Shaka Player 播放');
-
-  try {
-    const player = new window.shaka.Player();
-    await player.attach(videoRef.value);
-    await player.load(url);
-  } catch (e) {
-    addDiag('shaka', 'error', `Shaka 错误: ${e.message}`);
-    throw e;
   }
 }
 
 async function playWithHls(url) {
   if (window.Hls && videoRef.value) {
     addDiag('hls', 'info', '使用 HLS.js 播放');
-    const hls = new window.Hls();
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: true,
+      maxBufferLength: 15,
+      maxBufferSize: 30 * 1000 * 1000,
+    });
     hls.loadSource(url);
     hls.attachMedia(videoRef.value);
-    hls.on(window.Hls.Events.ERROR, (e, data) => {
+    hls.on(Hls.Events.ERROR, (e, data) => {
       addDiag('hls', 'error', `HLS 错误: ${data.details}`);
+      if (data.fatal) {
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR:
+            hls.startLoad();
+            break;
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            hls.recoverMediaError();
+            break;
+          default:
+            hls.destroy();
+            break;
+        }
+      }
     });
+    currentPlayerType.value = 'hls';
+  } else if (videoRef.value?.canPlayType('application/vnd.apple.mpegurl')) {
+    await playDirect(url);
   } else {
     addDiag('hls', 'warn', 'HLS.js 未加载，使用原生播放');
+    await playDirect(url);
+  }
+}
+
+async function playWithMpegts(url) {
+  if (window.mpegts && videoRef.value) {
+    addDiag('mpegts', 'info', '使用 mpegts.js 播放');
+    const player = window.mpegts.createPlayer({
+      type: 'mpegts',
+      url: url,
+      isLive: true,
+    });
+    player.attachMediaElement(videoRef.value);
+    await player.load();
+    await player.play();
+    currentPlayerType.value = 'mpegts';
+  } else {
+    addDiag('mpegts', 'warn', 'mpegts.js 未加载，使用原生播放');
     await playDirect(url);
   }
 }
@@ -785,6 +623,7 @@ async function playDirect(url) {
   videoRef.value.src = url;
   try {
     await videoRef.value.play();
+    currentPlayerType.value = 'native';
   } catch (e) {
     if (e.name !== 'AbortError') {
       addDiag('native', 'error', `播放错误: ${e.message}`);
@@ -802,15 +641,17 @@ function detectStreamType(url) {
 }
 
 function detectPlayerType() {
-  if (videoRef.value?._shakaPlayer) return 'Shaka';
-  if (window.Hls?.isSupported?.()) return 'HLS.js';
-  return '原生';
+  if (videoRef.value?._shakaPlayer) return 'shaka';
+  if (window.Hls?.isSupported?.()) return 'hls';
+  if (window.mpegts?.isSupported?.()) return 'mpegts';
+  return 'native';
 }
 
-function getPlayerDesc() {
+function updatePlayerDesc() {
   const type = detectStreamType(currentUrl.value);
-  const player = detectPlayerType();
-  return `${type.toUpperCase()} · ${player}`;
+  const player = currentPlayerType.value || preferredPlayer.value;
+  const proxyLabel = proxyMode.value === 'direct' ? '直连' : (proxyMode.value === 'm3u-proxy' ? '代理' : '自动');
+  playerDesc.value = `[${type.toUpperCase()}] [${proxyLabel}] ${drmText.value}`;
 }
 
 // ─── 控制按钮 ───
@@ -830,23 +671,14 @@ function toggleMute() {
   video.muted = !video.muted;
 }
 
-function setVolume() {
-  const video = videoRef.value;
-  if (!video) return;
-  video.volume = volume.value / 100;
-  if (volume.value > 0) video.muted = false;
-}
-
 function prevChannel() {
   const list = filteredChannels.value;
   if (list.length === 0) return;
   let idx = currentIndex.value;
-  const currentCh = channels.value[currentIndex.value];
-  const currentFilteredIdx = list.findIndex(ch => ch.id === currentCh?.id || ch.name === currentCh?.name);
-  if (currentFilteredIdx <= 0) {
+  if (idx <= 0) {
     selectChannel(list[list.length - 1], channels.value.indexOf(list[list.length - 1]));
   } else {
-    selectChannel(list[currentFilteredIdx - 1], channels.value.indexOf(list[currentFilteredIdx - 1]));
+    selectChannel(list[idx - 1], channels.value.indexOf(list[idx - 1]));
   }
 }
 
@@ -854,12 +686,10 @@ function nextChannel() {
   const list = filteredChannels.value;
   if (list.length === 0) return;
   let idx = currentIndex.value;
-  const currentCh = channels.value[currentIndex.value];
-  const currentFilteredIdx = list.findIndex(ch => ch.id === currentCh?.id || ch.name === currentCh?.name);
-  if (currentFilteredIdx >= list.length - 1) {
+  if (idx >= list.length - 1) {
     selectChannel(list[0], channels.value.indexOf(list[0]));
   } else {
-    selectChannel(list[currentFilteredIdx + 1], channels.value.indexOf(list[currentFilteredIdx + 1]));
+    selectChannel(list[idx + 1], channels.value.indexOf(list[idx + 1]));
   }
 }
 
@@ -870,15 +700,26 @@ async function togglePip() {
   try {
     if (document.pictureInPictureElement) {
       await document.exitPictureInPicture();
-      addDiag('pip', 'info', '退出画中画');
     } else if (document.pictureInPictureEnabled) {
       await video.requestPictureInPicture();
-      addDiag('pip', 'info', '进入画中画');
-    } else {
-      addDiag('pip', 'warn', '浏览器不支持画中画');
     }
   } catch (e) {
     addDiag('pip', 'error', `画中画错误: ${e.message}`);
+  }
+}
+
+async function toggleFullscreen() {
+  const container = videoRef.value?.parentElement;
+  if (!container) return;
+
+  try {
+    if (!document.fullscreenElement) {
+      await container.requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
+  } catch (e) {
+    addDiag('fullscreen', 'error', `全屏错误: ${e.message}`);
   }
 }
 
@@ -893,8 +734,15 @@ function playTest() {
     id: 'test-' + Date.now(),
     name: testChannel.value.name,
     url: testChannel.value.url,
-    streamType: testChannel.value.streamType
+    streamType: testChannel.value.streamType,
+    drm: testChannel.value.kid && testChannel.value.key ? {
+      clearKeys: { [testChannel.value.kid]: testChannel.value.key }
+    } : null
   };
+
+  if (ch.drm) {
+    drmText.value = 'Clear Key';
+  }
 
   channels.value = [ch];
   currentIndex.value = 0;
@@ -908,19 +756,28 @@ function importTestText() {
   const lines = text.split('\n');
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.startsWith('#EXTINF:')) {
+    if (trimmed.startsWith('#KODIPROP:')) {
+      // 解析 DRM 属性
+      const match = trimmed.match(/KODIPROP:.*?KEY=([A-Fa-f0-9]{32})/i);
+      if (match) testChannel.value.key = match[1];
+      const kidMatch = trimmed.match(/KODIPROP:.*?KID=([A-Fa-f0-9]{32})/i);
+      if (kidMatch) testChannel.value.kid = kidMatch[1];
+    } else if (trimmed.startsWith('#EXTINF:')) {
       const commaIdx = trimmed.lastIndexOf(',');
       testChannel.value.name = commaIdx >= 0 ? trimmed.slice(commaIdx + 1).trim() : '未知';
+      // 解析流类型
+      if (trimmed.includes('tvg-type="mpd"')) testChannel.value.streamType = 'mpd';
+      if (trimmed.includes('tvg-type="hls"')) testChannel.value.streamType = 'hls';
+      if (trimmed.includes('tvg-type="ts"')) testChannel.value.streamType = 'ts';
     } else if (trimmed && !trimmed.startsWith('#') && (trimmed.startsWith('http') || trimmed.startsWith('/'))) {
       testChannel.value.url = trimmed;
-      break;
     }
   }
   addDiag('test', 'info', `解析: ${testChannel.value.name}`);
 }
 
 function clearTest() {
-  testChannel.value = { name: '', url: '', streamType: 'auto', importText: '' };
+  testChannel.value = { name: '', url: '', kid: '', key: '', streamType: 'auto', importText: '' };
 }
 
 // ─── 频道加载 ───
@@ -936,13 +793,7 @@ async function loadChannelsFromApi() {
         num: ch.num || idx + 1,
         codecHint: HEVC_PATTERN.test(ch.name || '') ? 'hevc-risk' : null,
         tvgId: ch.tvgId || '',
-        epg: ch.epg || '',
-        groupName: ch.groupName || extractGroupFromName(ch.name) || ''
-      }));
-      // 合并收藏状态
-      channels.value = channels.value.map(ch => ({
-        ...ch,
-        favorite: favorites.value.has(String(ch.id || ch.name))
+        epg: ch.epg || ''
       }));
       localStorage.setItem(STORAGE_KEY, JSON.stringify(channels.value));
       addDiag('api', 'info', `从后端加载 ${channels.value.length} 个频道`);
@@ -950,12 +801,6 @@ async function loadChannelsFromApi() {
   } catch (e) {
     addDiag('api', 'error', `加载频道失败: ${e.message}`);
   }
-}
-
-function extractGroupFromName(name) {
-  // 从频道名提取分组，例如 "CCTV-1 综合" -> "综合"
-  const match = name.match(/[\u4e00-\u9fa5]+$/);
-  return match ? match[0] : '';
 }
 
 function triggerM3uFile() {
@@ -969,10 +814,7 @@ async function handleM3uFile(e) {
   try {
     const text = await file.text();
     const parsed = parseM3U(text);
-    channels.value = parsed.map(ch => ({
-      ...ch,
-      favorite: favorites.value.has(String(ch.id || ch.name))
-    }));
+    channels.value = parsed;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(channels.value));
     addDiag('m3u', 'info', `解析 M3U 文件: ${parsed.length} 个频道`);
   } catch (e) {
@@ -985,7 +827,7 @@ function parseM3U(content) {
   const result = [];
   let pendingName = '';
   let pendingTvgId = '';
-  let pendingGroup = '';
+  let pendingStreamType = '';
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -994,8 +836,9 @@ function parseM3U(content) {
       pendingName = commaIdx >= 0 ? trimmed.slice(commaIdx + 1).trim() : '';
       const tvgMatch = trimmed.match(/tvg-id="([^"]*)"/);
       pendingTvgId = tvgMatch?.[1] || '';
-      const groupMatch = trimmed.match(/group-title="([^"]*)"/);
-      pendingGroup = groupMatch?.[1] || extractGroupFromName(pendingName);
+      if (trimmed.includes('tvg-type="mpd"')) pendingStreamType = 'mpd';
+      if (trimmed.includes('tvg-type="hls"')) pendingStreamType = 'hls';
+      if (trimmed.includes('tvg-type="ts"')) pendingStreamType = 'ts';
     } else if (trimmed && !trimmed.startsWith('#')) {
       result.push({
         id: Date.now() + result.length,
@@ -1003,46 +846,58 @@ function parseM3U(content) {
         url: trimmed,
         num: result.length + 1,
         tvgId: pendingTvgId,
-        groupName: pendingGroup
+        streamType: pendingStreamType || 'auto'
       });
     }
   }
   return result;
 }
 
+async function loadM3uUrl() {
+  if (!m3uUrlInput.value) {
+    addDiag('m3u', 'warn', '请输入 M3U URL');
+    return;
+  }
+  try {
+    const res = await axios.get(m3uUrlInput.value, { timeout: 30000 });
+    const parsed = parseM3U(res.data);
+    channels.value = parsed;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(channels.value));
+    addDiag('m3u', 'info', `加载 M3U URL: ${parsed.length} 个频道`);
+  } catch (e) {
+    addDiag('m3u', 'error', `M3U URL 加载失败: ${e.message}`);
+  }
+}
+
 async function onM3uSourceChange() {
   const source = m3uSources.value.find(s => s.id === selectedM3uSource.value);
   if (source?.url) {
-    addDiag('source', 'info', `加载节目源: ${source.name}`);
-    // TODO: 加载 M3U URL
+    m3uUrlInput.value = source.url;
+    await loadM3uUrl();
   }
 }
 
 async function onEpgSourceChange() {
   const source = epgSources.value.find(s => s.id === selectedEpgSource.value);
   if (source?.url) {
-    customEpgUrl.value = source.url;
+    epgUrlInput.value = source.url;
     await loadEpgData(source.url);
   }
 }
 
-async function loadCustomEpg() {
-  if (!customEpgUrl.value) {
+async function loadEpg() {
+  if (!epgUrlInput.value) {
     addDiag('epg', 'warn', '请输入 EPG URL');
     return;
   }
-  await loadEpgData(customEpgUrl.value);
+  await loadEpgData(epgUrlInput.value);
 }
 
-// ─── EPG 功能 ───
 async function loadEpgData(url) {
-  if (!url) {
-    addDiag('epg', 'warn', 'EPG URL 为空');
-    return;
-  }
+  if (!url) return;
 
   // 检查缓存
-  const freshEnough = epgUrl.value === url && epgProgramsByChannelId.value.size > 0 && (Date.now() - epgLoadedAt.value) < EPG_CACHE_TTL;
+  const freshEnough = epgUrl === url && epgProgramsByChannelId.size > 0 && (Date.now() - epgLoadedAt) < EPG_CACHE_TTL;
   if (freshEnough) {
     addDiag('epg', 'info', 'EPG 使用缓存');
     updateEpgDisplay();
@@ -1051,59 +906,34 @@ async function loadEpgData(url) {
 
   addDiag('epg', 'info', `加载 EPG: ${url}`);
   try {
-    const xmlText = await fetchEpgText(url);
+    const token = localStorage.getItem('birdtv_token');
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+
+    let xmlText;
+    try {
+      const resp = await fetch(`/m3u-proxy?url=${encodeURIComponent(url)}`, { cache: 'no-store', headers });
+      if (resp.ok) xmlText = await resp.text();
+    } catch {}
+
+    if (!xmlText) {
+      const resp = await fetch(url, { cache: 'no-store', headers });
+      if (resp.ok) xmlText = await resp.text();
+    }
+
+    if (!xmlText) throw new Error('EPG 请求失败');
+
     const parsed = parseXmltv(xmlText);
-    epgUrl.value = url;
-    epgLoadedAt.value = Date.now();
-    epgProgramsByChannelId.value = parsed.programsByChannelId;
-    epgNameToChannelId.value = parsed.nameToChannelId;
+    epgUrl = url;
+    epgLoadedAt = Date.now();
+    epgProgramsByChannelId = parsed.programsByChannelId;
+    epgNameToChannelId = parsed.nameToChannelId;
+    epgStatus.value = `已加载 ${parsed.programsByChannelId.size} 个频道`;
     addDiag('epg', 'info', `EPG 已加载 ${parsed.programsByChannelId.size} 个频道`);
     updateEpgDisplay();
   } catch (e) {
+    epgStatus.value = '加载失败';
     addDiag('epg', 'error', `EPG 加载失败: ${e.message}`);
   }
-}
-
-async function fetchEpgText(epgUrl) {
-  const token = localStorage.getItem('birdtv_token');
-  const headers = token ? { 'Authorization': 'Bearer ' + token } : {};
-
-  // 尝试代理
-  try {
-    const proxyUrl = `/m3u-proxy?url=${encodeURIComponent(epgUrl)}`;
-    const resp = await fetch(proxyUrl, { cache: 'no-store', headers });
-    if (resp.ok) return readEpgResponseText(resp);
-  } catch {}
-
-  // 直接访问
-  try {
-    const resp = await fetch(epgUrl, { cache: 'no-store', headers });
-    if (resp.ok) return readEpgResponseText(resp);
-  } catch {}
-
-  throw new Error('EPG 请求失败');
-}
-
-async function readEpgResponseText(response) {
-  const rawBuffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(rawBuffer);
-  const plainText = new TextDecoder('utf-8').decode(rawBuffer);
-
-  // 检测 gzip 压缩
-  if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b && !plainText.trim().startsWith('<')) {
-    if (typeof DecompressionStream === 'function') {
-      try {
-        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-        const buffer = await new Response(stream).arrayBuffer();
-        return new TextDecoder('utf-8').decode(buffer);
-      } catch {}
-    }
-    if (window.pako?.ungzip) {
-      try { return window.pako.ungzip(bytes, { to: 'string' }); } catch {}
-    }
-  }
-
-  return plainText;
 }
 
 function parseXmltv(xmlText) {
@@ -1158,11 +988,11 @@ function normalizeChannelKey(value) {
 
 function resolveEpgChannelId(source) {
   if (!source) return '';
-  if (source.tvgId && epgProgramsByChannelId.value.has(source.tvgId)) return source.tvgId;
+  if (source.tvgId && epgProgramsByChannelId.has(source.tvgId)) return source.tvgId;
   for (const candidate of [source.tvgId, source.tvgName, source.name]) {
     const key = normalizeChannelKey(candidate);
     if (key) {
-      const mapped = epgNameToChannelId.value.get(key);
+      const mapped = epgNameToChannelId.get(key);
       if (mapped) return mapped;
     }
   }
@@ -1170,7 +1000,38 @@ function resolveEpgChannelId(source) {
 }
 
 function updateEpgDisplay() {
-  // EPG 通过计算属性自动更新
+  const source = currentChannel.value;
+  if (!source || !epgProgramsByChannelId.size) {
+    currentEpgProgram.value = null;
+    epgPrograms.value = [];
+    return;
+  }
+
+  const channelId = resolveEpgChannelId(source);
+  const programs = channelId ? (epgProgramsByChannelId.get(channelId) || []) : [];
+  epgPrograms.value = programs;
+
+  if (!programs.length) {
+    currentEpgProgram.value = null;
+    return;
+  }
+
+  const now = Date.now();
+  let current = null;
+  for (const program of programs) {
+    if (program.start <= now && now < program.end) {
+      current = program;
+      break;
+    }
+  }
+
+  currentEpgProgram.value = current;
+
+  if (current) {
+    const total = current.end - current.start;
+    const elapsed = now - current.start;
+    epgProgress.value = Math.min(100, Math.max(0, (elapsed / total) * 100));
+  }
 }
 
 function formatEpgTime(ms) {
@@ -1190,7 +1051,7 @@ function startEpgLoop() {
     if (currentChannel.value) {
       updateEpgDisplay();
     }
-  }, 60000); // 每分钟更新
+  }, 60000);
 }
 
 // ─── 定时更新 ───
@@ -1223,10 +1084,6 @@ function addDiag(type, level, message) {
   }
 }
 
-function clearDiagnostics() {
-  diagnosticEvents.value = [];
-}
-
 // ─── 登出 ───
 function handleLogout() {
   authStore.logout();
@@ -1244,97 +1101,39 @@ onUnmounted(() => {
   }
 });
 
-// ─── 保存 UA ───
+// ─── 保存设置 ───
 watch(selectedUa, (val) => {
   localStorage.setItem(GLOBAL_UA_KEY, val);
+});
+
+watch(preferredPlayer, (val) => {
+  localStorage.setItem('tvplayer.preferredPlayer', val);
+});
+
+watch(proxyMode, (val) => {
+  localStorage.setItem('tvplayer.proxyMode', val);
 });
 </script>
 
 <style scoped>
-.status-error {
-  color: var(--danger);
-}
-.status-playing {
-  color: var(--success);
-}
-
-/* 频道分组按钮 */
-.button-row .active {
-  background: var(--primary);
-  color: white;
-}
-
-/* 收藏高亮 */
-.playlist-item.favorited {
-  background: rgba(245, 158, 11, 0.1);
-}
-
-.playlist-item.favorited strong {
-  color: #f59e0b;
-}
-
-/* 播放控制栏 */
-.player-controls-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-secondary, #1e1e1e);
-  border-top: 1px solid var(--border, #333);
-}
-
-.ctrl-btn {
-  background: transparent;
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.ctrl-btn:hover {
-  background: var(--primary);
-  color: white;
-  border-color: var(--primary);
-}
-
-.ctrl-volume {
-  font-size: 12px;
-  color: var(--muted);
-  min-width: 40px;
-}
-
-.ctrl-volume-slider {
-  width: 80px;
-  accent-color: var(--primary);
-}
-
-/* EPG 进度条 */
-.epg-progress {
-  height: 4px;
-  background: var(--bg-secondary, #2a2a2a);
-  border-radius: 2px;
-  margin: 6px 0;
+.player-wrapper {
+  width: 100%;
+  height: 100vh;
   overflow: hidden;
 }
 
-.epg-progress-bar {
+.legacy-player-frame {
+  width: 100%;
   height: 100%;
-  background: var(--primary);
-  transition: width 1s linear;
+  border: none;
+  background: #000;
 }
 
-.epg-now-time {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-
-.epg-now-desc {
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 6px;
   font-size: 12px;
-  color: var(--muted);
-  margin-top: 4px;
+  font-weight: 600;
 }
 
 /* EPG 弹窗 */
@@ -1408,18 +1207,5 @@ watch(selectedUa, (val) => {
 .epg-program-desc {
   font-size: 12px;
   color: var(--muted);
-}
-
-/* 快捷键提示 */
-.shortcuts-hint {
-  padding: 8px 12px;
-  background: var(--bg-secondary, #1e1e1e);
-  border-top: 1px solid var(--border, #333);
-  text-align: center;
-}
-
-.shortcuts-hint small {
-  color: var(--muted);
-  font-size: 11px;
 }
 </style>
