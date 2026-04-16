@@ -1,0 +1,54 @@
+# BirdTV 后端 API Dockerfile - 前后端分离版
+# 多阶段构建
+
+# Stage 1: 安装依赖 + 编译原生模块
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# 复制后端 package 文件
+COPY server/package.json server/package-lock.json* ./server/
+
+# 安装后端依赖（包含 devDependencies 用于编译 bcrypt）
+RUN cd server && npm install
+
+# 复制前端 package 文件并构建
+COPY web-vue/package.json web-vue/package-lock.json* ./web-vue/
+RUN cd web-vue && npm install
+
+# 复制前端源码并构建
+COPY web-vue/ ./web-vue/
+RUN cd web-vue && npm run build
+
+# Stage 2: 生产镜像
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+# 安装 dumb-init
+RUN apk add --no-cache dumb-init
+
+# 复制后端依赖（仅生产依赖）
+COPY --from=builder /app/server/node_modules ./server/node_modules
+COPY --from=builder /app/web-vue/dist ./web-vue/dist
+
+# 复制后端代码
+COPY server/ ./server/
+COPY backend/ ./backend/
+COPY .env .env.example ./
+
+# 数据目录
+RUN mkdir -p /app/data /app/files/cache
+
+# 环境变量
+ENV NODE_ENV=production
+ENV SERVE_STATIC=true
+ENV DATA_DIR=/app/data
+ENV CACHE_ROOT=/app/files/cache
+
+EXPOSE 8771
+
+VOLUME ["/app/data"]
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "server/server.js"]

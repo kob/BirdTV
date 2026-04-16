@@ -1,0 +1,66 @@
+# BirdTV 前后端分离版 - Docker Compose
+# 使用方式: docker-compose -f docker-compose.separation.yml up --build
+
+services:
+  # 后端 API 服务
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.separation
+    container_name: birdtv-api
+    ports:
+      - "${BIRDTV_PORT:-8771}:8771"
+    environment:
+      - BIRDTV_PORT=8771
+      - BIRDTV_HOST=0.0.0.0
+      - AUTH_ENABLED=${AUTH_ENABLED:-true}
+      - AUTH_JWT_SECRET=${AUTH_JWT_SECRET}
+      - AUTH_TOKEN_EXPIRE_DAYS=${AUTH_TOKEN_EXPIRE_DAYS:-7}
+      - AUTH_DEFAULT_ADMIN=${AUTH_DEFAULT_ADMIN:-admin}
+      - AUTH_DEFAULT_PASSWORD=${AUTH_DEFAULT_PASSWORD:-admin123}
+      - AUTH_REDIS_HOST=kvrocks
+      - AUTH_REDIS_PORT=6666
+      - AUTH_REDIS_PASSWORD=${AUTH_REDIS_PASSWORD}
+      - BIRDTV_SYSTEM_ID=${BIRDTV_SYSTEM_ID:-}
+      - REDIS_DATA_PREFIX=${REDIS_DATA_PREFIX:-birdtv:storage:}
+      - SERVE_STATIC=true
+    volumes:
+      - birdtv-data:/app/data
+    depends_on:
+      kvrocks:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 前端服务（可选：独立部署到 CDN 时不需要此服务）
+  # 仅在前后端完全独立部署时使用
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: birdtv-web
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    profiles:
+      - standalone
+
+  # KVRocks (Redis 兼容存储)
+  kvrocks:
+    image: apache/kvrocks:2.11.0
+    container_name: birdtv-kvrocks
+    ports:
+      - "${KVROCKS_PORT:-6666}:6666"
+    volumes:
+      - kvrocks-data:/var/lib/kvrocks
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6666", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  birdtv-data:
+  kvrocks-data:

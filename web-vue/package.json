@@ -1,0 +1,22 @@
+{
+  "name": "birdtv-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BirdTV 前端 - Vue 3 前后端分离版",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "pinia": "^2.2.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.0",
+    "vite": "^6.0.0"
+  }
+}

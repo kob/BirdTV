@@ -1,0 +1,76 @@
+# BirdTV 前端 Dockerfile - 独立部署（Nginx）
+# 仅在前后端完全独立部署时使用
+
+# Stage 1: 构建前端
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY web-vue/package.json web-vue/package-lock.json* ./
+RUN npm install
+
+COPY web-vue/ ./
+RUN npm run build
+
+# Stage 2: Nginx 服务
+FROM nginx:alpine
+
+# 复制构建产物
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# Nginx 配置 - SPA 路由支持
+RUN cat > /etc/nginx/conf.d/default.conf << 'EOF'
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA 路由回退
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API 代理（如果前后端同域部署）
+    location /api/ {
+        proxy_pass http://api:8771;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # 代理接口
+    location /m3u-proxy {
+        proxy_pass http://api:8771;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+    }
+
+    location /tv-iill {
+        proxy_pass http://api:8771;
+        proxy_set_header Host $host;
+        proxy_buffering off;
+    }
+
+    # 健康检查
+    location /health {
+        proxy_pass http://api:8771;
+    }
+
+    # 短链接
+    location /link/ {
+        proxy_pass http://api:8771;
+    }
+
+    # 静态资源缓存
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
