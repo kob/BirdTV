@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BirdTV Player</title>
+    <link rel="icon" href="/assets/favicon-Cp3VK451.ico" sizes="any">
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+    <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
+    <!-- 预加载关键资源 -->
+    <link rel="preload" href="/shaka-player/shaka-player.ui.min.js?v=5.0.9" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" as="script">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js" as="script">
+    <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js" as="script">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js" as="script">
+    <link rel="preload" href="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js" as="script">
+
+    <link rel="stylesheet" href="/shaka-player/controls.min.css?v=5.0.9">
+    <script defer src="/shaka-player/shaka-player.ui.min.js?v=5.0.9" onerror="handleScriptError('Shaka Player')"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js" onerror="handleScriptError('MP4Box')"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js" onerror="handleScriptError('pako')"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js" onerror="handleScriptError('ArtPlayer')"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js" onerror="handleScriptError('HLS.js')"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js" onerror="handleScriptError('mpegts.js')"></script>
+    <script>
+        function handleScriptError(libraryName) {
+            console.error(`Failed to load ${libraryName}`);
+            const existingError = document.getElementById('cdn-load-error');
+            if (!existingError) {
+                const errorDiv = document.createElement('div');
+                errorDiv.id = 'cdn-load-error';
+                errorDiv.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:16px 24px;background:rgba(255,92,114,0.95);color:white;border-radius:12px;z-index:9999;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,0.4);';
+                errorDiv.textContent = `⚠️ 无法加载 ${libraryName}，请检查网络连接或使用本地服务`;
+                document.body.appendChild(errorDiv);
+                setTimeout(() => errorDiv.remove(), 10000);
+            }
+        }
+    </script>
+      <script>
+        (function () {
+          try {
+            var theme = localStorage.getItem('birdtv.theme') || 'luna';
+            var finalTheme = theme;
+            if (theme === 'auto') {
+              var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+              finalTheme = dark ? 'graphite' : 'mist';
+            }
+            document.documentElement.setAttribute('data-theme', finalTheme);
+          } catch {}
+        })();
+      </script>
+    <script>
+        window.BirdTVConstants = window.BirdTVConstants || {};
+        window.BirdTVConstants.UA_PRESETS = [
+            { name: "默认 (okhttp)", value: "okhttp" },
+            { name: "MX Player", value: "MXPlayer/1.58.1" },
+            { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+            { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+            { name: "Safari iOS", value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1" },
+            { name: "Windows Chrome", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+            { name: "Firefox", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0" },
+            { name: "Edge", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.2210.91" },
+            { name: "curl", value: "curl/8.4.0" }
+        ];
+    </script>
+  <link rel="stylesheet" crossorigin href="/assets/index-BCIv8emZ.css">
+  <link rel="stylesheet" href="/assets/luna-theme.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 500px at 85% -10%, rgba(89, 163, 255, 0.2), transparent 72%),
+        radial-gradient(850px 460px at -10% 100%, rgba(96, 225, 255, 0.14), transparent 66%),
+        linear-gradient(145deg, var(--bg-0) 0%, var(--bg-1) 48%, var(--bg-2) 100%);
+      background-attachment: fixed;
+    }
+
+    .shell {
+      --sidebar-width: 320px;
+      width: min(1600px, calc(100vw - 32px));
+      margin: 16px auto 24px;
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+      position: relative;
+      animation: luna-enter-up .52s ease both;
+    }
+
+    .panel {
+      background: linear-gradient(165deg, rgba(255, 255, 255, 0.06), transparent 42%), var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .sidebar {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: opacity var(--t), transform var(--t), padding var(--t), border-color var(--t);
+      min-width: 0;
+      overflow: visible;
+    }
+
+    .sidebar-head {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(136, 184, 255, 0.2);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .sidebar-brand strong {
+      font-size: 14px;
+      letter-spacing: .01em;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .sidebar-link-btn {
+      min-height: 34px;
+      font-size: 12px;
+      padding: 8px 10px;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      transition: border-color var(--t), background var(--t);
+    }
+
+    .card:hover {
+      border-color: var(--line-strong);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .sidebar .card {
+      opacity: 0;
+      animation: luna-enter-up .46s ease forwards;
+    }
+
+    .sidebar .card:nth-of-type(1) { animation-delay: .05s; }
+    .sidebar .card:nth-of-type(2) { animation-delay: .11s; }
+    .sidebar .card:nth-of-type(3) { animation-delay: .17s; }
+    .sidebar .card:nth-of-type(4) { animation-delay: .23s; }
+    .sidebar .card:nth-of-type(5) { animation-delay: .29s; }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(136, 184, 255, 0.18);
+      background: rgba(7, 17, 35, 0.56);
+      color: var(--text);
+      outline: none;
+      transition: border-color var(--t), box-shadow var(--t), background var(--t);
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: rgba(96, 225, 255, 0.62);
+      background: rgba(14, 29, 60, 0.72);
+      box-shadow: 0 0 0 3px rgba(96, 225, 255, 0.16);
+    }
+
+    select {
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 10px center;
+      padding-right: 32px;
+    }
+
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+      font-size: 13px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: transform var(--t), box-shadow var(--t), background var(--t);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0) scale(0.98);
+    }
+
+    .primary {
+      color: #03122a;
+      background: linear-gradient(135deg, var(--brand), var(--brand-2));
+      box-shadow: 0 8px 20px rgba(60, 151, 255, 0.38);
+    }
+
+    .primary:hover {
+      box-shadow: 0 12px 30px rgba(60, 151, 255, 0.5);
+    }
+
+    .secondary {
+      color: #d6e6ff;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(136, 184, 255, 0.2);
+    }
+
+    .secondary:hover {
+      background: rgba(76, 158, 255, 0.18);
+      border-color: rgba(96, 225, 255, 0.34);
+    }
+
+    .danger {
+      color: #fff;
+      background: linear-gradient(135deg, #cf2a4f, var(--danger));
+      box-shadow: 0 8px 20px rgba(255, 94, 120, 0.35);
+    }
+
+    .danger:hover {
+      box-shadow: 0 12px 28px rgba(255, 94, 120, 0.46);
+    }
+
+    .playlist {
+      display: grid;
+      gap: 4px;
+      max-height: calc(100vh - 320px);
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .playlist-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(136, 184, 255, 0.14);
+      cursor: pointer;
+      transition: background var(--t), border-color var(--t), transform var(--t);
+    }
+
+    .playlist-item:hover {
+      background: rgba(76, 158, 255, 0.14);
+      border-color: rgba(96, 225, 255, 0.3);
+      transform: translateX(3px);
+      box-shadow: inset 0 0 0 1px rgba(96, 225, 255, 0.22), 0 10px 18px rgba(2, 8, 20, 0.4);
+    }
+
+    .playlist-item.active {
+      background: linear-gradient(90deg, rgba(76, 158, 255, 0.22), rgba(96, 225, 255, 0.12));
+      border-color: rgba(96, 225, 255, 0.45);
+    }
+
+    .playlist-item.pulse-focus {
+      animation: pulseFocus .5s ease;
+    }
+
+    @keyframes pulseFocus {
+      0% { box-shadow: 0 0 0 0 rgba(96, 225, 255, 0.6); }
+      100% { box-shadow: 0 0 0 12px rgba(96, 225, 255, 0); }
+    }
+
+    .playlist-item strong {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .playlist-item .ch-meta {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: auto;
+      max-width: 38%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .playlist-item.playlist-empty {
+      display: grid;
+      justify-items: center;
+      text-align: center;
+      gap: 6px;
+      padding: 14px 10px;
+      cursor: default;
+    }
+
+    .playlist-item.playlist-empty:hover {
+      transform: none;
+      box-shadow: none;
+    }
+
+    .playlist-skeleton {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.16) 50%, rgba(255,255,255,0.08) 100%);
+      background-size: 200% 100%;
+      animation: skeletonFlow 1.15s linear infinite;
+    }
+
+    .playlist-skeleton.short { width: 40%; }
+    .playlist-skeleton.long { width: 82%; }
+
+    @keyframes skeletonFlow {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .main {
+      grid-column: 2;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .main > section,
+    .main > details {
+      opacity: 0;
+      animation: luna-enter-right .48s ease forwards;
+    }
+
+    .main > *:nth-child(1) { animation-delay: .09s; }
+    .main > *:nth-child(2) { animation-delay: .15s; }
+    .main > *:nth-child(3) { animation-delay: .21s; }
+    .main > *:nth-child(4) { animation-delay: .27s; }
+    .main > *:nth-child(5) { animation-delay: .33s; }
+    .main > *:nth-child(6) { animation-delay: .39s; }
+
+    .video-shell {
+      animation: luna-enter-up .6s ease both;
+      animation-delay: .16s;
+    }
+
+    .collapsible summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      list-style: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    .collapsible summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .summary-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #e2e8f0;
+    }
+
+    .summary-hint {
+      font-size: 11px;
+      color: rgba(196, 216, 245, 0.56);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(136, 184, 255, 0.14);
+      padding: 3px 8px;
+      border-radius: 999px;
+      transition: color var(--t), background var(--t), border-color var(--t);
+    }
+
+    details[open] .summary-hint {
+      color: #bfe6ff;
+      background: rgba(76, 158, 255, 0.18);
+      border-color: rgba(96, 225, 255, 0.36);
+    }
+
+    .stage {
+      overflow: hidden;
+      background: linear-gradient(180deg, rgba(7, 15, 29, 0.88), rgba(3, 9, 20, 0.98));
+    }
+
+    .stage-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      padding: 16px 20px 0;
+      color: #e2e8f0;
+    }
+
+    .stage-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 500px;
+    }
+
+    .stage-sub {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 3px;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(136, 184, 255, 0.2);
+      color: #94a3b8;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background var(--t), color var(--t), border-color var(--t);
+    }
+
+    .head-action-btn {
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(136, 184, 255, 0.24);
+      background: rgba(255, 255, 255, 0.08);
+      color: #d6e8ff;
+      cursor: pointer;
+    }
+
+    .head-action-btn:hover {
+      border-color: rgba(96, 225, 255, 0.4);
+      background: rgba(76, 158, 255, 0.18);
+    }
+
+    .video-shell {
+      position: relative;
+      padding-top: 56.25%;
+      margin: 16px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 0 0 1px rgba(136, 184, 255, 0.18), 0 20px 48px rgba(1, 8, 20, 0.78);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .info-item {
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--line);
+      transition: border-color var(--t);
+    }
+
+    .info-item:hover {
+      border-color: var(--line-strong);
+    }
+
+    .info-item small {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .info-item strong {
+      display: block;
+      font-size: 13px;
+      color: #e2e8f0;
+      word-break: break-word;
+    }
+
+    .status-line {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(136, 184, 255, 0.16);
+      background: rgba(255, 255, 255, 0.045);
+      flex: 0 0 auto;
+      transition: border-color var(--t), background var(--t);
+    }
+
+    .status-chip:hover {
+      border-color: rgba(96, 225, 255, 0.36);
+      background: rgba(76, 158, 255, 0.14);
+    }
+
+    .epg-modal {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2, 6, 16, 0.78);
+      z-index: 999;
+      padding: 16px;
+    }
+
+    .epg-modal-card {
+      width: min(820px, calc(100vw - 24px));
+      max-height: calc(100vh - 40px);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      background: linear-gradient(180deg, var(--panel), var(--panel-strong));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .epg-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .epg-modal-head h3 {
+      margin: 0;
+      font-size: 14px;
+      color: #e2e8f0;
+    }
+
+    .epg-list {
+      overflow: auto;
+      padding: 12px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .epg-item {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr);
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(136, 184, 255, 0.18);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 13px;
+    }
+
+    .epg-item.active {
+      border-color: rgba(40, 215, 173, 0.46);
+      background: rgba(40, 215, 173, 0.14);
+    }
+
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .main {
+        grid-column: 1;
+      }
+      .info-grid, .grid.two {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: calc(100vw - 16px);
+        margin: 8px auto 16px;
+      }
+      .sidebar, .main {
+        padding: 12px;
+      }
+    }
+
+    .play-test-input {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      transition: border-color var(--t), background var(--t);
+    }
+
+    .play-test-input:focus {
+      outline: none;
+      border-color: rgba(96, 225, 255, 0.5);
+      background: rgba(76, 158, 255, 0.08);
+    }
+
+    .play-test-select {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 13px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .play-test-select:focus {
+      outline: none;
+      border-color: rgba(96, 225, 255, 0.5);
+    }
+  </style>
+  <style>
+    .backend-source-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      background: rgba(40, 215, 173, 0.08);
+      border: 1px solid rgba(40, 215, 173, 0.2);
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .backend-source-item:hover {
+      background: rgba(40, 215, 173, 0.14);
+      border-color: rgba(40, 215, 173, 0.3);
+    }
+
+    .backend-source-item .config-item-name {
+      color: #28d7ad;
+    }
+
+    .backend-source-item .config-item-url {
+      color: #e2e8f0;
+    }
+
+    .backend-source-item .config-item-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      font-size: 11px;
+    }
+
+    .backend-source-item .config-item-channel-count {
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .backend-source-item .config-item-enabled {
+      color: #40c057;
+      font-weight: 600;
+    }
+
+    .backend-source-item .config-item-disabled {
+      color: #fa8c16;
+      font-weight: 600;
+    }
+  </style>
+  <link rel="stylesheet" href="/assets/mobile-fix.css">
+</head>
+<body class="luna-ui luna-player">
+    <div class="shell">
+        <aside class="panel sidebar">
+          <section class="sidebar-head">
+            <div class="sidebar-brand">
+              <strong>BirdTV 播放器</strong>
+              <span class="summary-hint">快捷入口</span>
+            </div>
+            <div class="sidebar-actions">
+              <button class="secondary sidebar-link-btn" id="openAdminButton" type="button">进入后台管理</button>
+              <button class="secondary sidebar-link-btn" id="openMobileButton" type="button">手机端入口</button>
+            </div>
+          </section>
+
+            <details class="card collapsible" id="playTestSection">
+                <summary>
+                    <span class="summary-title">播放测试</span>
+                    <span class="summary-hint">默认收起，点击展开</span>
+                </summary>
+                <div class="grid collapsible-content" style="gap:8px;">
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">频道名称
+                    <input id="testNameInput" type="text" placeholder="例如：CCTV-1" class="play-test-input">
+                </label>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">播放地址
+                    <input id="testUrlInput" type="text" placeholder="http://example.com/stream.m3u8" class="play-test-input">
+                </label>
+                <div style="display:flex;gap:6px;">
+                    <label style="display:grid;gap:3px;flex:1;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">KID
+                        <input id="testKidInput" type="text" placeholder="可选" class="play-test-input">
+                    </label>
+                    <label style="display:grid;gap:3px;flex:1;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">KEY
+                        <input id="testKeyInput" type="text" placeholder="可选" class="play-test-input">
+                    </label>
+                </div>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">流类型
+                    <select id="testStreamTypeSelect" class="play-test-select">
+                        <option value="auto">自动检测</option>
+                        <option value="hls">HLS</option>
+                        <option value="mpd">DASH/MPD</option>
+                        <option value="ts">TS</option>
+                    </select>
+                </label>
+                <label style="display:grid;gap:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);">文本导入
+                    <textarea id="testImportTextarea" rows="5" placeholder="粘贴 #EXTINF / #KODIPROP 等格式文本，自动解析填充" class="play-test-input" style="resize:vertical;font-size:12px;font-family:monospace;"></textarea>
+                </label>
+                <div style="display:flex;gap:6px;justify-content:flex-end;">
+                    <button class="secondary" id="testImportButton" type="button">导入解析</button>
+                    <button class="secondary" id="testClearButton" type="button">清空</button>
+                    <button class="primary" id="testPlayButton" type="button">播放</button>
+                </div>
+                </div>
+            </details>
+
+            <details class="card collapsible">
+                <summary>
+                    <span class="summary-title">节目源与EPG</span>
+                    <span class="summary-hint">默认收起，点击展开</span>
+                </summary>
+                <div class="grid collapsible-content">
+                    <div class="config-source-section">
+                        <h3 class="config-sub-title">节目源</h3>
+                        <select id="m3uSourceSelect" style="width:100%;">
+                            <option value="">-- 请选择或手动输入 --</option>
+                        </select>
+                        <input id="m3uUrlInput" type="text" placeholder="例如：http://127.0.0.1:8881/mytv.m3u" style="margin-top:6px;">
+                    </div>
+
+                    <div class="config-source-section">
+                        <h3 class="config-sub-title">EPG 源</h3>
+                        <select id="epgSourceSelect" style="width:100%;">
+                            <option value="">-- 请选择或手动覆盖 --</option>
+                        </select>
+                        <input id="epgUrlInput" type="text" placeholder="例如：https://example.com/guide.xml" style="margin-top:6px;">
+                    </div>
+
+                    <div class="button-row">
+                        <button class="secondary" id="loadM3UButton" type="button">上传节目文件</button>
+                        <button class="secondary" id="loadM3UUrlButton" type="button">导入节目链接</button>
+                        <button class="secondary" id="loadEpgButton" type="button">加载 EPG</button>
+                    </div>
+                    <input id="m3uFileInput" type="file" accept=".m3u,.m3u8,text/plain" style="display:none;">
+                </div>
+            </details>
+
+            <section class="card grid">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+                    <h2 class="section-title" style="margin:0;">频道列表</h2>
+                    <span class="muted" id="channelCount">0 个</span>
+                </div>
+                <label>
+                    搜索
+                    <input id="searchInput" type="text" placeholder="输入频道名过滤">
+                </label>
+                <div class="playlist" id="playlist"></div>
+            </section>
+        </aside>
+
+        <main class="panel main">
+            <section class="panel stage">
+                <div class="stage-head">
+                    <div>
+                        <h2 id="currentTitle">未开始播放</h2>
+                        <p class="stage-sub" id="playerTypeDesc">DASH MPD · Clear Key DRM · Shaka Player</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <button class="head-action-btn" id="openAdminTopButton" type="button">后台管理</button>
+                        <button class="button" id="logoutButton" type="button" style="font-size: 12px; padding: 6px 12px; border: 1px solid #e1e5e9; background: white; cursor: pointer; border-radius: 6px; color: var(--muted);">退出登录</button>
+                        <button class="button" id="switchToMobileButton" type="button" style="font-size: 12px; padding: 6px 12px; border: 1px solid #c92222; background: white; cursor: pointer; border-radius: 6px; color: #c92222;">切换到移动版</button>
+                        <div class="status-badge" id="statusBadge">等待加载</div>
+                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                            播放器
+                            <select id="stagePlayerTypeSelect" style="width:auto;min-width:124px;padding:6px 30px 6px 10px;font-size:12px;">
+                                <option value="auto">自动</option>
+                                <option value="shaka">Shaka</option>
+                                <option value="hls">Art(HLS)</option>
+                                <option value="mpegts">mpegts</option>
+                                <option value="native">原生</option>
+                            </select>
+                        </label>
+                        <!-- 连接模式选择器已隐藏 - 完全服务端模式 -->
+                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                            代理模式
+                            <select id="tempProxyModeSelect" style="width:auto;min-width:140px;padding:6px 30px 6px 10px;font-size:12px;">
+                                <option value="auto">自动（智能选择）</option>
+                                <option value="m3u-proxy">m3u-proxy（通用）</option>
+                                <option value="direct">本地直连（无代理）</option>
+                            </select>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
+                            UA
+                            <select id="globalUaSelect" style="width:auto;min-width:160px;padding:6px 30px 6px 10px;font-size:12px;">
+                                <option value="">加载中...</option>
+                            </select>
+                            <input id="customUaInput" type="text" placeholder="输入自定义UA" style="width:180px;padding:6px 10px;font-size:12px;border:1px solid var(--line);border-radius:4px;background:var(--input-bg);color:var(--text);display:none;" />
+                            <button id="addCustomUaButton" class="secondary" type="button" title="添加自定义UA" style="padding:4px 8px;font-size:11px;line-height:1;">+</button>
+                        </label>
+                    </div>
+                </div>
+                <div class="video-shell" data-shaka-player-container>
+                    <video id="video" autoplay controls playsinline data-shaka-player></video>
+                    <!-- ArtPlayer 独立容器，与 Shaka 隔离避免 DOM 冲突 -->
+                    <div id="artplayer-container" style="position:absolute;inset:0;display:none;z-index:10;"></div>
+                </div>
+            </section>
+
+            <section class="info-grid">
+                <div class="info-item">
+                    <small>当前播放地址</small>
+                    <details class="mpd-fold">
+                        <summary></summary>
+                        <strong class="mpd-url" id="currentUrl">-</strong>
+                    </details>
+                </div>
+                <div class="info-item">
+                    <small>播放状态</small>
+                    <strong id="statusText">等待输入</strong>
+                </div>
+                <div class="info-item epg-wide">
+                    <small>EPG 节目单</small>
+                    <strong id="epgNow" class="epg-now-title">当前：</strong>
+                    <div id="epgNowDesc" class="epg-now-desc">简介：-</div>
+                    <div class="epg-near-list" id="epgNext">
+                        <div class="epg-near-item"><div class="epg-near-title">--:-- -</div><div class="epg-near-desc">简介：-</div></div>
+                    </div>
+                    <div class="mpd-url" id="epgMeta">EPG：未加载</div>
+                    <div class="epg-progress" id="epgProgress">
+                        <div class="epg-progress-bar" id="epgProgressBar"></div>
+                    </div>
+                    <div class="epg-progress-text" id="epgProgressText">进度：</div>
+                    <div class="button-row" style="margin-top:8px;">
+                        <button class="secondary" id="openEpgListButton" type="button">查看节目单</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="status-line" aria-label="播放状态栏">
+                <div class="status-chip"><small>DRM</small><strong id="currentDrm">未配置</strong></div>
+                <div class="status-chip"><small>播放模式</small><strong id="modeText">自动</strong></div>
+                <!-- 连接模式显示已隐藏 - 完全服务端模式 -->
+                <div class="status-chip"><small>编排</small><strong id="orchestrationText">-</strong></div>
+                <div class="status-chip"><small>冷却</small><strong id="fallbackCooldownText">-</strong></div>
+                <div class="status-chip"><small>分辨率</small><strong id="resolutionText">-</strong></div>
+                <div class="status-chip"><small>码率</small><strong id="bitrateText">-</strong></div>
+                <div class="status-chip"><small>丢帧 / 总帧</small><strong id="framesText">-</strong></div>
+            </section>
+
+            <section class="card grid" id="externalPlaybackHint" style="display:none; gap:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                    <div style="display:grid;gap:4px;">
+                        <small>外部播放器建议</small>
+                        <strong id="externalPlaybackTitle">建议使用外部播放器打开</strong>
+                        <div class="muted" id="externalPlaybackDesc">检测到高规格 HEVC/HDR 源，浏览器内播放兼容性可能较差。</div>
+                    </div>
+                    <div class="button-row" style="margin-left:auto;">
+                        <button class="secondary" id="copyExternalUrlButton" type="button">复制直链</button>
+                        <button class="secondary" id="openExternalUrlButton" type="button">新标签打开</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="diag-panel" aria-label="诊断面板">
+                <div class="diag-head">
+                    <strong>诊断链路</strong>
+                    <span class="diag-count" id="diagnosticsCount">0 个</span>
+                    <div class="diag-actions">
+                        <button class="secondary" id="exportDiagnosticsButton" type="button">导出诊断</button>
+                        <button class="secondary" id="clearFallbackCooldownButton" type="button">清空冷却</button>
+                        <button class="secondary" id="clearDiagnosticsButton" type="button">清空</button>
+                    </div>
+                </div>
+                <div class="diag-list" id="diagnosticsList"></div>
+            </section>
+
+            <details class="card collapsible">
+                <summary>
+                    <span class="summary-title">使用说明</span>
+                    <span class="summary-hint">默认收起，点击展开</span>
+                </summary>
+                <div class="hint-list collapsible-content">
+                    <div>MPD 可填完整地址，也可填相对路径；相对路径要求当前站点后面有反向代理或源站路由。</div>
+                    <div>当前实现的是 Clear Key DRM，输入 KID 和 KEY 后会自动注入到 Shaka Player。</div>
+                    <div>如果你有现成的频道数组，可以直接粘贴到"JSON 数据"里导入。</div>
+                    <div>节目类型是针对单个频道的设置；代理模式是全局设置，影响所有频道的代理行为。</div>
+                </div>
+            </details>
+        </main>
+    </div>
+
+    <div class="epg-modal" id="epgModal" aria-hidden="true">
+        <div class="epg-modal-card">
+            <div class="epg-modal-head">
+                <h3 id="epgModalTitle">节目单</h3>
+                <button class="secondary" id="closeEpgModalButton" type="button">关闭</button>
+            </div>
+            <div class="epg-date-bar" id="epgDateBar"></div>
+            <div class="epg-list" id="epgListContainer"></div>
+        </div>
+    </div>
+
+    <div class="epg-modal" id="configCenterModal" aria-hidden="true">
+        <div class="epg-modal-card" style="max-width: 650px;">
+            <div class="epg-modal-head">
+                <h3>节目源与EPG</h3>
+                <button class="secondary" id="closeConfigCenterButton" type="button">关闭</button>
+            </div>
+            <div style="padding: 14px; max-height: 65vh; overflow-y: auto;">
+                <div class="grid" style="gap: 16px;">
+                    <!-- 节目源管理 -->
+                    <div>
+                        <h4 class="config-modal-title">节目源列表</h4>
+                        <div id="m3uConfigList" class="config-list"></div>
+                        <div class="config-add-row">
+                            <input id="newM3uName" type="text" placeholder="配置名称" class="config-add-input">
+                            <input id="newM3uUrl" type="text" placeholder="节目链接地址" class="config-add-input" style="flex:2;">
+                            <button class="primary" id="addM3uConfigButton" type="button" style="white-space:nowrap;">添加</button>
+                        </div>
+                        <h4 class="config-modal-title" style="margin-top:16px;">后端节目源</h4>
+                        <div id="m3uBackendList" class="config-list"></div>
+                    </div>
+                    <!-- EPG 源管理 -->
+                    <div style="border-top: 1px solid var(--line); padding-top: 14px;">
+                        <h4 class="config-modal-title">EPG 源列表</h4>
+                        <div id="epgConfigList" class="config-list"></div>
+                        <div class="config-add-row">
+                            <input id="newEpgName" type="text" placeholder="配置名称" class="config-add-input">
+                            <input id="newEpgUrl" type="text" placeholder="EPG 链接地址" class="config-add-input" style="flex:2;">
+                            <button class="primary" id="addEpgConfigButton" type="button" style="white-space:nowrap;">添加</button>
+                        </div>
+                        <h4 class="config-modal-title" style="margin-top:16px;">后端 EPG 源</h4>
+                        <div id="epgBackendList" class="config-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/src/modules/init.js?v=3.5.1"></script>
+    <script defer src="/assets/theme-switcher.js"></script>
+</body>
+</html>
+
+
+
+
+

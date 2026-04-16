@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BirdTV Mobile</title>
+    <link rel="icon" href="/assets/favicon-Cp3VK451.ico" sizes="any">
+    <link rel="stylesheet" href="/shaka-player/controls.min.css?v=5.0.9">
+    <script defer src="/shaka-player/shaka-player.ui.min.js?v=5.0.9"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/pako@2.1.0/pako.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.15/hls.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --primary: #c92222;
+            --primary-light: #ff3333;
+            --primary-dark: #991818;
+            --bg-dark: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-card: #1a1a1a;
+            --text-main: #ffffff;
+            --text-muted: #a0a0a0;
+            --border: #2a2a2a;
+            --shadow: rgba(0, 0, 0, 0.4);
+            --accent: #ffcc00;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            font-size: 16px;
+            line-height: 1.5;
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: linear-gradient(180deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 100%);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding: 0 16px 12px;
+        }
+
+        .header-main {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: max(12px, env(safe-area-inset-top));
+            height: 56px;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo-text {
+            font-size: 22px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ff4444, #ff6666);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: rgba(255,255,255,0.08);
+            border-radius: 12px;
+            color: var(--text-main);
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn:active {
+            background: rgba(255,255,255,0.15);
+            transform: scale(0.95);
+        }
+
+        .main-content {
+            margin-top: 80px;
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+
+        .category-tabs {
+            display: none;
+            gap: 8px;
+            margin-bottom: 16px;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+
+        .category-tabs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .category-tabs.visible {
+            display: flex;
+        }
+
+        .category-tab {
+            flex-shrink: 0;
+            padding: 8px 16px;
+            border: none;
+            background: rgba(255,255,255,0.08);
+            border-radius: 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .category-tab.active {
+            background: var(--primary);
+            color: var(--text-main);
+        }
+
+        .channel-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+        }
+
+        .channel-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+
+        .channel-card:active {
+            transform: scale(0.98);
+        }
+
+        .channel-card.playing {
+            border: 2px solid var(--primary);
+        }
+
+        .channel-poster {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .channel-poster img {
+            opacity: 0;
+            transition: opacity 0.3s;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .channel-poster img.loaded {
+            opacity: 1;
+        }
+
+        .channel-poster .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+        }
+
+        .channel-poster img.loaded + .placeholder {
+            display: none;
+        }
+
+        .channel-info {
+            padding: 12px;
+        }
+
+        .channel-name {
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .channel-group {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* EPG 节目信息样式 */
+        .channel-epg-now {
+            margin-top: 8px;
+            padding: 6px 8px;
+            background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+            border-radius: 6px;
+            border-left: 3px solid var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .channel-epg-next {
+            margin-top: 4px;
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 6px;
+            border-left: 3px solid var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .channel-epg-empty {
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        .epg-time {
+            font-size: 11px;
+            color: var(--primary);
+            font-weight: 600;
+            min-width: 45px;
+        }
+
+        .channel-epg-next .epg-time {
+            color: var(--text-muted);
+        }
+
+        .epg-title {
+            font-size: 12px;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1;
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(10,10,10,0.95);
+            backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 0 max(8px, env(safe-area-inset-bottom));
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .nav-item.active {
+            color: var(--primary);
+        }
+
+        .nav-icon {
+            font-size: 24px;
+        }
+
+        .player-fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #000;
+            z-index: 2000;
+            display: none;
+        }
+
+        .player-fullscreen.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .player-top-bar {
+            display: flex;
+            align-items: center;
+            padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+            background: linear-gradient(180deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+        }
+
+        .player-back-btn {
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 50%;
+            color: var(--text-main);
+            font-size: 20px;
+            cursor: pointer;
+            margin-right: 12px;
+        }
+
+        .player-title-text {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .player-control-bar {
+            display: flex;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(20,20,20,0.95);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .player-control-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .player-control-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .player-control-select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            background: rgba(255,255,255,0.08);
+            color: var(--text-main);
+            font-size: 13px;
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23a0a0a0' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 30px;
+        }
+
+        .player-control-select option {
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        .player-control-select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .player-video-container {
+            flex: 1;
+            position: relative;
+        }
+
+        .player-video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .player-bottom-bar {
+            display: flex;
+            justify-content: space-around;
+            padding: 16px;
+            background: linear-gradient(0deg, rgba(0,0,0,0.8) 0%, transparent 100%);
+        }
+
+        .player-action-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 16px;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .player-action-btn.primary {
+            background: var(--primary);
+        }
+
+        .toast {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: var(--text-main);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 3000;
+            display: none;
+        }
+
+        .toast.active {
+            display: block;
+            animation: toast-fade-in 0.3s ease;
+        }
+
+        @keyframes toast-fade-in {
+            from { opacity: 0; transform: translate(-50%, -60%); }
+            to { opacity: 1; transform: translate(-50%, -50%); }
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* 搜索输入框样式 - 直接嵌入分类标签区域 */
+        .search-box {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        .search-box.active {
+            display: flex;
+        }
+        .search-box input {
+            flex: 1;
+            height: 32px;
+            padding: 0 10px;
+            border: none;
+            border-radius: 16px;
+            background: rgba(255,255,255,0.1);
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+        }
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+        .search-box .clear-btn {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 50%;
+            color: var(--text-main);
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header class="app-header">
+        <div class="header-main">
+            <div class="logo-area">
+                <span class="logo-text">BirdTV</span>
+            </div>
+            <div class="header-actions">
+                <button class="action-btn" id="settingsBtn">⚙️</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主内容 -->
+    <main class="main-content">
+        <!-- 分类标签（仅在频道页面显示） -->
+        <div class="category-tabs" id="categoryTabs">
+            <button class="category-tab active" data-tab="all">全部</button>
+        </div>
+        <!-- 搜索输入框（仅在频道页面显示） -->
+        <div class="search-box" id="searchBox">
+            <input type="text" id="searchInput" placeholder="搜索频道名称..." autocomplete="off">
+            <button class="clear-btn" id="searchClear">×</button>
+        </div>
+        <!-- 频道列表 -->
+        <div class="channel-grid" id="channelList">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部导航 -->
+    <nav class="bottom-nav">
+        <button class="nav-item active" data-page="home">
+            <span class="nav-icon">🏠</span>
+            <span>首页</span>
+        </button>
+        <button class="nav-item" data-page="channels" data-tab="all">
+            <span class="nav-icon">📺</span>
+            <span>频道</span>
+        </button>
+        <button class="nav-item" data-page="channels" data-tab="favorites">
+            <span class="nav-icon">⭐</span>
+            <span>收藏</span>
+        </button>
+        <button class="nav-item" data-page="profile">
+            <span class="nav-icon">👤</span>
+            <span>我的</span>
+        </button>
+    </nav>
+
+    <!-- 播放器全屏容器 -->
+    <div class="player-fullscreen" id="playerContainer">
+        <div class="player-top-bar">
+            <button class="player-back-btn" id="playerBackBtn">↓</button>
+            <span class="player-title-text" id="playerTitle">频道名称</span>
+        </div>
+        <!-- 播放器控制栏 -->
+        <div class="player-control-bar">
+            <div class="player-control-group">
+                <label class="player-control-label">播放器</label>
+                <select class="player-control-select" id="mobilePlayerType">
+                    <option value="auto">自动</option>
+                    <option value="native">原生</option>
+                    <option value="hls.js">HLS.js</option>
+                    <option value="mpegts">mpegts</option>
+                    <option value="shaka">Shaka</option>
+                    <option value="artplayer">ArtPlayer</option>
+                </select>
+            </div>
+            <div class="player-control-group">
+                <label class="player-control-label">UA</label>
+                <select class="player-control-select" id="mobileUaSelect">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
+        </div>
+        <div class="player-video-container">
+            <video id="mobilePlayer" controls playsinline></video>
+            <!-- ArtPlayer 容器，与其他播放器共享位置 -->
+            <div id="artplayer-container" style="position:absolute;inset:0;display:none;z-index:10;"></div>
+        </div>
+        <div class="player-bottom-bar">
+            <button class="player-action-btn" id="playerFavoriteBtn">
+                <span id="playerFavoriteIcon">☆</span>
+                <span>收藏</span>
+            </button>
+            <button class="player-action-btn primary" id="playerShareBtn">
+                🔗 分享
+            </button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script type="module">
+        import { initMobilePlayer, playMobileChannel, closeMobilePlayer, updateFavoriteIcon } from './src/modules/mobile-player.js';
+
+        // 全局变量
+        let channels = [];
+        let allChannels = []; // 缓存全部频道用于筛选
+        let currentChannel = null;
+        let currentTab = 'all';
+        let currentPage = 1;
+        const PAGE_SIZE = 500; // 频道页面每次加载 500 个（足够显示全部）
+        let hasMore = true;
+        let isLoading = false;
+        let epgCache = new Map(); // EPG 缓存
+        const EPG_CACHE_TTL = 5 * 60 * 1000; // EPG 缓存 5 分钟
+        let currentNavPage = 'home'; // 当前导航页面：home 或 channels
+        let currentSearchKeyword = ''; // 当前搜索关键词
+        let imgObserver = null; // 保存图片观察器实例
+
+        // 工具函数
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('active');
+            setTimeout(() => toast.classList.remove('active'), 2000);
+        }
+
+        // HTML转义函数，防止XSS攻击
+        function escapeHtml(unsafe) {
+            if (typeof unsafe !== 'string') return unsafe;
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function getAuthToken() {
+            return localStorage.getItem('authToken');
+        }
+
+        // 缓存管理
+        function getCachedChannels() {
+            try {
+                const cached = localStorage.getItem('birdtv_channels');
+                if (!cached) return null;
+
+                const data = JSON.parse(cached);
+                // 检查缓存是否过期（10 分钟）
+                if (Date.now() - data.timestamp > 10 * 60 * 1000) {
+                    return null;
+                }
+                return data.channels;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function setCachedChannels(channels) {
+            try {
+                localStorage.setItem('birdtv_channels', JSON.stringify({
+                    channels,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('缓存频道列表失败:', e);
+            }
+        }
+
+        // 加载指示器
+        function showLoadingIndicator() {
+            let indicator = document.getElementById('loadingIndicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'loadingIndicator';
+                indicator.style.cssText = 'text-align: center; padding: 20px; color: var(--text-muted);';
+                indicator.innerHTML = '<div class="spinner" style="border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--primary); border-radius: 50%; width: 30px; height: 30px; animation: spin 0.8s linear infinite; margin: 0 auto;"></div><style>@keyframes spin { to { transform: rotate(360deg); } }</style>';
+            }
+            const channelList = document.getElementById('channelList');
+            if (channelList) {
+                channelList.appendChild(indicator);
+            }
+        }
+
+        function hideLoadingIndicator() {
+            const indicator = document.getElementById('loadingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        async function apiRequest(url, options = {}) {
+            const token = getAuthToken();
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+            };
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+
+            const response = await fetch(url, {
+                ...options,
+                headers,
+            });
+
+            const data = await response.json();
+            return data;
+        }
+
+        // 从后端加载频道列表（支持分页）
+        async function loadChannels(reset = false) {
+            if (isLoading) return;
+            isLoading = true;
+            showLoadingIndicator();
+
+            try {
+                // 如果是重置或第一次加载，从缓存或 API 获取全部频道（仅基本信息）
+                if (reset || allChannels.length === 0) {
+                    // 强制刷新时清除旧缓存
+                    if (reset) {
+                        localStorage.removeItem('birdtv_channels');
+                        currentPage = 1;
+                    }
+
+                    const cached = getCachedChannels();
+                    if (cached && !reset) {
+                        allChannels = cached;
+                        channels = allChannels;
+                        hasMore = false;
+                        await renderChannels();
+                        return;
+                    }
+
+                    // 请求全部频道（limit=0 表示不限制），添加时间戳绕过缓存
+                    const timestamp = Date.now();
+                    const result = await apiRequest(`/api/channels?page=1&limit=0&_t=${timestamp}`);
+                    if (result.ok && result.data) {
+                        allChannels = result.data;
+                        channels = allChannels;
+                        hasMore = false;
+                        setCachedChannels(allChannels);
+                    } else {
+                        channels = [];
+                        hasMore = false;
+                    }
+                }
+
+                await renderChannels();
+            } catch (error) {
+                console.error('加载频道失败:', error);
+                showToast('加载频道失败，请检查网络连接');
+            } finally {
+                isLoading = false;
+                hideLoadingIndicator();
+            }
+        }
+
+        // 为首页的随机频道加载 EPG 信息（后台加载）
+        async function loadHomeEpg(channels) {
+            for (const channel of channels) {
+                await loadEpgForChannel(channel);
+                // 加载完一个后更新对应卡片
+                await new Promise(resolve => setTimeout(resolve, 50));
+                updateChannelCardEpg(channel);
+            }
+        }
+
+        // 更新单个频道的EPG显示
+        function updateChannelCardEpg(channel) {
+            const channelList = document.getElementById('channelList');
+            const card = channelList.querySelector(`[data-channel-name="${escapeHtml(channel.name)}"]`);
+            if (card) {
+                updateCardEpg(card, channel);
+            }
+        }
+
+        // 按需加载 EPG 节目信息（懒加载）
+        async function loadEpgForChannel(channel) {
+            const cacheKey = channel.name;
+            const cached = epgCache.get(cacheKey);
+
+            // 检查缓存
+            if (cached && Date.now() - cached.time < EPG_CACHE_TTL) {
+                channel.nowPlaying = cached.nowPlaying;
+                channel.nextPlaying = cached.nextPlaying;
+                return;
+            }
+
+            try {
+                const epgResult = await apiRequest(`/api/epg/now/${encodeURIComponent(channel.name)}`);
+                if (epgResult.ok && epgResult.data) {
+                    const programs = epgResult.data;
+                    const now = new Date();
+
+                    // 找到当前正在播放的节目
+                    const nowPlaying = programs.find(p => {
+                        const startTime = new Date(p.start);
+                        const endTime = new Date(p.end);
+                        return now >= startTime && now < endTime;
+                    });
+
+                    // 找到下一个节目
+                    const nextPlaying = programs.find(p => {
+                        const startTime = new Date(p.start);
+                        return startTime > now;
+                    });
+
+                    const nowPlayingData = nowPlaying ? {
+                        title: nowPlaying.title,
+                        startTime: formatTime(new Date(nowPlaying.start))
+                    } : null;
+
+                    const nextPlayingData = nextPlaying ? {
+                        title: nextPlaying.title,
+                        startTime: formatTime(new Date(nextPlaying.start))
+                    } : null;
+
+                    // 更新缓存
+                    epgCache.set(cacheKey, {
+                        nowPlaying: nowPlayingData,
+                        nextPlaying: nextPlayingData,
+                        time: Date.now()
+                    });
+
+                    channel.nowPlaying = nowPlayingData;
+                    channel.nextPlaying = nextPlayingData;
+                }
+            } catch (e) {
+                console.warn(`获取频道 ${channel.name} 的 EPG 信息失败:`, e);
+            }
+        }
+
+        // 分类标签容器
+        const categoryTabs = document.getElementById('categoryTabs');
+
+        // 加载分组信息并生成分类标签（仅在频道页面调用）
+        async function loadGroups() {
+            try {
+                const res = await apiRequest('/api/channels/groups');
+                if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+                    // 移除已有的分组 tab（保留"全部"按钮）
+                    categoryTabs.querySelectorAll('[data-tab^="group:"]').forEach(el => el.remove());
+                    // 添加分组 tab
+                    res.data.forEach(group => {
+                        const btn = document.createElement('button');
+                        btn.className = 'category-tab';
+                        btn.dataset.tab = 'group:' + group;
+                        btn.textContent = group;
+                        categoryTabs.appendChild(btn);
+                    });
+                }
+            } catch (e) {
+                console.warn('加载分组失败:', e);
+            }
+        }
+
+        // 格式化时间显示
+        function formatTime(date) {
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            return `${hours}:${minutes}`;
+        }
+
+        // 渲染频道列表
+        function renderChannels() {
+            const channelList = document.getElementById('channelList');
+            let filtered = [];
+            let showDetails = false; // 是否显示台标和 EPG
+
+            // 首页模式：随机显示 6 个频道
+            if (currentNavPage === 'home') {
+                if (allChannels.length > 0) {
+                    // 从缓存或已加载的频道中随机选择 6 个
+                    const shuffled = [...allChannels];
+                    for (let i = shuffled.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                    }
+                    filtered = shuffled.slice(0, 6);
+                    showDetails = true; // 首页显示台标和 EPG
+                }
+            } else if (currentNavPage === 'channels') {
+                // 频道页面：显示所有频道或按分组筛选
+                if (currentTab === 'all') {
+                    filtered = allChannels;
+                } else if (currentTab === 'favorites') {
+                    filtered = allChannels.filter(ch => ch.favorite);
+                } else if (currentTab === 'recent') {
+                    // 取最后 20 个
+                    filtered = allChannels.slice(-20);
+                } else if (currentTab.startsWith('group:')) {
+                    // 按分组筛选
+                    const groupName = currentTab.replace('group:', '');
+                    filtered = allChannels.filter(ch => (ch.group || '未分组') === groupName);
+                }               
+                // 搜索关键词过滤（在频道页面生效）
+                if (currentSearchKeyword.trim()) {
+                    const kw = currentSearchKeyword.toLowerCase().trim();
+                    filtered = filtered.filter(ch => ch.name.toLowerCase().includes(kw));
+                }
+                
+                showDetails = false; // 频道页面不显示 EPG，提升性能
+            }
+
+            if (filtered.length === 0) {
+                const emptyMsg = currentTab.startsWith('group:')
+                    ? '该分组暂无频道'
+                    : (currentTab === 'favorites' ? '暂无收藏频道' : '暂无频道');
+                channelList.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-muted);">${emptyMsg}</div>`;
+                return;
+            }
+
+            // 首页模式：后台加载EPG信息
+            if (currentNavPage === 'home' && showDetails) {
+                loadHomeEpg(filtered);
+            }
+
+            channelList.innerHTML = filtered.map((channel, index) => {
+                // 根据页面决定是否显示台标和 EPG
+                const epgInfo = showDetails && channel.nowPlaying ? `
+                    <div class="channel-epg-now">
+                        <span class="epg-time">${escapeHtml(channel.nowPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nowPlaying.title || '无节目信息')}</span>
+                    </div>
+                    ${channel.nextPlaying ? `
+                    <div class="channel-epg-next">
+                        <span class="epg-time">${escapeHtml(channel.nextPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nextPlaying.title || '')}</span>
+                    </div>
+                    ` : ''}
+                ` : (showDetails ? `
+                    <div class="channel-epg-empty" data-channel-name="${escapeHtml(channel.name)}">加载中...</div>
+                ` : '');
+
+                // 台标使用 data-src 懒加载，初始显示占位符（仅在首页显示）
+                const posterHtml = showDetails && channel.tvgLogo ? `
+                    <img data-src="${escapeHtml(channel.tvgLogo)}" alt="${escapeHtml(channel.name)}" onerror="this.style.display='none';this.parentElement.querySelector('.placeholder').style.display='block'">
+                    <span class="placeholder">📺</span>
+                ` : `
+                    <span class="placeholder">📺</span>
+                `;
+
+                return `
+                <div class="channel-card ${currentChannel && currentChannel.name === channel.name ? 'playing' : ''}" data-index="${index}" data-channel-name="${escapeHtml(channel.name)}">
+                    <div class="channel-poster">${posterHtml}</div>
+                    <div class="channel-info">
+                        <div class="channel-name">${escapeHtml(channel.name)}</div>
+                        <div class="channel-group">${escapeHtml(channel.group || '未分组')}</div>
+                        ${epgInfo}
+                    </div>
+                </div>
+            `}).join('');
+
+            // 绑定点击事件
+            channelList.querySelectorAll('.channel-card').forEach(card => {
+                card.addEventListener('click', async () => {
+                    const channelName = card.dataset.channelName;
+                    // 在所有频道中查找
+                    const channel = allChannels.find(ch => ch.name === channelName);
+                    if (channel) {
+                        playChannel(channel);
+
+                        // 如果是首页且没有 EPG 信息，懒加载
+                        if (currentNavPage === 'home' && !channel.nowPlaying) {
+                            await loadEpgForChannel(channel);
+                            // 更新该卡片的 EPG 显示
+                            updateCardEpg(card, channel);
+                        }
+                    }
+                });
+
+                // 点击 EPG 区域单独加载（不播放）
+                const epgArea = card.querySelector('.channel-epg-empty');
+                if (epgArea) {
+                    epgArea.style.cursor = 'pointer';
+                    epgArea.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const channelName = e.target.dataset.channelName || card.dataset.channelName;
+                        const channel = allChannels.find(ch => ch.name === channelName);
+                        if (channel) {
+                            await loadEpgForChannel(channel);
+                            updateCardEpg(card, channel);
+                        }
+                    });
+                }
+            });
+
+            // 添加频道计数提示
+            if (currentNavPage === 'channels') {
+                const countInfo = document.createElement('div');
+                countInfo.style.cssText = 'grid-column: 1/-1; text-align: center; padding: 10px; color: var(--text-muted); font-size: 12px;';
+                if (currentSearchKeyword.trim()) {
+                    countInfo.innerHTML = `搜索 "${escapeHtml(currentSearchKeyword)}" 找到 ${filtered.length} 个频道`;
+                } else {
+                    countInfo.innerHTML = `共 ${filtered.length} 个频道`;
+                }
+                channelList.appendChild(countInfo);
+            }
+
+            // 仅首页触发图片懒加载
+            if (currentNavPage === 'home') {
+                observeLazyImages();
+            }
+        }
+
+        // 设置加载更多触发器监听（已移除，因为不需要单独的触发器元素）
+        function setupLoadMoreTrigger() {
+            // 无限滚动直接监听 channelList 容器，不需要单独的触发器
+        }
+
+        // 更新单个卡片的 EPG 显示
+        function updateCardEpg(card, channel) {
+            const epgArea = card.querySelector('.channel-epg-empty');
+            if (epgArea && channel.nowPlaying) {
+                const epgHtml = `
+                    <div class="channel-epg-now">
+                        <span class="epg-time">${escapeHtml(channel.nowPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nowPlaying.title || '无节目信息')}</span>
+                    </div>
+                    ${channel.nextPlaying ? `
+                    <div class="channel-epg-next">
+                        <span class="epg-time">${escapeHtml(channel.nextPlaying.startTime || '')}</span>
+                        <span class="epg-title">${escapeHtml(channel.nextPlaying.title || '')}</span>
+                    </div>
+                    ` : ''}
+                `;
+                // 更新DOM
+                const cardInfo = card.querySelector('.channel-info');
+                const existingEpg = cardInfo.querySelector('.channel-epg-now');
+                if (!existingEpg) {
+                    epgArea.outerHTML = epgHtml;
+                }
+            }
+        }
+
+        // 播放频道
+        async function playChannel(channel) {
+            currentChannel = channel;
+            updateFavoriteIcon(!!channel.favorite);
+            
+            await playMobileChannel(channel, (error) => {
+                showToast('播放失败：' + error.message);
+            });
+        }
+
+        // 填充 UA 下拉框（从后端预设 + localStorage 自定义）
+        function fillUaSelect() {
+            const uaSelect = document.getElementById('mobileUaSelect');
+            if (!uaSelect) return;
+
+            uaSelect.innerHTML = '';
+
+            const UA_PRESETS = [
+                { name: "默认 (okhttp)", value: "okhttp" },
+                { name: "MX Player", value: "MXPlayer/1.58.1" },
+                { name: "IPTV Smarters", value: "IPTV Smarters Pro/4.2" },
+                { name: "Chrome Mobile", value: "Mozilla/5.0 (Linux; Android 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.144 Mobile Safari/537.36" },
+                { name: "Safari iOS", value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1" },
+                { name: "Windows Chrome", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" },
+                { name: "Firefox", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0" },
+                { name: "Edge", value: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0 Safari/537.36 Edg/120.0.2210.91" },
+                { name: "curl", value: "curl/8.4.0" }
+            ];
+
+            const defaultOpt = document.createElement('option');
+            defaultOpt.value = '';
+            defaultOpt.textContent = '默认';
+            uaSelect.appendChild(defaultOpt);
+
+            UA_PRESETS.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.value;
+                opt.textContent = p.name;
+                uaSelect.appendChild(opt);
+            });
+
+            // 加载 localStorage 自定义 UA
+            try {
+                const customUas = JSON.parse(localStorage.getItem('tvplayer.customUas.v1') || '[]');
+                if (customUas.length > 0) {
+                    customUas.forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.value || c;
+                        opt.textContent = (c.name || c.value || c).substring(0, 30);
+                        uaSelect.appendChild(opt);
+                    });
+                }
+            } catch (e) {
+                console.warn('加载自定义 UA 失败:', e);
+            }
+        }
+
+        // 播放控制栏：切换播放器/UA后自动重播当前频道
+        function setupPlayerControlListeners() {
+            const playerTypeSelect = document.getElementById('mobilePlayerType');
+            const uaSelect = document.getElementById('mobileUaSelect');
+            let changeTimer = null;
+
+            const replayCurrentChannel = () => {
+                if (changeTimer) clearTimeout(changeTimer);
+                changeTimer = setTimeout(async () => {
+                    if (currentChannel) {
+                        console.log('[MobilePlayer] 播放设置变更，重新播放:', currentChannel.name);
+                        try { await closeMobilePlayer(); } catch (e) {
+                            console.warn('关闭播放器失败:', e);
+                        }
+                        await playMobileChannel(currentChannel, (error) => {
+                            showToast('播放失败：' + error.message);
+                        });
+                    }
+                }, 300);
+            };
+
+            if (playerTypeSelect) playerTypeSelect.addEventListener('change', replayCurrentChannel);
+            if (uaSelect) uaSelect.addEventListener('change', replayCurrentChannel);
+        }
+
+        // 关闭播放器 - 等待资源释放完成
+        async function closePlayer() {
+            await closeMobilePlayer();
+        }
+
+        // 切换收藏
+        async function toggleFavorite(channel) {
+            try {
+                const newFavorite = !channel.favorite;
+                const result = await apiRequest('/api/channels', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        url: channel.url,
+                        favorite: newFavorite
+                    })
+                });
+
+                if (result.ok) {
+                    channel.favorite = newFavorite;
+                    updateFavoriteIcon(newFavorite);
+                    renderChannels();
+                    showToast(newFavorite ? '已加入收藏' : '已取消收藏');
+                }
+            } catch (error) {
+                console.error('更新收藏失败:', error);
+                showToast('操作失败');
+            }
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 检查是否已登录
+            const token = getAuthToken();
+            if (!token) {
+                window.location.href = '/login.html';
+                return;
+            }
+
+            // 初始化播放器
+            const playerInitialized = await initMobilePlayer();
+            if (!playerInitialized) {
+                console.warn('播放器初始化失败，将继续尝试播放');
+            }
+
+            // 填充 UA 下拉框
+            fillUaSelect();
+
+            // 先加载频道列表到缓存（后台加载）
+            loadChannels(true).then(() => {
+                // 加载完成后立即渲染首页随机6个频道
+                renderChannels();
+            });
+
+            // 无限滚动监听
+            setupInfiniteScroll();
+
+            // 播放控制栏监听（切换播放器/UA）
+            setupPlayerControlListeners();
+
+            // 分类标签点击事件（使用事件委托）
+            categoryTabs.addEventListener('click', (e) => {
+                const tab = e.target.closest('.category-tab');
+                if (!tab) return;
+                document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentTab = tab.dataset.tab;
+                renderChannels();
+            });
+
+            // 底部导航切换
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+
+                    const page = item.dataset.page;
+                    const tab = item.dataset.tab;
+                    currentNavPage = page;
+
+                    // 切换页面时清除搜索
+                    currentSearchKeyword = '';
+                    if (searchInput) searchInput.value = '';
+
+                 // 控制分类标签和搜索框显示/隐藏
+                    const tabsContainer = document.getElementById('categoryTabs');                 
+                    const searchBoxEl = document.getElementById('searchBox');
+                    if (page === 'home') {
+                        currentTab = 'all';
+                        tabsContainer.classList.remove('visible');
+                        if (searchBoxEl) searchBoxEl.classList.remove('active');
+                        renderChannels();
+                    } else if (page === 'channels') {
+                        currentTab = tab || 'all';
+                        tabsContainer.classList.add('visible');
+                        if (searchBoxEl) searchBoxEl.classList.add('active');
+                        // 重置分类标签激活状态
+                        document.querySelectorAll('.category-tab').forEach(t => t.classList.remove('active'));
+                        const activeTab = document.querySelector(`.category-tab[data-tab="${currentTab}"]`);
+                        if (activeTab) activeTab.classList.add('active');
+                        
+                        if (allChannels.length === 0) {
+                            loadChannels(true).then(() => {
+                                renderChannels();
+                            });
+                        } else {
+                            renderChannels();
+                        }
+                        // 加载分组信息（仅在频道页面加载）
+                        loadGroups();
+                    } else if (page === 'profile') {
+                        tabsContainer.classList.remove('visible');
+                        if (searchBoxEl) searchBoxEl.classList.remove('active');
+                        showToast('设置功能开发中');
+                    }
+                });
+            });
+
+            // 搜索功能（直接在频道列表中过滤显示）
+            const searchBox = document.getElementById('searchBox');
+            const searchInput = document.getElementById('searchInput');
+            const searchClear = document.getElementById('searchClear');
+            let searchTimer = null;
+
+            // 搜索输入处理
+            function handleSearch(keyword) {
+                currentSearchKeyword = keyword;
+                if (currentNavPage === 'channels') {
+                    renderChannels();
+                }
+            }
+
+             // 清除搜索
+            function clearSearch() {
+                searchInput.value = '';
+                currentSearchKeyword = '';
+                if (currentNavPage === 'channels') {
+                    renderChannels();
+                }
+            }
+
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => handleSearch(e.target.value), 200);
+            });
+
+            if (searchClear) {
+                searchClear.addEventListener('click', clearSearch);
+            }
+            // 播放器控制
+            document.getElementById('playerBackBtn').addEventListener('click', async () => {
+                await closePlayer();
+            });
+            document.getElementById('playerFavoriteBtn').addEventListener('click', () => {
+                if (currentChannel) toggleFavorite(currentChannel);
+            });
+            document.getElementById('playerShareBtn').addEventListener('click', () => {
+                if (currentChannel) {
+                    const shareUrl = `${window.location.origin}/mobile.html?channel=${encodeURIComponent(currentChannel.name)}`;
+                    if (navigator.share) {
+                        navigator.share({
+                            title: currentChannel.name,
+                            url: shareUrl
+                        });
+                    } else {
+                        navigator.clipboard.writeText(shareUrl);
+                        showToast('链接已复制');
+                    }
+                }
+            });
+
+            // 页面关闭/隐藏时释放播放器资源
+            window.addEventListener('beforeunload', () => {
+                closePlayer();
+            });
+
+            document.addEventListener('pagehide', () => {
+                closePlayer();
+            });
+
+            // 设置按钮 - 切换到桌面版
+            document.getElementById('settingsBtn').addEventListener('click', () => {
+                // 设置 Cookie 保存用户偏好（桌面版）
+                document.cookie = 'birdtv_device=desktop; path=/; max-age=31536000';
+                // 重定向到桌面版
+                window.location.href = '/index.html';
+            });
+        });
+
+        // 无限滚动设置
+        let scrollObserver = null; // 保存滚动观察器实例
+
+        function setupInfiniteScroll() {
+            const channelList = document.getElementById('channelList');
+
+            if (!channelList) return;
+
+            // 由于 loadChannels 一次性加载所有频道，不需要真正的无限滚动
+            // 但保留 scrollObserver 以备将来需要分页加载时使用
+            scrollObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    // 当前实现中 hasMore 始终为 false，所以不会触发加载
+                    // 如果将来需要分页加载，可以在这里实现
+                    if (entry.isIntersecting && hasMore && !isLoading && currentTab === 'all' && currentNavPage === 'channels') {
+                        loadChannels(false);
+                    }
+                });
+            }, {
+                root: null,
+                rootMargin: '200px',
+                threshold: 0.1
+            });
+
+            // 使用 MutationObserver 监听 DOM 变化，确保新加载的图片也能被懒加载
+            const mutationObserver = new MutationObserver(() => {
+                if (currentNavPage === 'home') {
+                    observeLazyImages();
+                }
+            });
+
+            mutationObserver.observe(channelList, {
+                childList: true,
+                subtree: true
+            });
+
+            // 初始懒加载图片（仅首页）
+            if (currentNavPage === 'home') {
+                observeLazyImages();
+            }
+        }
+
+        // 图片懒加载
+        function observeLazyImages() {
+            // 断开之前的观察器连接
+            if (imgObserver) {
+                imgObserver.disconnect();
+            }
+
+            imgObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        const src = img.dataset.src;
+                        if (src) {
+                            img.src = src;
+                            img.onload = () => {
+                                img.classList.add('loaded');
+                            };
+                            imgObserver.unobserve(img);
+                        }
+                    }
+                });
+            }, {
+                root: null,
+                rootMargin: '300px',
+                threshold: 0.1
+            });
+
+            // 监听所有带 data-src 的图片
+            document.querySelectorAll('img[data-src]').forEach(img => {
+                imgObserver.observe(img);
+            });
+        }
+    </script>
+</body>
+</html>
