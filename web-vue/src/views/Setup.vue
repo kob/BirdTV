@@ -66,6 +66,8 @@ const detecting = ref(false);
 const error = ref('');
 const success = ref(false);
 
+console.log('[Setup] Component mounted!');
+
 // 常见后端端口
 const COMMON_PORTS = [8771, 3000, 5173, 8080, 5174, 3001, 8000];
 
@@ -111,7 +113,9 @@ async function detectLocal() {
 // 直接使用本机 8771
 function useLocal() {
   const hostname = window.location.hostname;
+  console.log('[Setup] useLocal called, hostname:', hostname);
   serverUrl.value = `http://${hostname}:8771`;
+  console.log('[Setup] serverUrl set to:', serverUrl.value);
   error.value = '';
 }
 
