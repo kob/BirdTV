@@ -1971,7 +1971,7 @@ async function authMiddleware(req, res, config, next) {
   let isLinkToken = false;
   try {
     const decoded = tokenService.decodeToken(token);
-    
+
     // 如果是导出 Token（type: 'export'），使用 tokenService 验证
     if (decoded.type === 'export') {
       tokenService.verifyToken(decoded);
@@ -1991,8 +1991,31 @@ async function authMiddleware(req, res, config, next) {
       isValid = await auth.isTokenValidWithCleanup(token);
     }
   } catch (e) {
-    // Token 解码失败，尝试用 auth 验证（可能是 JWT）
-    isValid = await auth.isTokenValidWithCleanup(token);
+    // Token 解码失败，尝试以下验证方式：
+    // 1. 16 字符随机 export token（在 Export 记录中查找匹配）
+    if (/^[0-9a-f]{16}$/i.test(token)) {
+      try {
+        const exportModel = require('./backend/models/Export');
+        const allExports = exportModel.getAll();
+        const exportRecord = allExports.find(e => e.exportToken === token);
+        if (exportRecord && exportRecord.tokenExpiresAt) {
+          const now = new Date();
+          const expiresAt = new Date(exportRecord.tokenExpiresAt);
+          if (now <= expiresAt) {
+            isValid = true;
+            isExportToken = true;
+            tokenPayload = { type: 'export', exportId: exportRecord.id };
+            console.log('[Auth Middleware] Validated 16-char export token for export:', exportRecord.id);
+          }
+        }
+      } catch (err) {
+        console.log('[Auth Middleware] 16-char token validation error:', err.message);
+      }
+    }
+    // 2. JWT Token
+    if (!isValid) {
+      isValid = await auth.isTokenValidWithCleanup(token);
+    }
   }
   
   if (!isValid) {
@@ -2053,12 +2076,8 @@ async function handleProxyRequest(req, res, url, config) {
   
   if (authToken && linkId) {
     try {
-      const tokenService = require('./backend/services/tokenService');
       const linkModel = require('./backend/models/Link');
-      
-      // 验证鉴权令牌
-      const decodedToken = tokenService.decodeToken(authToken);
-      tokenService.verifyToken(decodedToken);
+      const exportModel = require('./backend/models/Export');
       
       // 验证链接是否存在
       const linkRecord = linkModel.getById(linkId);
@@ -2070,8 +2089,8 @@ async function handleProxyRequest(req, res, url, config) {
       
       // 验证链接是否过期
       const now = new Date();
-      const expiresAt = new Date(linkRecord.expiresAt);
-      if (now > expiresAt) {
+      const linkExpiresAt = new Date(linkRecord.expiresAt);
+      if (now > linkExpiresAt) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Link expired');
         return;
@@ -2089,6 +2108,32 @@ async function handleProxyRequest(req, res, url, config) {
         res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('IP mismatch');
         return;
+      }
+
+      // 验证 auth_token：查找匹配的导出记录
+      const allExports = exportModel.getAll();
+      const exportRecord = allExports.find(e => e.exportToken === authToken);
+      if (exportRecord) {
+        // 检查 token 是否过期
+        if (exportRecord.tokenExpiresAt) {
+          const tokenExpiresAt = new Date(exportRecord.tokenExpiresAt);
+          if (now > tokenExpiresAt) {
+            res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('Auth token expired');
+            return;
+          }
+        }
+      } else {
+        // 兼容旧版 base64 编码的 token
+        try {
+          const tokenService = require('./backend/services/tokenService');
+          const decodedToken = tokenService.decodeToken(authToken);
+          tokenService.verifyToken(decodedToken);
+        } catch (e) {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Invalid auth token');
+          return;
+        }
       }
     } catch (error) {
       console.error('Auth token validation error:', error);

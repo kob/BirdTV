@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const exportModel = require('../models/Export');
 const linkModel = require('../models/Link');
 const tokenService = require('../services/tokenService');
@@ -47,13 +48,9 @@ class ExportController {
         }
       }
 
-      // 生成长期有效的导出 Token（1 年有效期）
-      const exportToken = tokenService.generateToken({
-        type: 'export',
-        userId: req.user?.username || 'admin',
-        ttl: 365 * 24 * 3600 * 1000 // 365 days
-      });
-      const encodedToken = tokenService.encodeToken(exportToken);
+      // 生成 16 字符随机导出 Token（24 小时有效期）
+      const encodedToken = crypto.randomBytes(8).toString('hex');
+      const tokenExpiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
       
       // 获取当前服务器地址
       const protocol = req.headers['x-forwarded-proto'] || req.protocol;
@@ -125,7 +122,7 @@ class ExportController {
           description: description,
           fileSize,
           exportToken: encodedToken,
-          tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString()
+          tokenExpiresAt
         });
         
         // 创建短链接
@@ -135,7 +132,7 @@ class ExportController {
           userId: req.user?.username || 'admin',
           username: 'export',
           description: description,
-          expiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString(),
+          expiresAt: tokenExpiresAt,
           maxDownloads: 999999,
           ipBinding: null
         });
@@ -220,7 +217,7 @@ class ExportController {
         description: description,
         fileSize,
         exportToken: encodedToken, // 保存 Token 以便后续查询
-        tokenExpiresAt: new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() // 1 year
+        tokenExpiresAt
       });
 
       // 将同名文件关联的旧短链接的 exportId 更新为新记录 ID，保持短链接持续有效
@@ -240,7 +237,7 @@ class ExportController {
           description,
           downloadUrl: `${baseUrl}/api/exports/download?file=${filename}&token=${encodedToken}`,
           token: encodedToken, // 返回 Token，方便前端显示
-          tokenExpiresIn: '365 days'
+          tokenExpiresIn: '24 hours'
         }
       });
     } catch (error) {
@@ -257,26 +254,20 @@ class ExportController {
         return res.status(400).json({ ok: false, message: 'File and token are required' });
       }
 
-      // Verify token
-      const decodedToken = tokenService.decodeToken(token);
-      tokenService.verifyToken(decodedToken);
-
-      // Check if export exists
-      const exportRecord = exportModel.getById(decodedToken.exportId);
+      // 通过 token 查找匹配的导出记录
+      const allExports = exportModel.getAll();
+      const exportRecord = allExports.find(e => e.exportToken === token && e.filename === file);
       if (!exportRecord) {
-        return res.status(404).json({ ok: false, message: 'Export not found' });
+        return res.status(403).json({ ok: false, message: 'Invalid token or file' });
       }
 
-      // Check if file matches
-      if (exportRecord.filename !== file) {
-        return res.status(400).json({ ok: false, message: 'Invalid file' });
-      }
-
-      // Check if expired
-      const now = new Date();
-      const expiresAt = new Date(exportRecord.expiresAt);
-      if (now > expiresAt) {
-        return res.status(403).json({ ok: false, message: 'Export expired' });
+      // Check if token expired
+      if (exportRecord.tokenExpiresAt) {
+        const now = new Date();
+        const expiresAt = new Date(exportRecord.tokenExpiresAt);
+        if (now > expiresAt) {
+          return res.status(403).json({ ok: false, message: 'Token expired' });
+        }
       }
 
       // Check download limit
@@ -514,17 +505,16 @@ class ExportController {
 
       let m3uContent = fs.readFileSync(filePath, 'utf8');
 
-      // Generate auth token for the link, TTL aligned with link expiration
+      // 生成 16 字符随机 auth token，有效期与链接剩余时间对齐
+      const encodedToken = crypto.randomBytes(8).toString('hex');
+
+      // 更新导出记录中的 token 和过期时间
       const linkRemainingMs = Math.max(0, new Date(linkRecord.expiresAt).getTime() - Date.now());
-      // Add 5 minutes buffer to avoid edge-case failure during active playback
-      const tokenTtlMs = linkRemainingMs + 5 * 60 * 1000;
-      const authToken = tokenService.generateToken({
-        linkId: linkRecord.id,
-        shortCode: linkRecord.shortCode,
-        ip: req.ip,
-        ttl: tokenTtlMs
-      });
-      const encodedToken = tokenService.encodeToken(authToken);
+      const tokenExpiresAt = new Date(Date.now() + Math.min(linkRemainingMs + 5 * 60 * 1000, 24 * 3600 * 1000)).toISOString();
+      const exportRecord = exportModel.getById(linkRecord.exportId);
+      if (exportRecord) {
+        exportModel.update(exportRecord.id, { exportToken: encodedToken, tokenExpiresAt });
+      }
 
       // Add auth parameters to each URL in the M3U file
       console.log('[DownloadByShortCode] Original M3U content sample:', m3uContent.substring(0, 500));

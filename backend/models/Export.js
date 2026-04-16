@@ -86,7 +86,9 @@ class Export {
       userId: data.userId || 'admin',
       description: data.description || '',
       createdAt: new Date().toISOString(),
-      fileSize: data.fileSize || 0
+      fileSize: data.fileSize || 0,
+      exportToken: data.exportToken || '',
+      tokenExpiresAt: data.tokenExpiresAt || ''
     };
     exports.push(newExport);
     this._save(exports);
