@@ -4,9 +4,21 @@
  */
 const express = require('express');
 const formidable = require('formidable');
+const M3uSource = require('../../backend/models/M3uSource');
 
 function createSourcesRouter(sourceController) {
   const router = express.Router();
+
+  // 获取源选项定义（播放器类型、代理模式）
+  router.get('/options', (req, res) => {
+    res.json({
+      ok: true,
+      data: {
+        playerTypes: M3uSource.PLAYER_TYPES,
+        proxyModes: M3uSource.PROXY_MODES,
+      },
+    });
+  });
 
   // M3U 源
   router.get('/m3u', (req, res) => sourceController.getM3uSources(req, res));

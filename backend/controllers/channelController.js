@@ -160,6 +160,23 @@ class ChannelController {
       const channel = new Channel(channels[index]);
       channel.update(updateData);
 
+      // 如果修改了 proxyMode，同步转换 URL
+      if (updateData.proxyMode !== undefined) {
+        const extractOriginalUrl = (url) => {
+          const proxyMatch = url.match(/^\/m3u-proxy\?url=(.+)$/);
+          if (proxyMatch) {
+            return decodeURIComponent(proxyMatch[1]);
+          }
+          return url;
+        };
+        const originalUrl = extractOriginalUrl(channel.url);
+        if (updateData.proxyMode === 'proxy' || updateData.proxyMode === 'auto') {
+          channel.url = `/m3u-proxy?url=${encodeURIComponent(originalUrl)}`;
+        } else if (updateData.proxyMode === 'direct') {
+          channel.url = originalUrl;
+        }
+      }
+
       await this.storage.saveChannel(channel.toJSON());
 
       res.json({ ok: true, data: channel.toJSON() });
@@ -387,12 +404,34 @@ class ChannelController {
       const results = [];
       let updatedCount = 0;
 
+      // 辅助函数：从代理 URL 中提取原始 URL
+      const extractOriginalUrl = (url) => {
+        const proxyMatch = url.match(/^\/m3u-proxy\?url=(.+)$/);
+        if (proxyMatch) {
+          return decodeURIComponent(proxyMatch[1]);
+        }
+        return url;
+      };
+
       // 批量更新频道
       for (const channel of allChannels) {
         if (idsSet.has(channel.id)) {
           try {
             const channelObj = new Channel(channel);
             channelObj.update(data);
+
+            // 如果修改了 proxyMode，同步转换 URL
+            if (data.proxyMode !== undefined) {
+              const originalUrl = extractOriginalUrl(channelObj.url);
+              if (data.proxyMode === 'proxy' || data.proxyMode === 'auto') {
+                // 转为代理模式：URL 加上 /m3u-proxy 前缀
+                channelObj.url = `/m3u-proxy?url=${encodeURIComponent(originalUrl)}`;
+              } else if (data.proxyMode === 'direct') {
+                // 转为直连模式：使用原始 URL
+                channelObj.url = originalUrl;
+              }
+            }
+
             channelObj.updatedAt = new Date().toISOString();
             // 更新数组中的对象（原地修改）
             Object.assign(channel, channelObj.toJSON());

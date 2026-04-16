@@ -4,6 +4,22 @@ const crypto = require('crypto');
  * M3U 源模型
  */
 class M3uSource {
+  // 允许的 defaultPlayerType 值
+  static PLAYER_TYPES = [
+    { value: 'auto', label: '自动' },
+    { value: 'shaka', label: 'Shaka Player' },
+    { value: 'hls', label: 'HLS.js' },
+    { value: 'mpegts', label: 'MPEG-TS' },
+    { value: 'native', label: '原生播放器' },
+  ];
+
+  // 允许的 proxyMode 值
+  static PROXY_MODES = [
+    { value: 'auto', label: '自动' },
+    { value: 'proxy', label: '代理' },
+    { value: 'direct', label: '直连' },
+  ];
+
   constructor(data = {}) {
     this.id = data.id || this.generateId();
     this.name = data.name;

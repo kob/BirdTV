@@ -34,8 +34,9 @@ install_deps() {
 
 start_server() {
   log "启动后端 API 服务器 (端口 8771)..."
-  cd "$SERVER_DIR"
-  npx nodemon server.js &
+  cd "$ROOT_DIR"
+  export NODE_PATH="$SERVER_DIR/node_modules"
+  npx nodemon server/server.js &
   SERVER_PID=$!
 }
 

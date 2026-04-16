@@ -3,9 +3,22 @@
  * 方法名与 ChannelController 完全对应
  */
 const express = require('express');
+const Channel = require('../../backend/models/Channel');
 
 function createChannelsRouter(channelController) {
   const router = express.Router();
+
+  // 获取频道选项定义（播放器类型、流类型、代理模式）
+  router.get('/options', (req, res) => {
+    res.json({
+      ok: true,
+      data: {
+        playerTypes: Channel.PLAYER_TYPES,
+        streamTypes: Channel.STREAM_TYPES,
+        proxyModes: Channel.PROXY_MODES,
+      },
+    });
+  });
 
   router.get('/', (req, res) => channelController.getChannels(req, res));
   router.get('/search', (req, res) => channelController.searchChannels(req, res));

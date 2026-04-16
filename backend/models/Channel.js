@@ -4,6 +4,30 @@ const crypto = require('crypto');
  * 频道模型
  */
 class Channel {
+  // 允许的 playerType 值及显示名称
+  static PLAYER_TYPES = [
+    { value: 'auto', label: '自动' },
+    { value: 'shaka', label: 'Shaka Player' },
+    { value: 'hls', label: 'HLS.js' },
+    { value: 'mpegts', label: 'MPEG-TS' },
+    { value: 'native', label: '原生播放器' },
+  ];
+
+  // 允许的 streamType 值及显示名称
+  static STREAM_TYPES = [
+    { value: 'auto', label: '自动' },
+    { value: 'dash', label: 'DASH' },
+    { value: 'hls', label: 'HLS' },
+    { value: 'ts', label: 'MPEG-TS' },
+  ];
+
+  // 允许的 proxyMode 值及显示名称
+  static PROXY_MODES = [
+    { value: 'auto', label: '自动' },
+    { value: 'proxy', label: '代理' },
+    { value: 'direct', label: '直连' },
+  ];
+
   constructor(data = {}) {
     this.id = data.id || this.generateId();
     this.name = data.name;

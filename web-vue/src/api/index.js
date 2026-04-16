@@ -61,11 +61,13 @@ export const channelApi = {
   getGroups: () => api.get('/api/channels/groups'),
   createGroup: (data) => api.post('/api/channels/groups', data),
   deleteGroup: (data) => api.delete('/api/channels/groups', { data }),
+  getOptions: () => api.get('/api/channels/options'),
 };
 
 // ==================== 源管理 API ====================
 
 export const sourceApi = {
+  getOptions: () => api.get('/api/sources/options'),
   listM3u: () => api.get('/api/sources/m3u'),
   createM3u: (data) => api.post('/api/sources/m3u', data),
   updateM3u: (id, data) => api.put(`/api/sources/m3u/${id}`, data),
