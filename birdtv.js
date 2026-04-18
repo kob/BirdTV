@@ -67,7 +67,9 @@ const DEFAULTS = {
   host: '0.0.0.0',
   requestTimeoutMs: 40000,
   redirectLimit: 3,
-  staticRoot: path.resolve(__dirname, 'web'),
+  staticRoot: fs.existsSync(path.resolve(__dirname, 'web', 'dist', 'index.html'))
+    ? path.resolve(__dirname, 'web', 'dist')
+    : path.resolve(__dirname, 'web'),
   cacheRoot: path.resolve(__dirname, 'files', 'cache'),
   cacheM3uTtlMs: 10 * 60 * 1000,
   cacheEpgTtlMs: 30 * 60 * 1000,

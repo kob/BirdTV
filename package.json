@@ -7,9 +7,10 @@
     "name": "kob"
   },
   "scripts": {
-    "start": "npm run start:web:local",
-    "start:web": "node birdtv.js",
-    "start:web:local": "cross-env M3U_PROXY_STATIC_ROOT=web node birdtv.js"
+    "start": "node birdtv.js",
+    "dev": "./dev.sh",
+    "build": "cd web && npm install && npx vite build",
+    "start:prod": "npm run build && node birdtv.js"
   },
   "dependencies": {
     "axios": "^1.6.0",

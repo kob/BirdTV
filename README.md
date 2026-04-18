@@ -65,6 +65,21 @@ cp .env.example .env
 node birdtv.js
 ```
 
+### 开发模式（Vite HMR 热更新）
+
+```bash
+./dev.sh
+# 后端 API: http://localhost:8771
+# 前端开发: http://localhost:5173（自动代理 API）
+```
+
+### 生产构建
+
+```bash
+./build.sh        # 构建前端到 web/dist/
+node birdtv.js    # 自动检测并使用 web/dist/
+```
+
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
@@ -87,19 +102,28 @@ docker compose pull        # 更新
 
 ```
 BirdTV/
-├── backend/              # 后端 API
-├── web/                  # 前端页面
+├── backend/              # 后端 API（认证、频道、源、设置等）
+├── web/                  # 前端页面（Vite MPA）
+│   ├── src/              # JS/CSS 源码
+│   │   ├── modules/      # 播放器模块（ES Module）
+│   │   └── admin/        # 管理后台模块
+│   ├── index.html        # 播放器页面
+│   ├── admin.html        # 管理后台
+│   ├── login.html        # 登录页
+│   ├── mobile.html       # 移动端
+│   ├── vite.config.js    # Vite 配置
+│   └── dist/             # 构建输出（gitignore）
 ├── scripts/              # 部署脚本
-│   ├── deploy-vps.sh     # VPS 原生部署
-│   ├── deploy-router.sh  # 软路由 Docker 部署
-│   └── docker-quick.sh   # Docker 快速部署
 ├── birdtv.js             # 主入口
+├── dev.sh                # 开发模式启动
+├── build.sh              # 前端构建
 └── docker-compose.yml    # Docker 配置
 ```
 
 ## 技术栈
 
-- Node.js + Express
+- Node.js（原生 HTTP Server）
+- Vite（前端构建 + HMR）
 - Shaka Player / HLS.js / mpegts.js
 - Docker / KVRocks
 
