@@ -26,7 +26,7 @@
           if (match) channelUrl = decodeURIComponent(match[1]);
         } catch (e) { /* ignore */ }
       }
-      if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(channelUrl)}`;
+      if (proxyMode === 'proxy' || proxyMode === 'auto') channelUrl = `/m3u-proxy?url=${encodeURIComponent(channelUrl)}`;
       const channel = {
         name: cb.dataset.name || '',
         url: channelUrl,
