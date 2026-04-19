@@ -206,7 +206,7 @@
 
       // 如果代理方式是 proxy 或 auto，将 URL 转换为代理地址
       if (proxyMode === 'proxy' || proxyMode === 'auto') {
-        url = `${window.location.origin}/m3u-proxy?url=${encodeURIComponent(url)}`;
+        url = `/m3u-proxy?url=${encodeURIComponent(url)}`;
       }
 
       const data = {
