@@ -232,13 +232,13 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
     const corsRestricted = isCorsRestricted(playbackDirectUrl);
     const useProxyMode = shouldUseProxy(playbackDirectUrl, false, source);
     const proxyUrl = gPU(playbackDirectUrl, getEffectiveUserAgent(source));
-    const preserveInputProxyUrl = wrappedProxyInput && currentProxyMode === 'm3u-proxy';
+    const preserveInputProxyUrl = wrappedProxyInput && (currentProxyMode === 'm3u-proxy' || currentProxyMode === 'auto');
     const proxyPlaybackUrl = preserveInputProxyUrl ? actualUrl : proxyUrl;
 
     const directTimeoutMs = SHAKA_LOAD_TIMEOUT_MS;
 
     const dashProxyCapableMode = currentProxyMode === 'm3u-proxy' || wrappedProxyInput;
-    const shouldStartDashViaProxy = currentProxyMode === 'm3u-proxy' || shouldForceDashProxyByRedirect || (
+    const shouldStartDashViaProxy = currentProxyMode === 'm3u-proxy' || shouldForceDashProxyByRedirect || wrappedProxyInput || (
         currentProxyMode === 'auto' &&
         window.location.protocol === 'https:' &&
         playbackDirectUrl.startsWith('http://')
