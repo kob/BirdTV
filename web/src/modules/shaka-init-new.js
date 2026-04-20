@@ -442,9 +442,9 @@ function rewriteShakaProxyRelativeUri(uri) {
             }
         } catch {}
 
-        // 关键修复：segment URL（cmfa, cmfv, cmft, stpp 等）不代理
-        // 只有 manifest 需要通过 Worker 代理解决 WAF，segment 直接访问 CDN
-        const segmentPatterns = /\.(cmfa|cmfv|cmft|stpp|_stpp\.)/i;
+        // 关键修复：segment URL（媒体片段）不代理，直接访问 CDN
+        // 只有 manifest 需要通过代理解决 WAF，segment 直接访问 CDN
+        const segmentPatterns = /\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4[a-z]|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i;
         if (segmentPatterns.test(absoluteTarget)) {
             // HTTP→HTTPS 升级：避免 Mixed Content 阻断
             const upgraded = absoluteTarget.replace(/^http:/i, 'https:');
