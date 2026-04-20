@@ -9,6 +9,9 @@ import {
     DEMO_CHANNELS, M3U_CONFIGS_KEY, EPG_CONFIGS_KEY, UHD_HINT_PATTERN
 } from './constants.js';
 import { loadChannels, persistChannels } from './store.js';
+
+// 用户手动选择的播放器类型（粘性），切频道时保持
+let stickyPlayerType = 'auto';
 import { parseLicenseHeadersInput } from './drm.js';
 import {
     getElements
@@ -263,7 +266,14 @@ async function selectChannel(elements, index, autoplay) {
     renderPlaylist(elements);
     updateCurrentInfo(elements, source);
     if (elements.tempProxyModeSelect) elements.tempProxyModeSelect.value = getTempProxyMode();
-    if (autoplay) await playSource({ ...source }, elements);
+    if (autoplay) {
+        const playSourceArg = { ...source };
+        // 如果频道没有手动设置播放器且粘性值存在，使用粘性播放器
+        if ((!playSourceArg.playerType || playSourceArg.playerType === 'auto') && stickyPlayerType !== 'auto') {
+            playSourceArg.playerType = stickyPlayerType;
+        }
+        await playSource(playSourceArg, elements);
+    }
 }
 
 function readFormSource(elements) {
@@ -333,6 +343,10 @@ function fillForm(elements, source) {
         elements.streamTypeSelect.value = ['mpd', 'ts', 'hls', 'unknown'].includes(st) ? st : 'auto';
     }
     let safePlayerType = source.playerType || 'auto';
+    // 如果频道没有手动设置播放器，使用用户上次手动选择的（粘性）
+    if ((!source.playerType || source.playerType === 'auto') && stickyPlayerType !== 'auto') {
+        safePlayerType = stickyPlayerType;
+    }
     if (['art', 'hlsjs'].includes(safePlayerType)) safePlayerType = 'hls';
     if (safePlayerType === 'vlc' || safePlayerType === 'vlc-direct' || safePlayerType === 'vlc-proxy') {
         safePlayerType = 'auto';
@@ -582,6 +596,9 @@ function bindEvents(elements) {
         elements.stagePlayerTypeSelect.addEventListener('change', async () => {
             const selected = elements.stagePlayerTypeSelect.value || 'auto';
             console.log('[PlayerTypeChange] 用户选择播放器:', selected);
+            
+            // 更新粘性播放器类型
+            stickyPlayerType = selected;
             
             if (state.currentIndex >= 0 && state.currentIndex < state.channels.length) {
                 const channel = state.channels[state.currentIndex];
