@@ -557,7 +557,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
       if (!url) return false;
       const lower = String(url).toLowerCase();
       // 检测 segment 扩展名（DASH/HLS 媒体片段，应直接访问 CDN 不走代理）
-      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4s|m4v|m4a|m4i|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i.test(lower)) {
+      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4[a-z]|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i.test(lower)) {
         return true;
       }
       return false;
