@@ -76,7 +76,12 @@ const DEFAULTS = {
   m3uRemoteBaseUrl: 'http://192.168.200.6:8881',
   defaultUserAgent: 'okhttp/4.3',
   dataDir: path.resolve(__dirname, 'data'),
-  cloudflareWorkerUrl: ''
+  cloudflareWorkerUrl: '',
+  // HTTPS 配置
+  sslKey: '',
+  sslCert: '',
+  httpsPort: 8772,
+  forceHttps: false
 };
 
 const serverState = {
@@ -248,7 +253,12 @@ function getConfig(overrides = {}) {
     redisDb: String(overrides.redisDb || env.AUTH_REDIS_DB || '0'),
     defaultAdmin: String(overrides.defaultAdmin || env.AUTH_DEFAULT_ADMIN || 'admin'),
     defaultPassword: String(overrides.defaultPassword || env.AUTH_DEFAULT_PASSWORD || 'admin123'),
-    forceResetAdmin: String(overrides.forceResetAdmin || env.AUTH_FORCE_RESET_ADMIN || 'false')
+    forceResetAdmin: String(overrides.forceResetAdmin || env.AUTH_FORCE_RESET_ADMIN || 'false'),
+    // HTTPS 配置
+    sslKey: String(overrides.sslKey || env.BIRDTV_SSL_KEY || ''),
+    sslCert: String(overrides.sslCert || env.BIRDTV_SSL_CERT || ''),
+    httpsPort: parseNumber(overrides.httpsPort || env.BIRDTV_HTTPS_PORT, DEFAULTS.httpsPort),
+    forceHttps: String(overrides.forceHttps || env.BIRDTV_FORCE_HTTPS || 'false').toLowerCase() === 'true'
   };
 }
 
@@ -2206,17 +2216,15 @@ async function handleProxyRequest(req, res, url, config) {
 
 // ==================== 主服务器 ====================
 
-function createAppServer(configInput = {}) {
-  const config = getConfig(configInput);
-  serverState.config = config;
-  console.log('[Config] allowedHosts:', config.allowedHosts.size === 0 ? '(允许所有)' : Array.from(config.allowedHosts).join(', '));
-
-  const server = http.createServer(async (req, res) => {
+function createRequestHandler(config) {
+  return async (req, res) => {
     const startedAt = Date.now();
     let pathname = '-';
-    
+
     try {
-      const url = new URL(req.url, `http://${config.host}:${config.port}`);
+      // 根据请求是否为 HTTPS 选择协议
+      const proto = config._isHttps ? 'https:' : 'http:';
+      const url = new URL(req.url, `${proto}//${config.host}:${config.port}`);
       pathname = url.pathname;
 
       // CORS 预检
@@ -2372,7 +2380,16 @@ function createAppServer(configInput = {}) {
         elapsedMs: Date.now() - startedAt
       });
     }
-  });
+  };
+}
+
+function createAppServer(configInput = {}) {
+  const config = getConfig(configInput);
+  serverState.config = config;
+  console.log('[Config] allowedHosts:', config.allowedHosts.size === 0 ? '(允许所有)' : Array.from(config.allowedHosts).join(', '));
+
+  const handler = createRequestHandler(config);
+  const server = http.createServer(handler);
 
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
@@ -2382,7 +2399,7 @@ function createAppServer(configInput = {}) {
     log('error', 'server startup error', { error: String(err && err.message ? err.message : err) });
   });
 
-  return { server, config };
+  return { server, config, handler };
 }
 
 // ==================== 服务器启动/停止 ====================
@@ -2447,20 +2464,28 @@ async function startServer(configInput = {}) {
   await scheduler.start();
   serverState.scheduler = scheduler;
 
-  const { server } = createAppServer(config);
+  const { server, handler } = createAppServer(config);
   serverState.server = server;
+
+  const hasSsl = config.sslKey && config.sslCert && fs.existsSync(config.sslKey) && fs.existsSync(config.sslCert);
+  const servers = [];
 
   server.listen(config.port, config.host, () => {
     console.log('='.repeat(60));
     console.log('服务器已启动');
     console.log('='.repeat(60));
-    console.log(`监听地址：http://${config.host}:${config.port}`);
+    console.log(`HTTP  监听：http://${config.host}:${config.port}`);
     console.log(`授权状态：${auth.isEnabled() ? '✓ 已启用' : '✗ 已禁用'}`);
     console.log(`数据目录：${config.dataDir}`);
     console.log(`缓存目录：${config.cacheRoot}`);
     console.log(`静态文件：${config.staticRoot}`);
     if (upstreamProxyUrl) {
       console.log(`上游代理：${upstreamProxyUrl}`);
+    }
+    if (hasSsl) {
+      console.log(`HTTPS 监听：https://${config.host}:${config.httpsPort}`);
+    } else if (config.sslKey || config.sslCert) {
+      console.log(`HTTPS 监听：证书/密钥文件不存在，跳过`);
     }
     console.log('');
     console.log('服务端点:');
@@ -2469,16 +2494,42 @@ async function startServer(configInput = {}) {
     console.log(`API 接口：http://localhost:${config.port}/api/`);
     console.log(`代理服务：http://localhost:${config.port}/m3u-proxy?url=<encoded_url>`);
     console.log(`健康检查：http://localhost:${config.port}/health`);
+    if (hasSsl) {
+      console.log(`HTTPS     ：https://localhost:${config.httpsPort}/`);
+    }
     console.log('─'.repeat(60));
     console.log('='.repeat(60));
 
     log('info', 'server started', {
       url: `http://${config.host}:${config.port}`,
+      httpsUrl: hasSsl ? `https://${config.host}:${config.httpsPort}` : null,
       authEnabled: config.authEnabled
     });
   });
+  servers.push(server);
 
-  return server;
+  // HTTPS 服务器
+  if (hasSsl) {
+    try {
+      const sslOptions = {
+        key: fs.readFileSync(config.sslKey),
+        cert: fs.readFileSync(config.sslCert)
+      };
+      // HTTPS handler 需要知道它是 HTTPS
+      const httpsConfig = { ...config, _isHttps: true };
+      const httpsHandler = createRequestHandler(httpsConfig);
+      const httpsServer = https.createServer(sslOptions, httpsHandler);
+      httpsServer.listen(config.httpsPort, config.host, () => {
+        console.log(`[HTTPS] 已启动，访问 https://localhost:${config.httpsPort}/`);
+      });
+      servers.push(httpsServer);
+      serverState.server = httpsServer;
+    } catch (err) {
+      console.error('[HTTPS] 启动失败:', err.message);
+    }
+  }
+
+  return servers[0];
 }
 
 async function stopServer() {
