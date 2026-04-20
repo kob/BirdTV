@@ -428,8 +428,9 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
             return;
         }
 
-        // auto/direct 模式下，DASH 失败不自动切到代理，保持直连语义。
-        if (isDash && !dashProxyCapableMode && !shouldForceDashProxyByRedirect) {
+        // 仅 direct 模式下，DASH 失败不自动切到代理，保持直连语义。
+        // auto 模式下 CORS 失败应回退代理
+        if (isDash && !dashProxyCapableMode && !shouldForceDashProxyByRedirect && getTempProxyMode() === 'direct') {
             throw directError;
         }
 
