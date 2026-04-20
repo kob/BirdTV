@@ -693,6 +693,13 @@ export async function initShakaPlayer(elements) {
             
             if (Array.isArray(request?.uris) && request.uris.length > 0) {
                 request.uris = request.uris.map(uri => rewriteShakaProxyRelativeUri(uri));
+                // 即使不走代理，HTTPS 页面也需要将 HTTP URL 升级为 HTTPS（避免 Mixed Content）
+                if (window.location.protocol === 'https:') {
+                    request.uris = request.uris.map(uri => {
+                        const s = String(uri || '');
+                        return s.startsWith('http://') ? s.replace(/^http:/i, 'https:') : s;
+                    });
+                }
                 const isProxyRequest = request.uris.some(uri => String(uri).includes('/m3u-proxy?url='));
                 if (isProxyRequest) {
                     request.headers = request.headers || {};
