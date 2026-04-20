@@ -556,8 +556,8 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     function isSegmentUrl(url) {
       if (!url) return false;
       const lower = String(url).toLowerCase();
-      // 检测 segment 扩展名
-      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.)/i.test(lower)) {
+      // 检测 segment 扩展名（DASH/HLS 媒体片段，应直接访问 CDN 不走代理）
+      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4s|m4v|m4a|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i.test(lower)) {
         return true;
       }
       return false;
