@@ -111,6 +111,7 @@
       try {
         const res = await fetch('/api/sources/m3u/upload', {
           method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token },
           body: formData
         });
         const result = await res.json();
