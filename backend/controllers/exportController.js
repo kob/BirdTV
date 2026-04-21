@@ -311,12 +311,9 @@ class ExportController {
   async deleteExport(req, res) {
     try {
       const { id } = req.params;
-      // 先查找关联的短链接，按文件名匹配
-      const exportRecord = exportModel.getById(id);
-      if (exportRecord) {
-        const linksForFile = linkModel.getByFilename(exportRecord.filename);
-        linksForFile.forEach(l => linkModel.delete(l.id));
-      }
+      // 订阅链接独立于导出文件，只通过文件名关联
+      // 删除导出文件时不级联删除链接，链接变为空链接
+      // 重新生成同名 m3u 文件后链接自动恢复有效
       const success = exportModel.delete(id);
       if (success) {
         res.json({ ok: true, message: 'Export deleted' });
