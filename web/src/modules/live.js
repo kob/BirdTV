@@ -250,7 +250,7 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
         player: 'shaka',
         channel: source?.name || '',
         url: shouldStartDashViaProxy ? proxyPlaybackUrl : playbackDirectUrl,
-        message: shouldStartDashViaProxy ? 'Shaka 将通过代理加载' : 'Shaka 将直接加载',
+        message: shouldStartDashViaProxy ? 'Shaka 将通过代理加载' : (isDash ? 'Shaka 将直接加载' : 'Shaka 先直连后代理'),
         meta: {
             actualInputUrl: actualUrl,
             directUrl,
@@ -393,7 +393,26 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
             if (isDirectMode) {
                 await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
             } else {
-                await loadShakaWithTimeout(proxyUrl, `${labelPrefix}代理`, requestId, directTimeoutMs);
+                // auto 模式下非 DASH 流：先直连，失败再代理（避免上游 403 导致完全无法播放）
+                try {
+                    await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
+                } catch (directTryError) {
+                    if (isShakaMediaSourceClosedError(directTryError)) throw directTryError;
+                    console.warn(`${labelPrefix}直连失败，回退到代理: ${directTryError?.message || directTryError}`);
+                    pushDiagnosticEvent(null, {
+                        type: 'hls-direct-fallback-proxy',
+                        level: 'info',
+                        player: 'shaka',
+                        channel: source?.name || '',
+                        url: playbackDirectUrl,
+                        message: 'HLS 直连失败，回退到代理',
+                        meta: { error: String(directTryError?.message || directTryError) }
+                    });
+                    await resetShakaPipelineForRetry();
+                    assertActivePlayRequest(requestId);
+                    applyShakaDrmConfigForSource(source);
+                    await loadShakaWithTimeout(proxyUrl, `${labelPrefix}代理(直连回退)`, requestId, directTimeoutMs);
+                }
             }
         }
     } catch (directError) {
@@ -451,6 +470,28 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
                 applyShakaDrmConfigForSource(source);
                 await loadShakaWithTimeout(proxyPlaybackUrl, `${labelPrefix}代理二次重试`, requestId, Math.max(SHAKA_PROXY_LOAD_TIMEOUT_MS, 18000), shakaUpstreamHint);
                 return;
+            }
+            // 代理也失败，尝试直连兜底（auto 模式下）
+            if (getTempProxyMode() === 'auto' && playbackDirectUrl && playbackDirectUrl !== proxyPlaybackUrl) {
+                console.warn(`${labelPrefix}代理失败，尝试直连兜底`);
+                pushDiagnosticEvent(null, {
+                    type: 'proxy-fallback-direct',
+                    level: 'info',
+                    player: 'shaka',
+                    channel: source?.name || '',
+                    url: playbackDirectUrl,
+                    message: '代理失败，回退到直连兜底',
+                    meta: { proxyError: String(proxyError?.message || proxyError) }
+                });
+                try {
+                    await resetShakaPipelineForRetry();
+                    assertActivePlayRequest(requestId);
+                    applyShakaDrmConfigForSource(source);
+                    await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连兜底`, requestId, directTimeoutMs);
+                    return;
+                } catch (directFallbackError) {
+                    console.warn(`${labelPrefix}直连兜底也失败:`, directFallbackError?.message || directFallbackError);
+                }
             }
             if (!proxyHealthy) throw directError;
             throw proxyError;

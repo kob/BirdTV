@@ -23,19 +23,11 @@
         }
 
         // 根据搜索类型和关键词过滤频道
-        if (q && searchType !== 'source') {
-          rows = rows.filter(c => {
-            if (searchType === 'name') {
-              return c.name.toLowerCase().includes(q);
-            } else if (searchType === 'group') {
-              return (c.group || '').toLowerCase().includes(q);
-            }
-            return true;
-          });
-        }
-
-        // 源名称下拉过滤
-        if (sourceFilter) {
+        if (q && searchType === 'name') {
+          rows = rows.filter(c => c.name.toLowerCase().includes(q));
+        } else if (q && searchType === 'group') {
+          rows = rows.filter(c => (c.group || '').toLowerCase().includes(q));
+        } else if (searchType === 'source' && sourceFilter) {
           rows = rows.filter(c => (c.sourceName || '') === sourceFilter);
         }
         

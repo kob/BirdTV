@@ -211,17 +211,26 @@
 
     function setupChannelSearchDebounce() {
       const input = document.getElementById('channelSearch');
-      if (!input) return;
-      input.addEventListener('input', () => {
-        channelPage = 1;
-        selectedChannelIds.clear();
-        if (channelSearchDebounceTimer) {
-          clearTimeout(channelSearchDebounceTimer);
-        }
-        channelSearchDebounceTimer = setTimeout(() => {
+      if (input) {
+        input.addEventListener('input', () => {
+          channelPage = 1;
+          selectedChannelIds.clear();
+          if (channelSearchDebounceTimer) {
+            clearTimeout(channelSearchDebounceTimer);
+          }
+          channelSearchDebounceTimer = setTimeout(() => {
+            loadChannels();
+          }, 260);
+        });
+      }
+      const sourceSelect = document.getElementById('channelSourceFilter');
+      if (sourceSelect) {
+        sourceSelect.addEventListener('change', () => {
+          channelPage = 1;
+          selectedChannelIds.clear();
           loadChannels();
-        }, 260);
-      });
+        });
+      }
     }
 
     function onChannelSearchTypeChange() {
@@ -229,11 +238,11 @@
       const textInput = document.getElementById('channelSearch');
       const sourceSelect = document.getElementById('channelSourceFilter');
       if (type === 'source') {
-        if (textInput) textInput.style.display = 'none';
+        if (textInput) { textInput.value = ''; textInput.style.display = 'none'; }
         if (sourceSelect) sourceSelect.style.display = '';
       } else {
         if (textInput) textInput.style.display = '';
-        if (sourceSelect) sourceSelect.style.display = 'none';
+        if (sourceSelect) { sourceSelect.value = ''; sourceSelect.style.display = 'none'; }
       }
       channelPage = 1;
       selectedChannelIds.clear();
