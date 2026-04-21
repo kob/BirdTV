@@ -392,8 +392,20 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
             const isDirectMode = currentProxyMode === 'direct';
             if (isDirectMode) {
                 await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
+            } else if (corsRestricted && proxyUrl) {
+                // auto 模式下跨域源：直连必定被 CORS 拦截，直接走代理
+                console.log(`${labelPrefix}跨域源跳过直连，直接代理: ${playbackDirectUrl}`);
+                pushDiagnosticEvent(null, {
+                    type: 'hls-skip-direct-cors',
+                    level: 'info',
+                    player: 'shaka',
+                    channel: source?.name || '',
+                    url: playbackDirectUrl,
+                    message: '跨域源跳过直连，直接代理'
+                });
+                await loadShakaWithTimeout(proxyUrl, `${labelPrefix}代理(跨域)`, requestId, directTimeoutMs);
             } else {
-                // auto 模式下非 DASH 流：先直连，失败再代理（避免上游 403 导致完全无法播放）
+                // auto 模式下同源非 DASH 流：先直连，失败再代理
                 try {
                     await loadShakaWithTimeout(playbackDirectUrl, `${labelPrefix}直连`, requestId, directTimeoutMs);
                 } catch (directTryError) {
@@ -471,8 +483,8 @@ export async function loadShakaWithSmartFallback(source, actualUrl, labelPrefix,
                 await loadShakaWithTimeout(proxyPlaybackUrl, `${labelPrefix}代理二次重试`, requestId, Math.max(SHAKA_PROXY_LOAD_TIMEOUT_MS, 18000), shakaUpstreamHint);
                 return;
             }
-            // 代理也失败，尝试直连兜底（auto 模式下）
-            if (getTempProxyMode() === 'auto' && playbackDirectUrl && playbackDirectUrl !== proxyPlaybackUrl) {
+            // 代理也失败，尝试直连兜底（auto 模式下，仅同源可用）
+            if (getTempProxyMode() === 'auto' && !corsRestricted && playbackDirectUrl && playbackDirectUrl !== proxyPlaybackUrl) {
                 console.warn(`${labelPrefix}代理失败，尝试直连兜底`);
                 pushDiagnosticEvent(null, {
                     type: 'proxy-fallback-direct',
