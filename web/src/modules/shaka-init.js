@@ -716,6 +716,11 @@ export async function initShakaPlayer(elements) {
             try {
                 if (type !== shaka.net.NetworkingEngine.RequestType.MANIFEST) return;
                 if (!String(response?.uri || '').toLowerCase().includes('/m3u-proxy?url=')) return;
+                // 检测代理请求的 403/502，标记为不可重试
+                if (response && (response.status === 403 || response.status === 502)) {
+                    console.warn(`[Shaka] 代理 manifest 请求返回 ${response.status}，标记为致命错误: ${String(response.uri || '').substring(0, 120)}`);
+                    response.data = new Uint8Array(0);
+                }
                 const responseUriBeforeRewrite = String(response?.uri || '');
                 const finalUrlHeader = getHeaderCaseInsensitive(response.headers, 'X-Final-Url');
                 if (finalUrlHeader) {

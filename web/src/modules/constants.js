@@ -19,11 +19,11 @@ export const HEVC_HINT_PATTERN = shared.HEVC_HINT_PATTERN || /(?:^|[\s_.\-|()\[\
 export const EPG_CACHE_TTL = shared.EPG_CACHE_TTL || 30 * 60 * 1000;
 
 export const SHAKA_RETRY = shared.SHAKA_RETRY || {
-    maxAttempts: 6,
-    baseDelay: 900,
-    backoffFactor: 2,
-    fuzzFactor: 0.4,
-    timeout: 26000
+    maxAttempts: 2,
+    baseDelay: 500,
+    backoffFactor: 1.5,
+    fuzzFactor: 0.3,
+    timeout: 15000
 };
 
 export const SHAKA_LOAD_TIMEOUT_MS = shared.SHAKA_LOAD_TIMEOUT_MS || 30000; // 从 60s 降到 30s

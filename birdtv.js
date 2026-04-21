@@ -1,3 +1,5 @@
+
+
 /**
  * M3U Proxy with API Server
  * 整合 M3U 代理和完整 API 服务到单一端口
@@ -74,7 +76,8 @@ const DEFAULTS = {
   m3uRemoteBaseUrl: 'http://192.168.200.6:8881',
   defaultUserAgent: 'okhttp/4.3',
   dataDir: path.resolve(__dirname, 'data'),
-  cloudflareWorkerUrl: ''
+  cloudflareWorkerUrl: '',
+  cloudflareWorkerDomains: ''
 };
 
 const serverState = {
@@ -219,6 +222,38 @@ function parseAllowedHosts(raw) {
   );
 }
 
+/**
+ * 解析 CF Worker 代理域名列表
+ * 支持精确匹配和通配符后缀匹配（如 .touch-u.fun 匹配 fi.touch-u.fun）
+ */
+function parseCloudflareWorkerDomains(raw) {
+  if (raw instanceof Set) return raw;
+  if (!raw || !String(raw).trim()) return new Set();
+  return new Set(
+    String(raw)
+      .split(',')
+      .map((v) => v.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+/**
+ * 检查目标 URL 的域名是否匹配 CF Worker 代理域名列表
+ * 支持：精确匹配（fi.touch-u.fun）和后缀匹配（.touch-u.fun 匹配所有子域名）
+ */
+function isCloudflareWorkerDomain(urlStr, domains) {
+  if (!domains || domains.size === 0) return false;
+  try {
+    const hostname = new URL(urlStr).hostname.toLowerCase();
+    for (const domain of domains) {
+      if (hostname === domain) return true;
+      // .touch-u.fun 匹配 fi.touch-u.fun 等子域名
+      if (domain.startsWith('.') && (hostname.endsWith(domain) || hostname === domain.slice(1))) return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
 function getConfig(overrides = {}) {
   const env = process.env;
   return {
@@ -235,6 +270,7 @@ function getConfig(overrides = {}) {
     defaultUserAgent: String(overrides.defaultUserAgent || env.BIRDTV_DEFAULT_UA || env.M3U_PROXY_DEFAULT_UA || DEFAULTS.defaultUserAgent),
     dataDir: path.resolve(overrides.dataDir || env.BIRDTV_DATA_DIR || env.M3U_PROXY_DATA_DIR || DEFAULTS.dataDir),
     cloudflareWorkerUrl: String(overrides.cloudflareWorkerUrl || env.CLOUDFLARE_WORKER_URL || DEFAULTS.cloudflareWorkerUrl),
+    cloudflareWorkerDomains: parseCloudflareWorkerDomains(overrides.cloudflareWorkerDomains || env.CLOUDFLARE_WORKER_DOMAINS || DEFAULTS.cloudflareWorkerDomains),
     // 授权配置
     authEnabled: String(overrides.authEnabled || env.AUTH_ENABLED || 'true'),
     jwtSecret: String(overrides.jwtSecret || env.AUTH_JWT_SECRET || 'default-secret'),
@@ -765,10 +801,14 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
       'Accept-Encoding': 'identity'
     };
 
-    // Cloudflare Worker 代理配置（用于 WAF 重试）
+    // Cloudflare Worker 代理配置（用于 WAF 重试和域名直通）
     let workerRetry = false;
 
     const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
+    const workerDomains = config.cloudflareWorkerDomains;
+
+    // 检查目标域名是否在 CF Worker 代理域名列表中，直接走 Worker
+    const shouldProxyViaWorker = !!(workerUrl && workerDomains && workerDomains.size > 0 && isCloudflareWorkerDomain(remoteUrl, workerDomains));
 
     function shouldHeadFallbackToGet(statusCode) {
       return normalizedMethod === 'HEAD' && (statusCode < 200 || statusCode >= 400);
@@ -789,9 +829,11 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         return;
       }
 
-      // 使用 Cloudflare Worker 代理（仅在 WAF 重试时启用）
-      const useWorkerProxy = workerRetry && !!workerUrl;
+      // 使用 Cloudflare Worker 代理（域名直通 或 WAF 重试时启用）
+      const useWorkerProxy = (workerRetry || shouldProxyViaWorker) && !!workerUrl;
       if (useWorkerProxy) {
+        const reason = shouldProxyViaWorker ? '域名直通' : 'WAF重试';
+        console.log(`[Worker Proxy] ${reason}，通过 CF Worker 代理: ${target.substring(0, 120)}`);
         const workerTarget = new URL(workerUrl);
         workerTarget.searchParams.set('url', target);
         if (headers['User-Agent']) {
@@ -1005,6 +1047,11 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
     Connection: 'keep-alive'
   };
 
+  // CF Worker 域名直通支持
+  const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
+  const workerDomains = config.cloudflareWorkerDomains;
+  const shouldProxyViaWorker = !!(workerUrl && workerDomains && workerDomains.size > 0 && isCloudflareWorkerDomain(remoteUrl, workerDomains));
+
   // 尝试函数，支持 HTTPS 回退
   const tryStream = (targetUrl, fallbackUrl = null, attemptedHttps = false) => {
     return new Promise((resolve, reject) => {
@@ -1016,22 +1063,41 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
         return;
       }
 
-      const lib = parsed.protocol === 'https:' ? https : http;
+      // 域名直通：通过 CF Worker 代理直播流
+      let effectiveTarget = parsed;
+      let originalUrl = targetUrl;
+      if (shouldProxyViaWorker && workerUrl) {
+        const workerTarget = new URL(workerUrl);
+        workerTarget.searchParams.set('url', targetUrl);
+        if (requestHeaders['User-Agent']) {
+          workerTarget.searchParams.set('ua', requestHeaders['User-Agent']);
+        }
+        effectiveTarget = workerTarget;
+        console.log(`[Worker Proxy] 域名直通，直播流通过 CF Worker 代理: ${targetUrl.substring(0, 120)}`);
+      }
+
+      const lib = effectiveTarget.protocol === 'https:' ? https : http;
       const req = lib.request(
-        parsed,
+        effectiveTarget,
         {
           method,
           headers: requestHeaders,
           timeout: config.requestTimeoutMs,
-          agent: getAgent(parsed, true)
+          agent: getAgent(effectiveTarget, true)
         },
         (resp) => {
+          // Worker 代理时，从 X-Worker-Final-Url 获取真实最终 URL
+          let finalUrl = shouldProxyViaWorker ? originalUrl : parsed.href;
+          if (shouldProxyViaWorker && resp.headers) {
+            const workerFinalUrl = resp.headers['x-worker-final-url'] || resp.headers['X-Worker-Final-Url'];
+            if (workerFinalUrl) finalUrl = workerFinalUrl;
+          }
           const headers = {
             ...resp.headers,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Expose-Headers': 'X-Final-Url, X-Redirected, X-Redirect-Count, X-Cache',
             'X-Cache': 'MISS',
-            'X-Final-Url': parsed.href,
+            'X-Final-Url': finalUrl,
             'X-Redirected': 'false',
             'X-Redirect-Count': '0',
             'Cache-Control': 'no-store'
@@ -1040,7 +1106,7 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
           resp.pipe(clientRes);
           resolve({
             status: resp.statusCode || 200,
-            finalUrl: parsed.href,
+            finalUrl,
             redirected: false,
             redirectCount: 0,
             cached: false,
@@ -2208,6 +2274,8 @@ function createAppServer(configInput = {}) {
   const config = getConfig(configInput);
   serverState.config = config;
   console.log('[Config] allowedHosts:', config.allowedHosts.size === 0 ? '(允许所有)' : Array.from(config.allowedHosts).join(', '));
+  console.log('[Config] cloudflareWorkerUrl:', config.cloudflareWorkerUrl || '(未配置)');
+  console.log('[Config] cloudflareWorkerDomains:', config.cloudflareWorkerDomains.size === 0 ? '(无)' : Array.from(config.cloudflareWorkerDomains).join(', '));
 
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();

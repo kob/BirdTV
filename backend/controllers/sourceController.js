@@ -14,10 +14,18 @@ class SourceController {
   /**
    * 使用原生 http/https 获取远程内容（替代 node-fetch，避免 ESM 兼容问题）
    * 支持 Cloudflare WAF 自动重试（通过 CLOUDFLARE_WORKER_URL）
+   * 支持域名直通（通过 CLOUDFLARE_WORKER_DOMAINS 配置的域名直接走 Worker）
    */
   _fetchContent(url, userAgent = null, timeoutMs = 30000, _useWorkerProxy = false) {
     const workerUrl = process.env.CLOUDFLARE_WORKER_URL;
-    const actualUseWorker = _useWorkerProxy && !!workerUrl;
+    const workerDomains = this._parseWorkerDomains();
+    const isWorkerDomain = this._isWorkerDomain(url, workerDomains);
+    // 域名直通 或 WAF 重试
+    const actualUseWorker = (_useWorkerProxy || isWorkerDomain) && !!workerUrl;
+
+    if (isWorkerDomain && workerUrl && !_useWorkerProxy) {
+      console.log(`[SourceController] 域名直通，通过 CF Worker 代理: ${url}`);
+    }
 
     return new Promise((resolve, reject) => {
       let redirectCount = 0;
@@ -113,6 +121,34 @@ class SourceController {
   }
 
   // M3U 源管理
+
+  /**
+   * 解析 CLOUDFLARE_WORKER_DOMAINS 环境变量
+   */
+  _parseWorkerDomains() {
+    const raw = process.env.CLOUDFLARE_WORKER_DOMAINS;
+    if (!raw || !String(raw).trim()) return new Set();
+    return new Set(
+      String(raw).split(',').map(v => v.trim().toLowerCase()).filter(Boolean)
+    );
+  }
+
+  /**
+   * 检查 URL 域名是否匹配 Worker 代理域名列表
+   * 支持：精确匹配（fi.touch-u.fun）和后缀匹配（.touch-u.fun 匹配所有子域名）
+   */
+  _isWorkerDomain(urlStr, domains) {
+    if (!domains || domains.size === 0) return false;
+    try {
+      const hostname = new URL(urlStr).hostname.toLowerCase();
+      for (const domain of domains) {
+        if (hostname === domain) return true;
+        if (domain.startsWith('.') && (hostname.endsWith(domain) || hostname === domain.slice(1))) return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
   async getM3uSources(req, res) {
     try {
       const sources = await this.storage.getSources();
