@@ -88,9 +88,12 @@
         const pagePartialSelected = !pageAllSelected && pageIds.some(id => selectedChannelIds.has(id));
         
         if (selectAllCheckbox) {
-          selectAllCheckbox.checked = pageAllSelected;
-          selectAllCheckbox.indeterminate = pagePartialSelected;
-          selectAllCheckbox.addEventListener('change', function() {
+          // 克隆节点移除旧监听器，防止多次 loadChannels 累积事件
+          const newSelectAll = selectAllCheckbox.cloneNode(true);
+          selectAllCheckbox.parentNode.replaceChild(newSelectAll, selectAllCheckbox);
+          newSelectAll.checked = pageAllSelected;
+          newSelectAll.indeterminate = pagePartialSelected;
+          newSelectAll.addEventListener('change', function() {
             pageIds.forEach(id => {
               if (this.checked) selectedChannelIds.add(id);
               else selectedChannelIds.delete(id);
@@ -98,14 +101,16 @@
             document.querySelectorAll('.channel-checkbox').forEach(cb => {
               cb.checked = this.checked;
             });
-            selectAllCheckbox.indeterminate = false;
+            newSelectAll.indeterminate = false;
             updateBatchDeleteButton();
           });
         }
         
         const channelCheckboxes = document.querySelectorAll('.channel-checkbox');
         channelCheckboxes.forEach(cb => {
-          cb.addEventListener('change', function() {
+          cb.addEventListener('change', function handler() {
+            // 移除自身，防止 loadChannels 重新渲染后累积
+            cb.removeEventListener('change', handler);
             if (this.checked) selectedChannelIds.add(this.value);
             else selectedChannelIds.delete(this.value);
             updateBatchDeleteButton();
