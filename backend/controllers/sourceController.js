@@ -17,24 +17,29 @@ class SourceController {
    * 支持域名直通（通过 CLOUDFLARE_WORKER_DOMAINS 配置的域名直接走 Worker）
    */
   _fetchContent(url, userAgent = null, timeoutMs = 30000, _useWorkerProxy = false) {
+    const denoUrl = process.env.DENO_PROXY_URL;
+    const denoDomains = this._parseProxyDomains(process.env.DENO_PROXY_DOMAINS);
     const workerUrl = process.env.CLOUDFLARE_WORKER_URL;
-    const workerDomains = this._parseWorkerDomains();
-    const isWorkerDomain = this._isWorkerDomain(url, workerDomains);
-    // 域名直通 或 WAF 重试
-    const actualUseWorker = (_useWorkerProxy || isWorkerDomain) && !!workerUrl;
+    const workerDomains = this._parseProxyDomains(process.env.CLOUDFLARE_WORKER_DOMAINS);
+    const isDenoDomain = this._isProxyDomain(url, denoDomains);
+    const isWorkerDomain = this._isProxyDomain(url, workerDomains);
+    // Deno 优先于 CF Worker
+    const effectiveProxyUrl = (isDenoDomain && denoUrl) ? denoUrl : (isWorkerDomain && workerUrl) ? workerUrl : null;
+    const effectiveProxyType = isDenoDomain && denoUrl ? 'Deno' : isWorkerDomain && workerUrl ? 'CF-Worker' : null;
+    const actualUseWorker = (_useWorkerProxy || isDenoDomain || isWorkerDomain) && !!effectiveProxyUrl;
 
-    if (isWorkerDomain && workerUrl && !_useWorkerProxy) {
-      console.log(`[SourceController] 域名直通，通过 CF Worker 代理: ${url}`);
+    if ((isDenoDomain || isWorkerDomain) && effectiveProxyUrl && !_useWorkerProxy) {
+      console.log(`[SourceController] 域名直通(${effectiveProxyType})，通过代理: ${url}`);
     }
 
     return new Promise((resolve, reject) => {
       let redirectCount = 0;
       const maxRedirects = 5;
 
-      // 如果启用了 Worker 代理，将 URL 包装为 Worker 请求
+      // 如果启用了代理，将 URL 包装为代理请求
       let targetUrl = url;
-      if (actualUseWorker && workerUrl) {
-        targetUrl = new URL(workerUrl);
+      if (actualUseWorker && effectiveProxyUrl) {
+        targetUrl = new URL(effectiveProxyUrl);
         targetUrl.searchParams.set('url', url);
         if (userAgent) targetUrl.searchParams.set('ua', userAgent);
       }
@@ -123,21 +128,25 @@ class SourceController {
   // M3U 源管理
 
   /**
-   * 解析 CLOUDFLARE_WORKER_DOMAINS 环境变量
+   * 解析代理域名环境变量
    */
-  _parseWorkerDomains() {
-    const raw = process.env.CLOUDFLARE_WORKER_DOMAINS;
+  _parseProxyDomains(raw) {
     if (!raw || !String(raw).trim()) return new Set();
     return new Set(
       String(raw).split(',').map(v => v.trim().toLowerCase()).filter(Boolean)
     );
   }
 
+  /** @deprecated 使用 _parseProxyDomains 替代 */
+  _parseWorkerDomains() {
+    return this._parseProxyDomains(process.env.CLOUDFLARE_WORKER_DOMAINS);
+  }
+
   /**
-   * 检查 URL 域名是否匹配 Worker 代理域名列表
+   * 检查 URL 域名是否匹配代理域名列表
    * 支持：精确匹配（fi.touch-u.fun）和后缀匹配（.touch-u.fun 匹配所有子域名）
    */
-  _isWorkerDomain(urlStr, domains) {
+  _isProxyDomain(urlStr, domains) {
     if (!domains || domains.size === 0) return false;
     try {
       const hostname = new URL(urlStr).hostname.toLowerCase();
@@ -147,6 +156,11 @@ class SourceController {
       }
       return false;
     } catch { return false; }
+  }
+
+  /** @deprecated 使用 _isProxyDomain 替代 */
+  _isWorkerDomain(urlStr, domains) {
+    return this._isProxyDomain(urlStr, domains);
   }
 
   async getM3uSources(req, res) {

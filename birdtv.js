@@ -77,7 +77,9 @@ const DEFAULTS = {
   defaultUserAgent: 'okhttp/4.3',
   dataDir: path.resolve(__dirname, 'data'),
   cloudflareWorkerUrl: '',
-  cloudflareWorkerDomains: ''
+  cloudflareWorkerDomains: '',
+  denoProxyUrl: '',
+  denoProxyDomains: ''
 };
 
 const serverState = {
@@ -238,10 +240,10 @@ function parseCloudflareWorkerDomains(raw) {
 }
 
 /**
- * 检查目标 URL 的域名是否匹配 CF Worker 代理域名列表
+ * 检查目标 URL 的域名是否匹配代理域名列表
  * 支持：精确匹配（fi.touch-u.fun）和后缀匹配（.touch-u.fun 匹配所有子域名）
  */
-function isCloudflareWorkerDomain(urlStr, domains) {
+function isProxyDomain(urlStr, domains) {
   if (!domains || domains.size === 0) return false;
   try {
     const hostname = new URL(urlStr).hostname.toLowerCase();
@@ -252,6 +254,27 @@ function isCloudflareWorkerDomain(urlStr, domains) {
     }
     return false;
   } catch { return false; }
+}
+
+/** @deprecated 使用 isProxyDomain 替代 */
+function isCloudflareWorkerDomain(urlStr, domains) {
+  return isProxyDomain(urlStr, domains);
+}
+
+/**
+ * 根据目标 URL 确定使用哪个代理（Deno 优先于 CF Worker）
+ * 返回 { proxyUrl, proxyType } 或 null
+ */
+function resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains) {
+  // Deno 代理优先（用于 CF 同生态导致 WAF 拦截的域名）
+  if (denoUrl && denoDomains && denoDomains.size > 0 && isProxyDomain(remoteUrl, denoDomains)) {
+    return { proxyUrl: denoUrl, proxyType: 'Deno' };
+  }
+  // CF Worker 代理次之
+  if (workerUrl && workerDomains && workerDomains.size > 0 && isProxyDomain(remoteUrl, workerDomains)) {
+    return { proxyUrl: workerUrl, proxyType: 'CF-Worker' };
+  }
+  return null;
 }
 
 function getConfig(overrides = {}) {
@@ -271,6 +294,8 @@ function getConfig(overrides = {}) {
     dataDir: path.resolve(overrides.dataDir || env.BIRDTV_DATA_DIR || env.M3U_PROXY_DATA_DIR || DEFAULTS.dataDir),
     cloudflareWorkerUrl: String(overrides.cloudflareWorkerUrl || env.CLOUDFLARE_WORKER_URL || DEFAULTS.cloudflareWorkerUrl),
     cloudflareWorkerDomains: parseCloudflareWorkerDomains(overrides.cloudflareWorkerDomains || env.CLOUDFLARE_WORKER_DOMAINS || DEFAULTS.cloudflareWorkerDomains),
+    denoProxyUrl: String(overrides.denoProxyUrl || env.DENO_PROXY_URL || DEFAULTS.denoProxyUrl),
+    denoProxyDomains: parseCloudflareWorkerDomains(overrides.denoProxyDomains || env.DENO_PROXY_DOMAINS || DEFAULTS.denoProxyDomains),
     // 授权配置
     authEnabled: String(overrides.authEnabled || env.AUTH_ENABLED || 'true'),
     jwtSecret: String(overrides.jwtSecret || env.AUTH_JWT_SECRET || 'default-secret'),
@@ -801,14 +826,17 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
       'Accept-Encoding': 'identity'
     };
 
-    // Cloudflare Worker 代理配置（用于 WAF 重试和域名直通）
+    // 代理配置（Deno 优先于 CF Worker）
     let workerRetry = false;
 
+    const denoUrl = config.denoProxyUrl || process.env.DENO_PROXY_URL;
+    const denoDomains = config.denoProxyDomains;
     const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
     const workerDomains = config.cloudflareWorkerDomains;
 
-    // 检查目标域名是否在 CF Worker 代理域名列表中，直接走 Worker
-    const shouldProxyViaWorker = !!(workerUrl && workerDomains && workerDomains.size > 0 && isCloudflareWorkerDomain(remoteUrl, workerDomains));
+    // 检查目标域名应使用哪个代理
+    const proxyInfo = resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains);
+    const shouldProxyViaWorker = !!proxyInfo;
 
     function shouldHeadFallbackToGet(statusCode) {
       return normalizedMethod === 'HEAD' && (statusCode < 200 || statusCode >= 400);
@@ -829,12 +857,14 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         return;
       }
 
-      // 使用 Cloudflare Worker 代理（域名直通 或 WAF 重试时启用）
-      const useWorkerProxy = (workerRetry || shouldProxyViaWorker) && !!workerUrl;
+      // 使用代理（Deno / CF Worker，域名直通 或 WAF 重试时启用）
+      const useWorkerProxy = (workerRetry || shouldProxyViaWorker) && !!(proxyInfo?.proxyUrl || workerUrl);
       if (useWorkerProxy) {
-        const reason = shouldProxyViaWorker ? '域名直通' : 'WAF重试';
-        console.log(`[Worker Proxy] ${reason}，通过 CF Worker 代理: ${target.substring(0, 120)}`);
-        const workerTarget = new URL(workerUrl);
+        const effectiveProxyUrl = proxyInfo?.proxyUrl || workerUrl;
+        const proxyType = proxyInfo?.proxyType || 'CF-Worker';
+        const reason = shouldProxyViaWorker ? `域名直通(${proxyType})` : `WAF重试(${proxyType})`;
+        console.log(`[Proxy] ${reason}，通过代理: ${target.substring(0, 120)}`);
+        const workerTarget = new URL(effectiveProxyUrl);
         workerTarget.searchParams.set('url', target);
         if (headers['User-Agent']) {
           workerTarget.searchParams.set('ua', headers['User-Agent']);
@@ -873,9 +903,9 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         }
 
         if (normalizedMethod === 'HEAD' && !forceGetForHeadFallback && shouldHeadFallbackToGet(code)) {
-          // HEAD 请求失败时，优先尝试 Worker 代理
-          if ((code === 403 || code === 520) && !workerRetry && workerUrl) {
-            console.log('[Cloudflare WAF] HEAD 请求返回错误，尝试使用 Worker 代理重试', {
+          // HEAD 请求失败时，优先尝试代理重试
+          if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl)) {
+            console.log('[WAF] HEAD 请求返回错误，尝试使用代理重试', {
               url: target,
               statusCode: code
             });
@@ -912,9 +942,9 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
           return;
         }
 
-        // Cloudflare WAF 错误重试（所有 403/520 都尝试）
-        if ((code === 403 || code === 520) && !workerRetry && workerUrl) {
-          console.log('[Cloudflare WAF] 检测到 403/520 错误，尝试使用 Worker 代理重试', {
+        // WAF 错误重试（所有 403/520 都尝试代理）
+        if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl)) {
+          console.log('[WAF] 检测到 403/520 错误，尝试使用代理重试', {
             url: target,
             statusCode: code
           });
@@ -1047,10 +1077,13 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
     Connection: 'keep-alive'
   };
 
-  // CF Worker 域名直通支持
+  // 代理配置（Deno 优先于 CF Worker）
+  const denoUrl = config.denoProxyUrl || process.env.DENO_PROXY_URL;
+  const denoDomains = config.denoProxyDomains;
   const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
   const workerDomains = config.cloudflareWorkerDomains;
-  const shouldProxyViaWorker = !!(workerUrl && workerDomains && workerDomains.size > 0 && isCloudflareWorkerDomain(remoteUrl, workerDomains));
+  const proxyInfo = resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains);
+  const shouldProxyViaWorker = !!proxyInfo;
 
   // 尝试函数，支持 HTTPS 回退
   const tryStream = (targetUrl, fallbackUrl = null, attemptedHttps = false) => {
@@ -1063,17 +1096,17 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
         return;
       }
 
-      // 域名直通：通过 CF Worker 代理直播流
+      // 域名直通：通过代理转发直播流
       let effectiveTarget = parsed;
       let originalUrl = targetUrl;
-      if (shouldProxyViaWorker && workerUrl) {
-        const workerTarget = new URL(workerUrl);
+      if (shouldProxyViaWorker && proxyInfo.proxyUrl) {
+        const workerTarget = new URL(proxyInfo.proxyUrl);
         workerTarget.searchParams.set('url', targetUrl);
         if (requestHeaders['User-Agent']) {
           workerTarget.searchParams.set('ua', requestHeaders['User-Agent']);
         }
         effectiveTarget = workerTarget;
-        console.log(`[Worker Proxy] 域名直通，直播流通过 CF Worker 代理: ${targetUrl.substring(0, 120)}`);
+        console.log(`[Proxy] 域名直通(${proxyInfo.proxyType})，直播流通过代理: ${targetUrl.substring(0, 120)}`);
       }
 
       const lib = effectiveTarget.protocol === 'https:' ? https : http;
@@ -2276,6 +2309,8 @@ function createAppServer(configInput = {}) {
   console.log('[Config] allowedHosts:', config.allowedHosts.size === 0 ? '(允许所有)' : Array.from(config.allowedHosts).join(', '));
   console.log('[Config] cloudflareWorkerUrl:', config.cloudflareWorkerUrl || '(未配置)');
   console.log('[Config] cloudflareWorkerDomains:', config.cloudflareWorkerDomains.size === 0 ? '(无)' : Array.from(config.cloudflareWorkerDomains).join(', '));
+  console.log('[Config] denoProxyUrl:', config.denoProxyUrl || '(未配置)');
+  console.log('[Config] denoProxyDomains:', config.denoProxyDomains.size === 0 ? '(无)' : Array.from(config.denoProxyDomains).join(', '));
 
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();
