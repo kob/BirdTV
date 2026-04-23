@@ -53,8 +53,9 @@ class ExportController {
       const tokenExpiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
       
       // 获取当前服务器地址
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.headers['x-forwarded-host'] || req.get('host');
+      const reqHeaders = req.headers || {};
+      const protocol = reqHeaders['x-forwarded-proto'] || req.protocol || 'http';
+      const host = reqHeaders['x-forwarded-host'] || (req.get ? req.get('host') : '') || 'localhost:8771';
       const baseUrl = `${protocol}://${host}`;
 
       // Generate M3U content (完整格式，包含 DRM 信息和原始 URL)

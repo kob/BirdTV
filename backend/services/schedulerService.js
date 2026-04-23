@@ -314,6 +314,7 @@ class SchedulerService {
           filename: filename || `${task.name}.m3u`
         },
         user: { username: 'scheduler' },
+        headers: {},
         protocol: 'http',
         get: () => 'localhost:8771'
       };
