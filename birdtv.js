@@ -79,7 +79,9 @@ const DEFAULTS = {
   cloudflareWorkerUrl: '',
   cloudflareWorkerDomains: '',
   denoProxyUrl: '',
-  denoProxyDomains: ''
+  denoProxyDomains: '',
+  esaProxyUrl: '',
+  esaProxyDomains: ''
 };
 
 const serverState = {
@@ -262,15 +264,19 @@ function isCloudflareWorkerDomain(urlStr, domains) {
 }
 
 /**
- * 根据目标 URL 确定使用哪个代理（Deno 优先于 CF Worker）
+ * 根据目标 URL 确定使用哪个代理（ESA > Deno > CF Worker）
  * 返回 { proxyUrl, proxyType } 或 null
  */
-function resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains) {
-  // Deno 代理优先（用于 CF 同生态导致 WAF 拦截的域名）
+function resolveProxyForUrl(remoteUrl, esaUrl, esaDomains, denoUrl, denoDomains, workerUrl, workerDomains) {
+  // ESA 代理最优先（国内边缘节点，延迟最低）
+  if (esaUrl && esaDomains && esaDomains.size > 0 && isProxyDomain(remoteUrl, esaDomains)) {
+    return { proxyUrl: esaUrl, proxyType: 'ESA' };
+  }
+  // Deno 代理次之（用于 CF 同生态导致 WAF 拦截的域名）
   if (denoUrl && denoDomains && denoDomains.size > 0 && isProxyDomain(remoteUrl, denoDomains)) {
     return { proxyUrl: denoUrl, proxyType: 'Deno' };
   }
-  // CF Worker 代理次之
+  // CF Worker 代理最后
   if (workerUrl && workerDomains && workerDomains.size > 0 && isProxyDomain(remoteUrl, workerDomains)) {
     return { proxyUrl: workerUrl, proxyType: 'CF-Worker' };
   }
@@ -296,6 +302,8 @@ function getConfig(overrides = {}) {
     cloudflareWorkerDomains: parseCloudflareWorkerDomains(overrides.cloudflareWorkerDomains || env.CLOUDFLARE_WORKER_DOMAINS || DEFAULTS.cloudflareWorkerDomains),
     denoProxyUrl: String(overrides.denoProxyUrl || env.DENO_PROXY_URL || DEFAULTS.denoProxyUrl),
     denoProxyDomains: parseCloudflareWorkerDomains(overrides.denoProxyDomains || env.DENO_PROXY_DOMAINS || DEFAULTS.denoProxyDomains),
+    esaProxyUrl: String(overrides.esaProxyUrl || env.ESA_PROXY_URL || DEFAULTS.esaProxyUrl),
+    esaProxyDomains: parseCloudflareWorkerDomains(overrides.esaProxyDomains || env.ESA_PROXY_DOMAINS || DEFAULTS.esaProxyDomains),
     // 授权配置
     authEnabled: String(overrides.authEnabled || env.AUTH_ENABLED || 'true'),
     jwtSecret: String(overrides.jwtSecret || env.AUTH_JWT_SECRET || 'default-secret'),
@@ -833,9 +841,11 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
     const denoDomains = config.denoProxyDomains;
     const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
     const workerDomains = config.cloudflareWorkerDomains;
+    const esaUrl = config.esaProxyUrl || process.env.ESA_PROXY_URL;
+    const esaDomains = config.esaProxyDomains;
 
     // 检查目标域名应使用哪个代理
-    const proxyInfo = resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains);
+    const proxyInfo = resolveProxyForUrl(remoteUrl, esaUrl, esaDomains, denoUrl, denoDomains, workerUrl, workerDomains);
     const shouldProxyViaWorker = !!proxyInfo;
 
     function shouldHeadFallbackToGet(statusCode) {
@@ -904,7 +914,7 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
 
         if (normalizedMethod === 'HEAD' && !forceGetForHeadFallback && shouldHeadFallbackToGet(code)) {
           // HEAD 请求失败时，优先尝试代理重试
-          if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl)) {
+          if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl || esaUrl)) {
             console.log('[WAF] HEAD 请求返回错误，尝试使用代理重试', {
               url: target,
               statusCode: code
@@ -943,7 +953,7 @@ function requestRemotePayload(remoteUrl, { userAgent = null, method = 'GET', max
         }
 
         // WAF 错误重试（所有 403/520 都尝试代理）
-        if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl)) {
+        if ((code === 403 || code === 520) && !workerRetry && (workerUrl || denoUrl || esaUrl)) {
           console.log('[WAF] 检测到 403/520 错误，尝试使用代理重试', {
             url: target,
             statusCode: code
@@ -1077,12 +1087,14 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
     Connection: 'keep-alive'
   };
 
-  // 代理配置（Deno 优先于 CF Worker）
+  // 代理配置（ESA > Deno > CF Worker）
+  const esaUrl = config.esaProxyUrl || process.env.ESA_PROXY_URL;
+  const esaDomains = config.esaProxyDomains;
   const denoUrl = config.denoProxyUrl || process.env.DENO_PROXY_URL;
   const denoDomains = config.denoProxyDomains;
   const workerUrl = config.cloudflareWorkerUrl || process.env.CLOUDFLARE_WORKER_URL;
   const workerDomains = config.cloudflareWorkerDomains;
-  const proxyInfo = resolveProxyForUrl(remoteUrl, denoUrl, denoDomains, workerUrl, workerDomains);
+  const proxyInfo = resolveProxyForUrl(remoteUrl, esaUrl, esaDomains, denoUrl, denoDomains, workerUrl, workerDomains);
   const shouldProxyViaWorker = !!proxyInfo;
 
   // 尝试函数，支持 HTTPS 回退
@@ -2311,6 +2323,8 @@ function createAppServer(configInput = {}) {
   console.log('[Config] cloudflareWorkerDomains:', config.cloudflareWorkerDomains.size === 0 ? '(无)' : Array.from(config.cloudflareWorkerDomains).join(', '));
   console.log('[Config] denoProxyUrl:', config.denoProxyUrl || '(未配置)');
   console.log('[Config] denoProxyDomains:', config.denoProxyDomains.size === 0 ? '(无)' : Array.from(config.denoProxyDomains).join(', '));
+  console.log('[Config] esaProxyUrl:', config.esaProxyUrl || '(未配置)');
+  console.log('[Config] esaProxyDomains:', config.esaProxyDomains.size === 0 ? '(无)' : Array.from(config.esaProxyDomains).join(', '));
 
   const server = http.createServer(async (req, res) => {
     const startedAt = Date.now();

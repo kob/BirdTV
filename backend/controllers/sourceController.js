@@ -17,18 +17,31 @@ class SourceController {
    * 支持域名直通（通过 CLOUDFLARE_WORKER_DOMAINS 配置的域名直接走 Worker）
    */
   _fetchContent(url, userAgent = null, timeoutMs = 30000, _useWorkerProxy = false) {
+    const esaUrl = process.env.ESA_PROXY_URL;
+    const esaDomains = this._parseProxyDomains(process.env.ESA_PROXY_DOMAINS);
     const denoUrl = process.env.DENO_PROXY_URL;
     const denoDomains = this._parseProxyDomains(process.env.DENO_PROXY_DOMAINS);
     const workerUrl = process.env.CLOUDFLARE_WORKER_URL;
     const workerDomains = this._parseProxyDomains(process.env.CLOUDFLARE_WORKER_DOMAINS);
+    // 代理优先级：ESA > Deno > CF Worker
+    const isEsaDomain = this._isProxyDomain(url, esaDomains);
     const isDenoDomain = this._isProxyDomain(url, denoDomains);
     const isWorkerDomain = this._isProxyDomain(url, workerDomains);
-    // Deno 优先于 CF Worker
-    const effectiveProxyUrl = (isDenoDomain && denoUrl) ? denoUrl : (isWorkerDomain && workerUrl) ? workerUrl : null;
-    const effectiveProxyType = isDenoDomain && denoUrl ? 'Deno' : isWorkerDomain && workerUrl ? 'CF-Worker' : null;
-    const actualUseWorker = (_useWorkerProxy || isDenoDomain || isWorkerDomain) && !!effectiveProxyUrl;
+    let effectiveProxyUrl = null;
+    let effectiveProxyType = null;
+    if (isEsaDomain && esaUrl) {
+      effectiveProxyUrl = esaUrl;
+      effectiveProxyType = 'ESA';
+    } else if (isDenoDomain && denoUrl) {
+      effectiveProxyUrl = denoUrl;
+      effectiveProxyType = 'Deno';
+    } else if (isWorkerDomain && workerUrl) {
+      effectiveProxyUrl = workerUrl;
+      effectiveProxyType = 'CF-Worker';
+    }
+    const actualUseWorker = (_useWorkerProxy || isEsaDomain || isDenoDomain || isWorkerDomain) && !!effectiveProxyUrl;
 
-    if ((isDenoDomain || isWorkerDomain) && effectiveProxyUrl && !_useWorkerProxy) {
+    if ((isEsaDomain || isDenoDomain || isWorkerDomain) && effectiveProxyUrl && !_useWorkerProxy) {
       console.log(`[SourceController] 域名直通(${effectiveProxyType})，通过代理: ${url}`);
     }
 
@@ -83,9 +96,9 @@ class SourceController {
             return;
           }
 
-          // 检测 Cloudflare WAF 拦截，尝试通过 Worker 重试
+          // 检测 Cloudflare WAF 拦截，尝试通过代理重试
           if ((res.statusCode === 403 || res.statusCode === 520) &&
-              !_useWorkerProxy && workerUrl) {
+              !_useWorkerProxy && (workerUrl || denoUrl || esaUrl)) {
             const isCloudflare =
               res.headers['cf-mitigated'] === 'challenge' ||
               String(res.headers['server'] || '').toLowerCase().includes('cloudflare');
