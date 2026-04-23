@@ -202,7 +202,7 @@ class ChannelController {
 
   async batchImportChannels(req, res) {
     try {
-      const { channels } = req.body;
+      const { channels, duplicateMode = 'merge' } = req.body;
 
       if (!Array.isArray(channels) || channels.length === 0) {
         res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -216,23 +216,28 @@ class ChannelController {
       const existingChannels = await this.storage.getChannels();
       let updatedCount = 0;
       let createdCount = 0;
+      let skippedCount = 0;
       const results = [];
 
       for (const channelData of channels) {
         try {
-          // 按 sourceId + tvgId + name 三项匹配已有频道
-          const newSourceId = channelData.sourceId || '';
-          const newTvgId = channelData.tvgId || '';
+          // 按名称+URL 匹配已有频道（跨源检测）
           const newName = (channelData.name || '').trim().toLowerCase();
+          const newUrl = (channelData.url || '').trim();
 
           const matchIndex = existingChannels.findIndex(c =>
-            (c.sourceId || '') === newSourceId &&
-            (c.tvgId || '') === newTvgId &&
-            (c.name || '').trim().toLowerCase() === newName
+            (c.name || '').trim().toLowerCase() === newName &&
+            (c.url || '').trim() === newUrl
           );
 
           if (matchIndex >= 0) {
-            // 已存在：保留原有 id 和 createdAt，更新其他字段
+            if (duplicateMode === 'skip') {
+              // 跳过已存在的频道
+              skippedCount++;
+              results.push({ success: true, id: existingChannels[matchIndex].id, action: 'skipped' });
+              continue;
+            }
+            // merge / replace：更新已有频道
             const existing = existingChannels[matchIndex];
             const channel = new Channel(channelData);
             channel.id = existing.id;
@@ -241,14 +246,12 @@ class ChannelController {
             existingChannels[matchIndex] = channel.toJSON();
             results.push({ success: true, id: channel.id, action: 'updated' });
             updatedCount++;
-            console.log(`[BatchImport] UPDATE channel "${channelData.name}" id=${channel.id} (sourceId=${newSourceId}, tvgId=${newTvgId})`);
           } else {
             // 不存在：新增频道
             const channel = new Channel(channelData);
             existingChannels.push(channel.toJSON());
             results.push({ success: true, id: channel.id, action: 'created' });
             createdCount++;
-            console.log(`[BatchImport] CREATE channel "${channelData.name}" id=${channel.id} (sourceId=${newSourceId}, tvgId=${newTvgId})`);
           }
         } catch (error) {
           results.push({ success: false, error: error.message });
@@ -267,6 +270,7 @@ class ChannelController {
           failed: channels.length - successCount,
           created: createdCount,
           updated: updatedCount,
+          skipped: skippedCount,
           results
         }
       });

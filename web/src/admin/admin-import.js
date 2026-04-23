@@ -8,6 +8,7 @@
     const IMPORT_PROXY_OPTIONS = `<option value="">保持原始</option><option value="auto">自动</option><option value="proxy">代理</option><option value="direct">直连</option>`;
     const IMPORT_PLAYER_OPTIONS = `<option value="">保持原始</option><option value="auto">自动</option><option value="shaka">Shaka</option><option value="artplayer">ArtPlayer</option><option value="hlsjs">HLS.js</option>`;
     const IMPORT_UA_OPTIONS = `<option value="">保持原始</option>${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}">${esc(ua.name)}</option>`).join('')}`;
+    const IMPORT_DUPLICATE_OPTIONS = `<option value="merge">合并更新（默认）</option><option value="skip">跳过重复</option><option value="replace">替换所有</option>`;
 
     /**
      * 构建导入频道对象（统一逻辑）
@@ -80,6 +81,10 @@
           <div class="form-row">
             <div class="form-group"><label>播放器</label><select id="manualImportPlayer" style="width:100%;">${IMPORT_PLAYER_OPTIONS}</select></div>
             <div class="form-group"><label>User Agent</label><select id="manualImportUA" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>重复检测</label><select id="manualImportDuplicate" style="width:100%;">${IMPORT_DUPLICATE_OPTIONS}</select></div>
+            <div class="form-group" style="flex:1;"></div>
           </div>
           <div id="manualFilePreview" style="display:none;margin-top:16px;">
             <h4 style="margin-bottom:12px;">频道预览</h4>
@@ -157,6 +162,7 @@
       const importProxy = document.getElementById('manualImportProxyMode')?.value || '';
       const importPlayer = document.getElementById('manualImportPlayer')?.value || '';
       const importUA = document.getElementById('manualImportUA')?.value || '';
+      const importDuplicate = document.getElementById('manualImportDuplicate')?.value || 'merge';
 
       const listDiv = document.getElementById('manualFileChannelList');
       const allItems = listDiv.querySelectorAll('.manual-channel-item');
@@ -172,12 +178,13 @@
       if (channelsToImport.length === 0) { toast('请选择要导入的频道', 'error'); return; }
       
       try {
-        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport }) });
+        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport, duplicateMode: importDuplicate }) });
         if (res && res.ok) {
           const d = res.data || {};
           const parts = [];
           if (d.created) parts.push('新增 ' + d.created + ' 个');
           if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          if (d.skipped) parts.push('跳过 ' + d.skipped + ' 个');
           toast(parts.length ? '导入完成：' + parts.join('，') : ('成功导入 ' + channelsToImport.length + ' 个频道'), 'success');
           closeModal(); loadChannels();
         } else { toast('导入失败', 'error'); }
@@ -231,6 +238,10 @@
               <div class="form-group"><label>User Agent</label><select id="sourceUserAgent" style="width:100%;"><option value="">保持原始</option>${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}" ${sourceUserAgent === ua.value ? 'selected' : ''}>${esc(ua.name)}</option>`).join('')}</select></div>
               <div class="form-group"><label>默认分组</label><input type="text" id="sourceImportGroup" placeholder="未分组" style="width:100%;"></div>
             </div>
+            <div class="form-row">
+              <div class="form-group"><label>重复检测</label><select id="sourceDuplicateMode" style="width:100%;">${IMPORT_DUPLICATE_OPTIONS}</select></div>
+              <div class="form-group" style="flex:1;"></div>
+            </div>
             <input type="hidden" id="importSourceId" value="${defaultSourceId}">
             <input type="hidden" id="importSourceUserAgent" value="${esc(sourceUserAgent)}">
             <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
@@ -266,6 +277,10 @@
               <div class="form-group"><label>User Agent</label><select id="sourceUserAgent" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
               <div class="form-group"><label>默认分组</label><input type="text" id="sourceImportGroup" placeholder="未分组" style="width:100%;"></div>
             </div>
+            <div class="form-row">
+              <div class="form-group"><label>重复检测</label><select id="sourceDuplicateMode" style="width:100%;">${IMPORT_DUPLICATE_OPTIONS}</select></div>
+              <div class="form-group" style="flex:1;"></div>
+            </div>
             <input type="hidden" id="importSourceId" value="">
             <input type="hidden" id="importSourceUserAgent" value="">
             <div id="channelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="channelListContent"></div></div>
@@ -298,6 +313,10 @@
         <div class="form-row">
           <div class="form-group"><label>User Agent</label><select id="fileUserAgent" style="width:100%;">${IMPORT_UA_OPTIONS}</select></div>
           <div class="form-group"><label>默认分组</label><input type="text" id="fileImportGroup" placeholder="未分组" style="width:100%;"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>重复检测</label><select id="fileDuplicateMode" style="width:100%;">${IMPORT_DUPLICATE_OPTIONS}</select></div>
+          <div class="form-group" style="flex:1;"></div>
         </div>
         <div id="fileChannelListContainer" style="margin-top:16px;max-height:400px;overflow-y:auto;display:none;"><h4 style="margin-bottom:12px;">频道列表</h4><div id="fileChannelListContent"></div></div>
       `, `<button class="btn" onclick="closeModal()">取消</button><button class="btn" id="loadFileChannelsBtn" onclick="loadFileChannels()">解析文件</button><button class="btn btn-primary" id="importFileBtn" onclick="doImportFileChannels()" style="display:none;">导入选中</button>`);
@@ -364,14 +383,15 @@
       const playerType = document.getElementById('filePlayerType')?.value || '';
       const userAgent = document.getElementById('fileUserAgent')?.value || '';
       const group = (document.getElementById('fileImportGroup')?.value || '').trim();
+      const duplicateMode = document.getElementById('fileDuplicateMode')?.value || 'merge';
 
       const channelsToImport = Array.from(checkboxes).map(cb => buildImportChannel(cb, { proxyMode, playerType, userAgent, group }));
 
       try {
-        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport }) });
+        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport, duplicateMode }) });
         if (res && res.ok) {
           const d = res.data || {}; const parts = [];
-          if (d.created) parts.push('新增 ' + d.created + ' 个'); if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          if (d.created) parts.push('新增 ' + d.created + ' 个'); if (d.updated) parts.push('更新 ' + d.updated + ' 个'); if (d.skipped) parts.push('跳过 ' + d.skipped + ' 个');
           toast(parts.length ? '导入完成：' + parts.join('，') : ('成功导入 ' + channelsToImport.length + ' 个频道'), 'success');
           closeModal(); loadChannels();
         } else { toast('导入失败', 'error'); }
@@ -441,6 +461,7 @@
       const playerType = document.getElementById('sourcePlayerType')?.value || '';
       const userAgent = document.getElementById('sourceUserAgent')?.value || '';
       const group = (document.getElementById('sourceImportGroup')?.value || '').trim();
+      const duplicateMode = document.getElementById('sourceDuplicateMode')?.value || 'merge';
 
       const formArea = document.getElementById('importFormArea');
       const progressArea = document.getElementById('importProgressArea');
@@ -479,11 +500,11 @@
       if (progressSub) progressSub.textContent = '共 ' + totalCount + ' 个频道待导入 · 数据已就绪';
       setStep(2);
       try {
-        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport }) });
+        const res = await api('/channels/batch', { method: 'POST', body: JSON.stringify({ channels: channelsToImport, duplicateMode }) });
         if (res && res.ok) {
           setStep(3); if (progressBar) progressBar.style.width = '100%'; if (progressTitle) progressTitle.textContent = '导入完成';
           const d = res.data || {}; const parts = [];
-          if (d.created) parts.push('新增 ' + d.created + ' 个'); if (d.updated) parts.push('更新 ' + d.updated + ' 个');
+          if (d.created) parts.push('新增 ' + d.created + ' 个'); if (d.updated) parts.push('更新 ' + d.updated + ' 个'); if (d.skipped) parts.push('跳过 ' + d.skipped + ' 个');
           if (progressSub) progressSub.textContent = parts.length ? parts.join('，') : ('成功导入 ' + totalCount + ' 个频道');
           const icon = progressArea?.querySelector('.import-progress-icon'); if (icon) { icon.className = 'import-progress-icon done'; icon.innerHTML = '&#10003;'; }
           setTimeout(() => { closeModal(); loadChannels(); }, 1500);
