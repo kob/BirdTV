@@ -170,6 +170,7 @@
       const sourcePlayerType = importConfig.playerType || '';
       const sourceUserAgent = importConfig.userAgent || '';
       const sourceGroup = importConfig.group || '';
+      const sourceDuplicateMode = importConfig.duplicateMode || '';
 
       const IMPORT_UA_PRESETS = [
         { name: "默认 (okhttp)", value: "okhttp" },
@@ -220,6 +221,14 @@
               ${IMPORT_UA_PRESETS.map(ua => `<option value="${esc(ua.value)}" ${sourceUserAgent === ua.value ? 'selected' : ''}>${esc(ua.name)}</option>`).join('')}
             </select></div>
             <div class="form-group"><label>默认分组</label><input type="text" id="taskImportGroup" placeholder="未分组" value="${esc(sourceGroup)}" style="width:100%;padding:8px 12px;"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>重复检测</label><select id="taskDuplicateMode" style="width:100%;padding:8px 12px;">
+              <option value="">替换（默认）</option>
+              <option value="skip" ${sourceDuplicateMode === 'skip' ? 'selected' : ''}>跳过重复</option>
+              <option value="merge" ${sourceDuplicateMode === 'merge' ? 'selected' : ''}>合并更新</option>
+            </select></div>
+            <div class="form-group" style="flex:1;"></div>
           </div>
         </div>
         <div class="form-group" id="exportGroup" style="display:none;">
@@ -288,11 +297,13 @@
         const playerType = document.getElementById('taskPlayerType')?.value || '';
         const userAgent = document.getElementById('taskUserAgent')?.value || '';
         const group = (document.getElementById('taskImportGroup')?.value || '').trim();
+        const duplicateMode = document.getElementById('taskDuplicateMode')?.value || '';
         const importConfig = {};
         if (proxyMode) importConfig.proxyMode = proxyMode;
         if (playerType) importConfig.playerType = playerType;
         if (userAgent) importConfig.userAgent = userAgent;
         if (group) importConfig.group = group;
+        if (duplicateMode) importConfig.duplicateMode = duplicateMode;
         if (Object.keys(importConfig).length > 0) data.importConfig = importConfig;
       } else if (type === 'export') {
         const groupsSelect = document.getElementById('taskGroups');

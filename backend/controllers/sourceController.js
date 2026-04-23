@@ -813,19 +813,24 @@ class SourceController {
   // 从 M3U URL 导入频道
   async _importChannelsFromM3U(url, sourceId, userAgent = null, importOptions = {}) {
     const Channel = require('../models/Channel');
-    const { proxyMode: optProxyMode, playerType: optPlayerType, group: optGroup } = importOptions;
+    const { proxyMode: optProxyMode, playerType: optPlayerType, group: optGroup, duplicateMode = 'replace' } = importOptions;
 
     try {
       const content = await this._fetchContent(url, userAgent);
-      // 先删除该源之前导入的频道，避免重复
       const allChannels = await this.storage.getChannels();
-      const existingIds = allChannels
-        .filter(c => c.sourceId === sourceId)
-        .map(c => c.id);
-      if (existingIds.length > 0) {
-        // 优化：使用批量删除，只读写文件一次
-        await this.storage.batchDeleteChannels(existingIds);
-        console.log(`[SourceController] 已清理源 ${sourceId} 的 ${existingIds.length} 个旧频道`);
+
+      // 根据 duplicateMode 处理已有频道
+      // - replace: 先删除该源旧频道再全部导入（默认，兼容旧行为）
+      // - skip: 跳过已存在的频道（按名称+URL匹配）
+      // - merge: 已存在则更新，不存在则新增
+      if (duplicateMode === 'replace') {
+        const existingIds = allChannels
+          .filter(c => c.sourceId === sourceId)
+          .map(c => c.id);
+        if (existingIds.length > 0) {
+          await this.storage.batchDeleteChannels(existingIds);
+          console.log(`[SourceController] 已清理源 ${sourceId} 的 ${existingIds.length} 个旧频道`);
+        }
       }
 
       const lines = content.split(/\r?\n/);
@@ -956,9 +961,54 @@ class SourceController {
         pendingUserAgent = '';
       }
 
-      // 批量保存频道
-      for (const channelData of channels) {
-        await this.storage.saveChannel(channelData);
+      // 根据 duplicateMode 保存频道
+      if (duplicateMode === 'replace') {
+        // replace 模式：旧频道已删除，直接批量新增
+        for (const channelData of channels) {
+          await this.storage.saveChannel(channelData);
+        }
+      } else {
+        // skip / merge 模式：需要检测重复
+        const existingChannels = await this.storage.getChannels();
+        let skippedCount = 0;
+        let updatedCount = 0;
+        let createdCount = 0;
+
+        for (const channelData of channels) {
+          const newName = (channelData.name || '').trim().toLowerCase();
+          const newUrl = (channelData.url || '').trim();
+
+          // 按名称+URL 匹配已存在的频道
+          const matchIndex = existingChannels.findIndex(c =>
+            (c.name || '').trim().toLowerCase() === newName &&
+            (c.url || '').trim() === newUrl
+          );
+
+          if (matchIndex >= 0) {
+            if (duplicateMode === 'skip') {
+              // 跳过已存在的频道
+              skippedCount++;
+              continue;
+            } else if (duplicateMode === 'merge') {
+              // 更新已有频道，保留 id 和 createdAt
+              const existing = existingChannels[matchIndex];
+              channelData.id = existing.id;
+              channelData.createdAt = existing.createdAt;
+              channelData.updatedAt = new Date().toISOString();
+              Object.assign(existingChannels[matchIndex], channelData);
+              updatedCount++;
+              continue;
+            }
+          }
+
+          // 不存在：新增
+          existingChannels.push(channelData);
+          createdCount++;
+        }
+
+        // 一次性写入
+        await this.storage._set('channels', this.storage.channelsFile, existingChannels);
+        console.log(`[SourceController] 导入完成 (mode=${duplicateMode}): 新增 ${createdCount}, 更新 ${updatedCount}, 跳过 ${skippedCount}`);
       }
 
       return channels;

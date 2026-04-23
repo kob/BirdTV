@@ -259,7 +259,7 @@ class SchedulerService {
       const importConfig = task.importConfig || {};
       const imported = await this.sourceController._importChannelsFromM3U(
         source.url, source.id || source._id, importConfig.userAgent || source.userAgent,
-        { proxyMode: importConfig.proxyMode, playerType: importConfig.playerType, group: importConfig.group }
+        { proxyMode: importConfig.proxyMode, playerType: importConfig.playerType, group: importConfig.group, duplicateMode: importConfig.duplicateMode }
       );
 
       const result = {
