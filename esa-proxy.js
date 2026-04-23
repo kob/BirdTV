@@ -105,40 +105,68 @@ async function handleRequest(request) {
   const MAX_REDIRECTS = 5;
   let currentUrl = targetUrl;
   let response = null;
+  let lastError = null;
 
   for (let i = 0; i <= MAX_REDIRECTS; i++) {
-    const fetchTarget = new URL(currentUrl);
-    headers.set('Host', fetchTarget.host);
-
-    const proxyRequest = new Request(fetchTarget, {
-      method: request.method,
-      headers,
-      redirect: 'manual',
-      body: (request.method === 'GET' || request.method === 'HEAD') ? undefined : request.body,
-    });
-
+    let fetchTarget;
     try {
-      response = await fetch(proxyRequest);
-    } catch (error) {
-      return new Response(`Proxy error: ${error.message}`, {
+      fetchTarget = new URL(currentUrl);
+    } catch {
+      return new Response(`Invalid redirect URL: ${currentUrl}`, {
         status: 502,
         headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
       });
     }
+    headers.set('Host', fetchTarget.host);
+
+    const proxyRequest = new Request(fetchTarget.href, {
+      method: request.method,
+      headers,
+      redirect: 'manual',
+    });
+
+    try {
+      response = await fetch(proxyRequest);
+      lastError = null;
+    } catch (error) {
+      lastError = error;
+      // ESA 环境下 fetch 可能因 subrequest 限制失败，尝试直接 fetch URL 字符串
+      try {
+        response = await fetch(fetchTarget.href, {
+          method: request.method,
+          headers: Object.fromEntries(headers.entries()),
+          redirect: 'manual',
+        });
+        lastError = null;
+      } catch (fallbackError) {
+        return new Response(`Proxy error: ${fallbackError.message}`, {
+          status: 502,
+          headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    }
 
     // 检查是否重定向
-    if (response.status >= 300 && response.status < 400 && response.headers.get('Location')) {
+    if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('Location');
-      currentUrl = new URL(location, currentUrl).href;
-      await response.body?.cancel();
-      continue;
+      if (location) {
+        try {
+          currentUrl = new URL(location, currentUrl).href;
+        } catch {
+          // 相对路径解析失败时尝试直接拼接
+          currentUrl = location.startsWith('http') ? location : new URL(location, target).href;
+        }
+        await response.body?.cancel();
+        response = null;
+        continue;
+      }
     }
 
     break;
   }
 
-  if (!response) {
-    return new Response('Proxy error: no response', {
+  if (!response || lastError) {
+    return new Response(`Proxy error: ${lastError?.message || 'no response'}`, {
       status: 502,
       headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
     });
@@ -190,7 +218,16 @@ async function handleRequest(request) {
   });
 }
 
-// ESA 边缘函数入口
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+// ESA 边缘函数入口（ES module 格式，阿里云 ESA 要求 export default { fetch }）
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      return await handleRequest(request);
+    } catch (error) {
+      return new Response(`ESA function error: ${error.message}\n${error.stack || ''}`, {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+  },
+};
