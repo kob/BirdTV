@@ -243,6 +243,37 @@
     }
     @media (max-width: 1080px) {
       .sidebar-toggle-btn { display: none; }
+      /* 手机端始终显示浮动切换按钮 */
+      .sidebar-float-toggle { display: flex; }
+      .shell.sidebar-hidden .sidebar-float-toggle::after { content: '▶'; }
+      .shell:not(.sidebar-hidden) .sidebar-float-toggle::after { content: '◀'; }
+      .sidebar-float-toggle {
+        position: fixed;
+        top: auto;
+        bottom: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 100;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        font-size: 0;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      }
+      .sidebar-float-toggle::after { font-size: 18px; }
+      .shell:not(.sidebar-hidden) .sidebar {
+        transform: none;
+        opacity: 1;
+        pointer-events: auto;
+        position: relative;
+        z-index: auto;
+      }
+      .shell.sidebar-hidden .sidebar {
+        display: none;
+      }
+      .shell.sidebar-hidden .main {
+        grid-column: 1;
+      }
     }
 
     .sidebar .card {
