@@ -199,21 +199,55 @@ class SchedulerService {
   scheduleTask(task) {
     this.cancelTask(task.id);
 
-    const nextMs = getNextCronDate(task.cron).getTime() - Date.now();
-    if (nextMs < 0) return; // 过期跳过
+    let nextMs = getNextCronDate(task.cron).getTime() - Date.now();
+    if (nextMs < 0) {
+      console.warn(`[Scheduler] 任务 ${task.name} 下次执行时间已过期，跳过`);
+      return;
+    }
 
-    const tid = setTimeout(async () => {
-      this.timers.delete(task.id);
-      try {
-        await this._executeTask(task);
-      } catch (e) {
-        console.error(`[Scheduler] 任务执行异常: ${task.name}`, e);
+    const nextDate = new Date(Date.now() + nextMs);
+    console.log(`[Scheduler] 调度任务: ${task.name}, 下次执行: ${nextDate.toLocaleString('zh-CN', { hour12: false })} (${Math.round(nextMs / 1000 / 60)}分钟后)`);
+
+    // Node.js setTimeout 最大延迟约 24.8 天 (2^31-1 ms)，超过会立即触发
+    // 如果超过最大值，使用轮询等待
+    const MAX_TIMEOUT = 2147483647;
+    const taskId = task.id;
+    const scheduleWithMaxTimeout = (remaining) => {
+      if (remaining <= MAX_TIMEOUT) {
+        const tid = setTimeout(async () => {
+          this.timers.delete(taskId);
+          try {
+            await this._executeTask(task);
+          } catch (e) {
+            console.error(`[Scheduler] 任务执行异常: ${task.name}`, e);
+          }
+          // 执行完后，重新调度下一次（从存储中重新读取任务）
+          try {
+            const tasks = await this.getTasks();
+            const freshTask = tasks.find(t => t.id === taskId);
+            if (freshTask && freshTask.enabled) {
+              this.scheduleTask(freshTask);
+            }
+          } catch (e) {
+            console.error(`[Scheduler] 重新调度失败: ${task.name}`, e);
+            // 存储读取失败时，用旧 task 重新调度，避免任务永久丢失
+            this.scheduleTask(task);
+          }
+        }, remaining);
+        this.timers.set(taskId, { timeout: tid, nextRun: Date.now() + remaining });
+      } else {
+        // 超过最大延迟，先等待最大值后再重新计算
+        const tid = setTimeout(() => {
+          // 检查任务是否仍在此定时器中（可能已被 cancelTask 取消）
+          if (this.timers.has(taskId)) {
+            scheduleWithMaxTimeout(remaining - MAX_TIMEOUT);
+          }
+        }, MAX_TIMEOUT);
+        this.timers.set(taskId, { timeout: tid, nextRun: Date.now() + remaining });
       }
-      // 执行完后，重新调度下一次
-      this.scheduleTask(task);
-    }, nextMs);
+    };
 
-    this.timers.set(task.id, { timeout: tid, nextRun: Date.now() + nextMs });
+    scheduleWithMaxTimeout(nextMs);
   }
 
   /**

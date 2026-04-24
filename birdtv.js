@@ -2591,6 +2591,11 @@ async function startServer(configInput = {}) {
       url: `http://${config.host}:${config.port}`,
       authEnabled: config.authEnabled
     });
+
+    // 通知 PM2 进程已就绪
+    if (process.send) {
+      process.send('ready');
+    }
   });
 
   return server;
