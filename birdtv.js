@@ -540,7 +540,7 @@ function shouldRewriteM3u(payload, remoteUrl) {
   return finalLower.includes('.m3u8') || finalLower.includes('.m3u') || remoteLower.includes('.m3u8') || remoteLower.includes('.m3u');
 }
 
-function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = null) {
+function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = null, origin = null) {
   // tv.iill.top 域名强制直连，不生成代理 URL
   try {
     const urlObj = new URL(targetUrl);
@@ -561,6 +561,10 @@ function buildLocalProxyUrl(targetUrl, userAgent, authToken = null, linkId = nul
   if (linkId) {
     out += `&link_id=${encodeURIComponent(linkId)}`;
   }
+  // 如果有 origin，生成包含服务端域名的完整 URL
+  if (origin) {
+    out = `${origin}${out}`;
+  }
   return out;
 }
 
@@ -575,7 +579,7 @@ function toAbsoluteUrl(raw, baseUrl) {
   }
 }
 
-function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId = null) {
+function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId = null, origin = null) {
   const lines = String(inputText || '').split(/\r?\n/);
   return lines
     .map((line) => {
@@ -586,13 +590,13 @@ function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId 
         return line.replace(/URI="([^"]+)"/g, (match, uri) => {
           const abs = toAbsoluteUrl(uri, baseUrl);
           if (!/^https?:/i.test(abs)) return match;
-          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken, linkId)}"`;
+          return `URI="${buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin)}"`;
         });
       }
 
       const abs = toAbsoluteUrl(trimmed, baseUrl);
       if (!/^https?:/i.test(abs)) return line;
-      return buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      return buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
     })
     .join('\n');
 }
@@ -601,7 +605,7 @@ function rewriteM3uText(inputText, baseUrl, userAgent, authToken = null, linkId 
  * 重写 DASH MPD manifest 中的 segment URL
  * 将所有绝对 URL 替换为通过 BirdTV 代理的 URL
  */
-function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId = null) {
+function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId = null, origin = null) {
   try {
     // 使用简单的字符串替换来重写 XML 中的 URL 属性
     // 匹配 BaseURL、Initialization、SegmentURL 等标签中的 URL
@@ -654,7 +658,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return `<BaseURL>${https}</BaseURL>`;
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return `<BaseURL>${proxyUrl}</BaseURL>`;
     });
 
@@ -672,7 +676,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(url, https);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(url, proxyUrl);
     });
 
@@ -689,7 +693,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(url, https);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(url, proxyUrl);
     });
 
@@ -707,7 +711,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(`media="${url}"`, `media="${https}"`);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
 
@@ -724,7 +728,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(`media="${url}"`, `media="${https}"`);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(`media="${url}"`, `media="${proxyUrl}"`);
     });
 
@@ -741,7 +745,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(`index="${url}"`, `index="${https}"`);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(`index="${url}"`, `index="${proxyUrl}"`);
     });
 
@@ -759,7 +763,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(url, https);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(url, proxyUrl);
     });
 
@@ -776,7 +780,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
         console.log('[MPD Rewrite] Segment URL 直接访问，不代理:', https.substring(0, 80));
         return match.replace(url, https);
       }
-      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId);
+      const proxyUrl = buildLocalProxyUrl(abs, userAgent, authToken, linkId, origin);
       return match.replace(url, proxyUrl);
     });
 
@@ -1257,6 +1261,11 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
       const rewriteAuthToken = authToken;
       const rewriteLinkId = linkId;
 
+      // 从客户端请求中获取服务端 origin，用于生成包含域名的完整代理 URL
+      const reqHost = clientReq.headers.host || clientReq.headers.Host;
+      const reqProtocol = (clientReq.socket && clientReq.socket.encrypted) || (clientReq.headers['x-forwarded-proto'] === 'https') ? 'https' : 'http';
+      const origin = reqHost ? `${reqProtocol}://${reqHost}` : null;
+
       // 判断是否为 MPD (DASH) manifest
       const contentType = String((payload.headers && (payload.headers['content-type'] || payload.headers['Content-Type'])) || '').toLowerCase();
       const isMpd = contentType.includes('dash') || contentType.includes('xml') ||
@@ -1266,12 +1275,12 @@ async function proxyRequestToRemote(remoteUrl, clientReq, clientRes, options = {
       if (isMpd) {
         // MPD manifest 重写
         console.log('[M3U/MPD Rewrite] 检测到 MPD manifest，执行 URL 重写');
-        rewritten = rewriteMpdText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
+        rewritten = rewriteMpdText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId, origin);
         console.log('[M3U/MPD Rewrite] MPD 重写后的前 500 字符:');
         console.log(rewritten.substring(0, 500));
       } else {
         // M3U 播放列表重写
-        rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId);
+        rewritten = rewriteM3uText(sourceText, payload.finalUrl || remoteUrl, userAgent, rewriteAuthToken, rewriteLinkId, origin);
         console.log('[M3U Rewrite] First 10 lines of rewritten content:');
         const lines = rewritten.split('\n').slice(0, 10);
         lines.forEach((line, i) => console.log(`  Line ${i}: ${line}`));
