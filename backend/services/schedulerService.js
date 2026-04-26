@@ -340,6 +340,21 @@ class SchedulerService {
       }
 
       // 构造导出请求对象
+      // 从设置中获取外部访问地址，避免硬编码 localhost
+      // 优先级：settings.m3uRemoteBaseUrl > 环境变量 BIRDTV_REMOTE_BASE_URL > 默认 localhost
+      let exportBaseUrl = 'http://localhost:8771';
+      try {
+        const settings = await this.storage.getSettings();
+        if (settings && settings.m3uRemoteBaseUrl) {
+          exportBaseUrl = settings.m3uRemoteBaseUrl.replace(/\/+$/, '');
+        } else if (process.env.BIRDTV_REMOTE_BASE_URL || process.env.M3U_REMOTE_BASE_URL) {
+          exportBaseUrl = (process.env.BIRDTV_REMOTE_BASE_URL || process.env.M3U_REMOTE_BASE_URL).replace(/\/+$/, '');
+        }
+      } catch (e) {
+        console.warn('[Scheduler] 获取外部地址失败，使用默认值', e.message);
+      }
+      console.log(`[Scheduler] 导出使用外部地址: ${exportBaseUrl}`);
+
       const exportRequest = {
         body: {
           channelIds: exportedChannels.map(ch => ch.id),
@@ -349,8 +364,8 @@ class SchedulerService {
         },
         user: { username: 'scheduler' },
         headers: {},
-        protocol: 'http',
-        get: () => 'localhost:8771'
+        protocol: exportBaseUrl.split('://')[0] || 'http',
+        get: () => exportBaseUrl.split('://')[1] || 'localhost:8771'
       };
 
       // 构造响应对象

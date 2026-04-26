@@ -55,8 +55,13 @@ class ExportController {
       // 获取当前服务器地址
       const reqHeaders = req.headers || {};
       const protocol = reqHeaders['x-forwarded-proto'] || req.protocol || 'http';
-      const host = reqHeaders['x-forwarded-host'] || (req.get ? req.get('host') : '') || 'localhost:8771';
-      const baseUrl = `${protocol}://${host}`;
+      const host = reqHeaders['x-forwarded-host'] || (req.get ? req.get('host') : '') || '';
+      let baseUrl = host ? `${protocol}://${host}` : '';
+      // 如果请求头中无法获取域名，从设置中读取
+      if (!baseUrl) {
+        const settings = await this.storage.getSettings();
+        baseUrl = (settings && settings.m3uRemoteBaseUrl) ? settings.m3uRemoteBaseUrl.replace(/\/+$/, '') : 'http://localhost:8771';
+      }
 
       // Generate M3U content (完整格式，包含 DRM 信息和原始 URL)
       let m3uContent = '#EXTM3U\n';

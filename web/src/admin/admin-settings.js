@@ -10,6 +10,7 @@
           if (s.timeout) document.getElementById('settingTimeout').value = s.timeout;
           if (s.playbackMode) document.getElementById('settingPlaybackMode').value = s.playbackMode;
           if (s.m3uProxyAuth !== undefined) document.getElementById('settingM3uProxyAuth').value = String(s.m3uProxyAuth);
+          if (s.m3uRemoteBaseUrl !== undefined) document.getElementById('settingRemoteBaseUrl').value = s.m3uRemoteBaseUrl;
         }
       } catch (e) {}
     }
@@ -22,7 +23,8 @@
           cacheEpgTtl: parseInt(document.getElementById('settingCacheEpg').value) || 30,
           timeout: parseInt(document.getElementById('settingTimeout').value) || 40,
           playbackMode: document.getElementById('settingPlaybackMode').value,
-          m3uProxyAuth: document.getElementById('settingM3uProxyAuth').value === 'true'
+          m3uProxyAuth: document.getElementById('settingM3uProxyAuth').value === 'true',
+          m3uRemoteBaseUrl: (document.getElementById('settingRemoteBaseUrl').value || '').trim().replace(/\/+$/, '')
         };
         
         console.log('[Settings] 保存设置:', data);

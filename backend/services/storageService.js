@@ -466,6 +466,7 @@ class StorageService {
       cacheTtl: 3600,
       authEnabled: false,
       sessionTimeout: 604800,
+      m3uRemoteBaseUrl: '',
       updatedAt: new Date().toISOString()
     };
   }
