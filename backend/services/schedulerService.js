@@ -179,7 +179,18 @@ class SchedulerService {
     const task = tasks.find(t => t.id === id);
     if (!task) throw new Error('任务不存在');
 
-    return this._executeTask(task);
+    const result = await this._executeTask(task);
+
+    // 手动执行后重新调度定时器，确保下次定时执行不受影响
+    if (task.enabled) {
+      const freshTasks = await this.getTasks();
+      const freshTask = freshTasks.find(t => t.id === id);
+      if (freshTask && freshTask.enabled) {
+        this.scheduleTask(freshTask);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -201,8 +212,13 @@ class SchedulerService {
 
     let nextMs = getNextCronDate(task.cron).getTime() - Date.now();
     if (nextMs < 0) {
-      console.warn(`[Scheduler] 任务 ${task.name} 下次执行时间已过期，跳过`);
-      return;
+      // 极端情况下计算出的时间已过，重新计算（getNextCronDate 从下一分钟开始，不应出现此情况）
+      console.warn(`[Scheduler] 任务 ${task.name} 下次执行时间异常 (nextMs=${nextMs})，重新计算`);
+      nextMs = getNextCronDate(task.cron).getTime() - Date.now();
+      if (nextMs < 0) {
+        // 仍然为负，1秒后重试
+        nextMs = 1000;
+      }
     }
 
     const nextDate = new Date(Date.now() + nextMs);
@@ -217,7 +233,10 @@ class SchedulerService {
         const tid = setTimeout(async () => {
           this.timers.delete(taskId);
           try {
-            await this._executeTask(task);
+            // 从存储读取最新任务配置，确保使用最新的 importConfig 等设置
+            const latestTasks = await this.getTasks();
+            const latestTask = latestTasks.find(t => t.id === taskId) || task;
+            await this._executeTask(latestTask);
           } catch (e) {
             console.error(`[Scheduler] 任务执行异常: ${task.name}`, e);
           }

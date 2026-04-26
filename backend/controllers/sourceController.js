@@ -813,7 +813,8 @@ class SourceController {
   // 从 M3U URL 导入频道
   async _importChannelsFromM3U(url, sourceId, userAgent = null, importOptions = {}) {
     const Channel = require('../models/Channel');
-    const { proxyMode: optProxyMode, playerType: optPlayerType, group: optGroup, duplicateMode = 'replace' } = importOptions;
+    const { proxyMode: optProxyMode, playerType: optPlayerType, group: optGroup } = importOptions;
+    const duplicateMode = importOptions.duplicateMode || 'replace';
 
     try {
       const content = await this._fetchContent(url, userAgent);
