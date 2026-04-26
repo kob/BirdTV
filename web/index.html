@@ -121,6 +121,43 @@
         overflow-y: auto;
         -webkit-overflow-scrolling: touch;
       }
+
+      /* 侧边栏展开时：固定浮层 + 遮罩 */
+      .shell:not(.sidebar-hidden) .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 308px;
+        max-width: 90vw;
+        z-index: 999;
+        overflow-y: auto;
+        background: rgba(8, 16, 30, 0.98);
+        backdrop-filter: blur(24px);
+        box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
+        border-radius: 0 18px 18px 0;
+      }
+      .shell:not(.sidebar-hidden)::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 998;
+      }
+
+      /* 侧边栏收起时：完全隐藏 */
+      .shell.sidebar-hidden .sidebar {
+        display: none;
+      }
+
+      /* 按钮 */
+      .sidebar-toggle-btn { display: flex; }
+      .shell.sidebar-hidden .sidebar-toggle-btn { display: none; }
+      .shell.sidebar-hidden .sidebar-float-toggle { display: flex; }
+      .shell:not(.sidebar-hidden) .sidebar-float-toggle { display: none; }
+      .shell.sidebar-hidden .main {
+        grid-column: 1;
+      }
     }
 
     .sidebar-head {
@@ -240,25 +277,6 @@
     }
     .shell.sidebar-hidden .main {
       grid-column: 1 / -1;
-    }
-    @media (max-width: 1080px) {
-      .sidebar-toggle-btn { display: flex; }
-      .shell.sidebar-hidden .sidebar-toggle-btn { display: none; }
-      .shell.sidebar-hidden .sidebar-float-toggle { display: flex; }
-      .shell:not(.sidebar-hidden) .sidebar-float-toggle { display: none; }
-      .shell:not(.sidebar-hidden) .sidebar {
-        transform: none;
-        opacity: 1;
-        pointer-events: auto;
-        position: relative;
-        z-index: auto;
-      }
-      .shell.sidebar-hidden .sidebar {
-        display: none;
-      }
-      .shell.sidebar-hidden .main {
-        grid-column: 1;
-      }
     }
 
     .sidebar .card {

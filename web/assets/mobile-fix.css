@@ -1,14 +1,14 @@
 /* 移动端侧边栏按钮修复 */
-@media (max-width: 1180px) {
+@media (max-width: 1080px) {
   /* 增加按钮点击区域 */
   .sidebar-toggle {
     width: 40px !important;
     height: 40px !important;
     border-radius: 10px !important;
-    z-index: 999 !important;
+    z-index: 1001 !important;
   }
 
-  /* 移动端侧边栏占位 */
+  /* 移动端侧边栏占位线 */
   .shell::before {
     content: '';
     position: absolute;
@@ -20,7 +20,7 @@
     pointer-events: none;
   }
 
-  /* 移动端展开侧边栏时的遮罩层 - 使用正确的选择器匹配 sidebar-hidden */
+  /* 移动端展开侧边栏时的遮罩层 */
   .shell:not(.sidebar-hidden)::after {
     content: '';
     position: fixed;
@@ -31,18 +31,23 @@
 
   /* 侧边栏在移动端展开时的样式 */
   .shell:not(.sidebar-hidden) .sidebar {
-    position: fixed;
+    position: fixed !important;
     top: 0;
     left: 0;
     bottom: 0;
     width: 308px;
     max-width: 90vw;
-    z-index: 999;
+    z-index: 999 !important;
     overflow-y: auto;
     background: rgba(8, 16, 30, 0.98);
     backdrop-filter: blur(24px);
     box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
     border-radius: 0 18px 18px 0;
+  }
+
+  /* 侧边栏在移动端收起时隐藏 */
+  .shell.sidebar-hidden .sidebar {
+    display: none !important;
   }
 
   /* 按钮在移动端收起时的位置 */
@@ -52,12 +57,13 @@
     transform: translate(0, 0) !important;
   }
 
-  /* 按钮在移动端展开时的位置 */
+  /* 按钮在移动端展开时的位置 - 在侧边栏右边缘 */
   .shell:not(.sidebar-hidden) .sidebar-toggle {
     left: 100% !important;
     max-width: 90vw;
     transform: translate(-100%, 0) !important;
   }
+}
 
 /* 增加按钮的可点击区域 */
 .sidebar-toggle::before {
@@ -92,8 +98,6 @@
     display: block !important;
 }
 
-}
-
 /* 触摸设备优化 */
 @media (hover: none) and (pointer: coarse) {
   .sidebar-toggle {
@@ -112,7 +116,7 @@
 }
 
 /* 移动端主内容区域间距 */
-@media (max-width: 1180px) {
+@media (max-width: 1080px) {
   .main {
     padding-left: 20px !important;
   }
