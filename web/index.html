@@ -1122,6 +1122,10 @@
         var shell = document.querySelector('.shell');
         var toggleBtn = document.getElementById('sidebarToggleBtn');
         var floatToggle = document.getElementById('sidebarFloatToggle');
+        function hideSidebar() {
+          shell.classList.add('sidebar-hidden');
+          try { localStorage.setItem('birdtv_sidebar_hidden', '1'); } catch(e) {}
+        }
         function toggle() {
           shell.classList.toggle('sidebar-hidden');
           var hidden = shell.classList.contains('sidebar-hidden');
@@ -1129,10 +1133,19 @@
         }
         if (toggleBtn) toggleBtn.addEventListener('click', toggle);
         if (floatToggle) floatToggle.addEventListener('click', toggle);
-        // 恢复上次的侧边栏状态
+        // 点击遮罩层关闭侧边栏（移动端）
+        shell.addEventListener('click', function(e) {
+          if (e.target === shell && !shell.classList.contains('sidebar-hidden')) {
+            hideSidebar();
+          }
+        });
+        // 恢复上次的侧边栏状态，手机端默认收起
         try {
-          if (localStorage.getItem('birdtv_sidebar_hidden') === '1') {
+          var isMobile = window.innerWidth <= 1080;
+          var saved = localStorage.getItem('birdtv_sidebar_hidden');
+          if (saved === '1' || (saved === null && isMobile)) {
             shell.classList.add('sidebar-hidden');
+          }
           }
         } catch(e) {}
       })();

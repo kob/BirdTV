@@ -20,19 +20,17 @@
     pointer-events: none;
   }
 
-  /* 移动端展开侧边栏时的遮罩层 */
-  body:not(.sidebar-collapsed) .shell::after {
+  /* 移动端展开侧边栏时的遮罩层 - 使用正确的选择器匹配 sidebar-hidden */
+  .shell:not(.sidebar-hidden)::after {
     content: '';
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.5);
     z-index: 998;
-    opacity: 0;
-    animation: fadeIn 0.2s forwards;
   }
 
   /* 侧边栏在移动端展开时的样式 */
-  body:not(.sidebar-collapsed) .sidebar {
+  .shell:not(.sidebar-hidden) .sidebar {
     position: fixed;
     top: 0;
     left: 0;
@@ -48,14 +46,14 @@
   }
 
   /* 按钮在移动端收起时的位置 */
-  body.sidebar-collapsed .sidebar-toggle {
+  .shell.sidebar-hidden .sidebar-toggle {
     left: 24px !important;
     top: 14px !important;
     transform: translate(0, 0) !important;
   }
 
   /* 按钮在移动端展开时的位置 */
-  body:not(.sidebar-collapsed) .sidebar-toggle {
+  .shell:not(.sidebar-hidden) .sidebar-toggle {
     left: 100% !important;
     max-width: 90vw;
     transform: translate(-100%, 0) !important;
@@ -94,9 +92,6 @@
     display: block !important;
 }
 
-@keyframes fadeIn {
-    to { opacity: 1; }
-}
 }
 
 /* 触摸设备优化 */
