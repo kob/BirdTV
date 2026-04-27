@@ -2287,12 +2287,25 @@ async function handleProxyRequest(req, res, url, config) {
   }
 
   if (isRedirectCheck) {
-    const info = await proxyRequestToRemote(sourceUrl, req, res, {
-      userAgent,
-      method: 'HEAD',
-      maxRedirects,
-      config
-    });
+    let info;
+    try {
+      info = await proxyRequestToRemote(sourceUrl, req, res, {
+        userAgent,
+        method: 'HEAD',
+        maxRedirects,
+        config
+      });
+    } catch (err) {
+      if (!res.headersSent) {
+        res.writeHead(502, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'X-Proxy-Error': String(err.message || err)
+        });
+        res.end(`Proxy error (HEAD): ${err.message || err}`);
+      }
+      return;
+    }
 
     const outHeaders = {
       'Content-Type': 'text/plain; charset=utf-8',
@@ -2314,12 +2327,23 @@ async function handleProxyRequest(req, res, url, config) {
     return;
   }
 
-  await proxyRequestToRemote(sourceUrl, req, res, {
-    userAgent,
-    method: req.method || 'GET',
-    maxRedirects,
-    config
-  });
+  try {
+    await proxyRequestToRemote(sourceUrl, req, res, {
+      userAgent,
+      method: req.method || 'GET',
+      maxRedirects,
+      config
+    });
+  } catch (err) {
+    if (!res.headersSent) {
+      res.writeHead(502, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'X-Proxy-Error': String(err.message || err)
+      });
+      res.end(`Proxy error: ${err.message || err}`);
+    }
+  }
 }
 
 // ==================== 主服务器 ====================
