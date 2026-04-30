@@ -43,12 +43,12 @@ services:
       - "${KVROCKS_PORT:-6666}:6666"
     volumes:
       - kvrocks-data:/var/lib/kvrocks
-    command: kvrocks -c /etc/kvrocks/kvrocks.conf
     healthcheck:
-      test: ["CMD-SHELL", "echo PING | nc -w 1 localhost 6666 | grep -q PONG"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD", "redis-cli", "-h", "localhost", "-p", "6666", "PING"]
+      interval: 5s
+      timeout: 3s
       retries: 10
+      start_period: 5s
 
 volumes:
   birdtv-data:

@@ -202,7 +202,7 @@ do_start() {
         info "等待 KVRocks 启动..."
         local retry=0
         while [[ $retry -lt 30 ]]; do
-            if docker exec birdtv-kvrocks sh -c "echo PING | nc -w 1 localhost 6666" 2>/dev/null | grep -q PONG; then
+            if docker exec birdtv-kvrocks redis-cli -h localhost -p 6666 PING 2>/dev/null | grep -q PONG; then
                 break
             fi
             retry=$((retry + 1))
