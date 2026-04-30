@@ -2625,7 +2625,7 @@ async function startServer(configInput = {}) {
   // 优先使用环境变量指定的证书，否则尝试自动生成自签名证书
   let sslKeyPath = process.env.BIRDTV_SSL_KEY || '';
   let sslCertPath = process.env.BIRDTV_SSL_CERT || '';
-  const sslPort = parseInt(process.env.BIRDTV_SSL_PORT || '0', 10) || config.port;
+  const sslPort = parseInt(process.env.BIRDTV_SSL_PORT || '0', 10) || (config.port + 1);
   let activeServer = httpServer;
   let protocol = 'http';
 
@@ -2646,9 +2646,14 @@ async function startServer(configInput = {}) {
       activeServer = httpsServer;
       protocol = 'https';
 
-      // 同时启动 HTTP 服务器做重定向
-      httpServer.listen(config.port, config.host, () => {
-        console.log(`HTTP → HTTPS 重定向：http://${config.host}:${config.port}`);
+      // 同时启动 HTTP 服务器做 301 重定向到 HTTPS
+      const redirectServer = http.createServer((req, res) => {
+        const host = req.headers.host || `localhost:${config.port}`;
+        res.writeHead(301, { Location: `https://${host.replace(/:\d+$/, '')}:${sslPort}${req.url}` });
+        res.end();
+      });
+      redirectServer.listen(config.port, config.host, () => {
+        console.log(`HTTP → HTTPS 重定向：http://${config.host}:${config.port} → https://...:${sslPort}`);
       });
 
       activeServer.listen(sslPort, config.host, () => {
