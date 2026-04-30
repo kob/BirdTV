@@ -2354,7 +2354,7 @@ function createAppServer(configInput = {}) {
   console.log('[Config] esaProxyUrl:', config.esaProxyUrl || '(未配置)');
   console.log('[Config] esaProxyDomains:', config.esaProxyDomains.size === 0 ? '(无)' : Array.from(config.esaProxyDomains).join(', '));
 
-  const server = http.createServer(async (req, res) => {
+  const requestHandler = async (req, res) => {
     const startedAt = Date.now();
     let pathname = '-';
     
@@ -2515,7 +2515,9 @@ function createAppServer(configInput = {}) {
         elapsedMs: Date.now() - startedAt
       });
     }
-  });
+  };
+
+  const server = http.createServer(requestHandler);
 
   server.on('error', (err) => {
     if (err && err.code === 'EADDRINUSE') {
@@ -2525,7 +2527,34 @@ function createAppServer(configInput = {}) {
     log('error', 'server startup error', { error: String(err && err.message ? err.message : err) });
   });
 
-  return { server, config };
+  return { server, requestHandler, config };
+}
+
+// ==================== 自签名证书生成 ====================
+
+function generateSelfSignedCert() {
+  const { execSync } = require('child_process');
+  const certDir = path.resolve(__dirname, 'ssl');
+  const keyPath = path.join(certDir, 'server-key.pem');
+  const certPath = path.join(certDir, 'server-cert.pem');
+
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    return { keyPath, certPath };
+  }
+
+  try {
+    if (!fs.existsSync(certDir)) fs.mkdirSync(certDir, { recursive: true });
+    console.log('[SSL] 自动生成自签名证书...');
+    execSync(`openssl req -x509 -newkey rsa:2048 -keyout "${keyPath}" -out "${certPath}" -days 365 -nodes -subj "/CN=birdtv-local"`, {
+      stdio: 'pipe',
+      timeout: 10000
+    });
+    console.log('[SSL] 自签名证书已生成:', certDir);
+    return { keyPath, certPath };
+  } catch (err) {
+    console.warn('[SSL] 自签名证书生成失败:', err.message);
+    return null;
+  }
 }
 
 // ==================== 服务器启动/停止 ====================
@@ -2590,10 +2619,81 @@ async function startServer(configInput = {}) {
   await scheduler.start();
   serverState.scheduler = scheduler;
 
-  const { server } = createAppServer(config);
-  serverState.server = server;
+  const { server: httpServer, requestHandler, config: appConfig } = createAppServer(config);
 
-  server.listen(config.port, config.host, () => {
+  // 检测 SSL 证书，自动启用 HTTPS
+  // 优先使用环境变量指定的证书，否则尝试自动生成自签名证书
+  let sslKeyPath = process.env.BIRDTV_SSL_KEY || '';
+  let sslCertPath = process.env.BIRDTV_SSL_CERT || '';
+  const sslPort = parseInt(process.env.BIRDTV_SSL_PORT || '0', 10) || config.port;
+  let activeServer = httpServer;
+  let protocol = 'http';
+
+  if (!sslKeyPath || !sslCertPath) {
+    const autoCert = generateSelfSignedCert();
+    if (autoCert) {
+      sslKeyPath = autoCert.keyPath;
+      sslCertPath = autoCert.certPath;
+    }
+  }
+
+  if (sslKeyPath && sslCertPath) {
+    try {
+      const sslKey = fs.readFileSync(sslKeyPath);
+      const sslCert = fs.readFileSync(sslCertPath);
+      const httpsServer = https.createServer({ key: sslKey, cert: sslCert }, requestHandler);
+      serverState.server = httpsServer;
+      activeServer = httpsServer;
+      protocol = 'https';
+
+      // 同时启动 HTTP 服务器做重定向
+      httpServer.listen(config.port, config.host, () => {
+        console.log(`HTTP → HTTPS 重定向：http://${config.host}:${config.port}`);
+      });
+
+      activeServer.listen(sslPort, config.host, () => {
+        console.log('='.repeat(60));
+        console.log('服务器已启动 (HTTPS)');
+        console.log('='.repeat(60));
+        console.log(`监听地址：https://${config.host}:${sslPort}`);
+        console.log(`授权状态：${auth.isEnabled() ? '✓ 已启用' : '✗ 已禁用'}`);
+        console.log(`数据目录：${config.dataDir}`);
+        console.log(`缓存目录：${config.cacheRoot}`);
+        console.log(`静态文件：${config.staticRoot}`);
+        if (upstreamProxyUrl) {
+          console.log(`上游代理：${upstreamProxyUrl}`);
+        }
+        console.log('');
+        console.log('服务端点:');
+        console.log('─'.repeat(60));
+        console.log(`Web 界面：https://localhost:${sslPort}/`);
+        console.log(`API 接口：https://localhost:${sslPort}/api/`);
+        console.log(`代理服务：https://localhost:${sslPort}/m3u-proxy?url=<encoded_url>`);
+        console.log(`健康检查：https://localhost:${sslPort}/health`);
+        console.log('─'.repeat(60));
+        console.log('='.repeat(60));
+
+        log('info', 'server started', {
+          url: `https://${config.host}:${sslPort}`,
+          authEnabled: config.authEnabled,
+          ssl: true
+        });
+
+        if (process.send) {
+          process.send('ready');
+        }
+      });
+      return activeServer;
+    } catch (sslErr) {
+      console.warn('[SSL] 证书加载失败，回退到 HTTP:', sslErr.message);
+      serverState.server = httpServer;
+      activeServer = httpServer;
+    }
+  } else {
+    serverState.server = httpServer;
+  }
+
+  activeServer.listen(config.port, config.host, () => {
     console.log('='.repeat(60));
     console.log('服务器已启动');
     console.log('='.repeat(60));
@@ -2613,11 +2713,14 @@ async function startServer(configInput = {}) {
     console.log(`代理服务：http://localhost:${config.port}/m3u-proxy?url=<encoded_url>`);
     console.log(`健康检查：http://localhost:${config.port}/health`);
     console.log('─'.repeat(60));
+    console.log('⚠ 注意：DRM/ClearKey 播放需要 HTTPS 环境');
+    console.log('  设置 BIRDTV_SSL_KEY 和 BIRDTV_SSL_CERT 环境变量启用 HTTPS');
     console.log('='.repeat(60));
 
     log('info', 'server started', {
       url: `http://${config.host}:${config.port}`,
-      authEnabled: config.authEnabled
+      authEnabled: config.authEnabled,
+      ssl: false
     });
 
     // 通知 PM2 进程已就绪
