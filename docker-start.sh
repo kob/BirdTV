@@ -18,6 +18,9 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 ENV_EXAMPLE="${SCRIPT_DIR}/.env.example"
 COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.yml"
 
+# KVRocks 选择标记文件（记录用户选择，避免每次询问）
+KVROCKS_FLAG="${SCRIPT_DIR}/.kvrocks_choice"
+
 # ==================== 检查 Docker ====================
 check_docker() {
     if ! command -v docker &>/dev/null; then
@@ -64,9 +67,6 @@ init_env() {
         info "已自动生成 JWT 密钥"
     fi
 
-    # docker-compose 中 AUTH_REDIS_HOST 默认是 kvrocks，确保 .env 也一致
-    sed -i 's|^AUTH_REDIS_HOST=.*|AUTH_REDIS_HOST=kvrocks|' "$ENV_FILE"
-
     info ".env 文件已创建，JWT 密钥已自动生成"
     echo ""
     warn "请检查 .env 中的以下配置："
@@ -76,8 +76,96 @@ init_env() {
     echo ""
 }
 
+# ==================== 询问 KVRocks 配置 ====================
+ask_kvrocks() {
+    # 如果已有选择记录，直接读取
+    if [[ -f "$KVROCKS_FLAG" ]]; then
+        source "$KVROCKS_FLAG"
+        if [[ "${USE_KVROCKS:-}" == "yes" ]]; then
+            info "已记录配置：使用内置 KVRocks"
+            return
+        elif [[ "${USE_KVROCKS:-}" == "no" && -n "${KVROCKS_HOST:-}" ]]; then
+            info "已记录配置：使用外部 KVRocks (${KVROCKS_HOST}:${KVROCKS_PORT:-6666})"
+            return
+        fi
+    fi
+
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  KVRocks 数据库配置${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  KVRocks 是 BirdTV 的数据存储引擎（频道、认证、设置等）"
+    echo ""
+    echo -e "  ${YELLOW}1)${NC} 使用内置 KVRocks（推荐，自动创建容器）"
+    echo -e "  ${YELLOW}2)${NC} 使用已有的 KVRocks（手动填写地址）"
+    echo ""
+    read -rp "  请选择 [1/2，默认 1]: " kv_choice
+    kv_choice="${kv_choice:-1}"
+
+    if [[ "$kv_choice" == "1" ]]; then
+        # 选择内置 KVRocks
+        cat > "$KVROCKS_FLAG" <<EOF
+USE_KVROCKS=yes
+KVROCKS_HOST=kvrocks
+KVROCKS_PORT=6666
+EOF
+        # 更新 .env 中的 KVRocks 配置
+        ensure_env_var "AUTH_REDIS_HOST" "kvrocks"
+        ensure_env_var "AUTH_REDIS_PORT" "6666"
+        info "已选择：使用内置 KVRocks"
+    else
+        # 选择外部 KVRocks
+        echo ""
+        echo -e "  ${CYAN}提示：${NC}"
+        echo -e "    - 如果 KVRocks 在同一台机器上，可填写 ${YELLOW}host.docker.internal${NC}（macOS/Windows）"
+        echo -e "    - 如果 KVRocks 在同一台 Linux 机器上，可填写宿主机 IP（如 ${YELLOW}172.17.0.1${NC}）"
+        echo -e "    - 如果 KVRocks 在其他服务器上，填写对应 IP 即可"
+        echo ""
+        read -rp "  请输入 KVRocks IP 地址: " kv_host
+        if [[ -z "$kv_host" ]]; then
+            error "IP 地址不能为空"
+        fi
+
+        read -rp "  请输入 KVRocks 端口 [默认 6666]: " kv_port
+        kv_port="${kv_port:-6666}"
+
+        cat > "$KVROCKS_FLAG" <<EOF
+USE_KVROCKS=no
+KVROCKS_HOST=${kv_host}
+KVROCKS_PORT=${kv_port}
+EOF
+
+        # 更新 .env 中的 KVRocks 配置
+        ensure_env_var "AUTH_REDIS_HOST" "$kv_host"
+        ensure_env_var "AUTH_REDIS_PORT" "$kv_port"
+        info "已选择：使用外部 KVRocks (${kv_host}:${kv_port})"
+    fi
+
+    echo ""
+}
+
+# 确保 .env 中某个变量存在且值为指定值
+ensure_env_var() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    else
+        echo "${key}=${value}" >> "$ENV_FILE"
+    fi
+}
+
 # ==================== 显示菜单 ====================
 show_menu() {
+    # 读取当前 KVRocks 配置
+    local kv_info="内置 KVRocks"
+    if [[ -f "$KVROCKS_FLAG" ]]; then
+        source "$KVROCKS_FLAG"
+        if [[ "${USE_KVROCKS:-yes}" == "no" ]]; then
+            kv_info="外部 ${KVROCKS_HOST:-?}:${KVROCKS_PORT:-6666}"
+        fi
+    fi
+
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║          BirdTV Docker 管理          ║${NC}"
@@ -89,33 +177,46 @@ show_menu() {
     echo -e "${CYAN}║${NC}  5. 查看日志                         ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  6. 更新镜像并重启                   ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  7. 重置数据（危险）                  ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  8. 重新配置 KVRocks                 ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  0. 退出                             ${CYAN}║${NC}"
+    echo -e "${CYAN}╠══════════════════════════════════════╣${NC}"
+    echo -e "${CYAN}║${NC}  KVRocks: ${kv_info}"
     echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
     echo ""
-    read -rp "请选择操作 [0-7]: " choice
+    read -rp "请选择操作 [0-8]: " choice
 }
 
 # ==================== 启动服务 ====================
 do_start() {
     info "正在启动 BirdTV 服务..."
     cd "$SCRIPT_DIR"
-    $COMPOSE_CMD --env-file "$ENV_FILE" up -d
 
-    echo ""
-    info "等待 KVRocks 健康检查..."
-    local retry=0
-    while [[ $retry -lt 30 ]]; do
-        if docker exec birdtv-kvrocks curl -sf http://localhost:6666 &>/dev/null; then
-            break
+    # 读取 KVRocks 配置
+    source "$KVROCKS_FLAG"
+
+    if [[ "${USE_KVROCKS:-yes}" == "yes" ]]; then
+        # 使用内置 KVRocks，启动所有服务
+        $COMPOSE_CMD --env-file "$ENV_FILE" up -d
+
+        echo ""
+        info "等待 KVRocks 启动..."
+        local retry=0
+        while [[ $retry -lt 30 ]]; do
+            if docker exec birdtv-kvrocks sh -c "echo PING | nc -w 1 localhost 6666" 2>/dev/null | grep -q PONG; then
+                break
+            fi
+            retry=$((retry + 1))
+            sleep 2
+        done
+
+        if [[ $retry -eq 30 ]]; then
+            warn "KVRocks 启动超时，请手动确认状态"
+        else
+            info "KVRocks 已就绪"
         fi
-        retry=$((retry + 1))
-        sleep 2
-    done
-
-    if [[ $retry -eq 30 ]]; then
-        warn "KVRocks 健康检查超时，请手动确认"
     else
-        info "KVRocks 已就绪"
+        # 使用外部 KVRocks，仅启动 birdtv（跳过依赖检查）
+        $COMPOSE_CMD --env-file "$ENV_FILE" up -d --no-deps birdtv
     fi
 
     # 获取映射端口
@@ -180,7 +281,22 @@ do_reset() {
 
     cd "$SCRIPT_DIR"
     $COMPOSE_CMD --env-file "$ENV_FILE" down -v
+    rm -f "$KVROCKS_FLAG"
     info "所有数据已清除，重新启动请选择 1"
+}
+
+# ==================== 重新配置 KVRocks ====================
+do_reconfig_kvrocks() {
+    # 先停止现有服务
+    info "正在停止服务..."
+    cd "$SCRIPT_DIR"
+    $COMPOSE_CMD --env-file "$ENV_FILE" down 2>/dev/null || true
+
+    # 删除选择记录，重新询问
+    rm -f "$KVROCKS_FLAG"
+    ask_kvrocks
+
+    info "KVRocks 配置已更新，请选择 1 启动服务"
 }
 
 # ==================== 主流程 ====================
@@ -190,7 +306,7 @@ main() {
 
     # 如果带参数，直接执行对应操作
     case "${1:-}" in
-        start)   do_start;  return ;;
+        start)   ask_kvrocks; do_start;  return ;;
         stop)    do_stop;   return ;;
         restart) do_restart; return ;;
         status)  do_status; return ;;
@@ -200,6 +316,7 @@ main() {
     esac
 
     # 交互式菜单
+    ask_kvrocks
     while true; do
         show_menu
         case "$choice" in
@@ -210,8 +327,9 @@ main() {
             5) do_logs   ;;
             6) do_update ;;
             7) do_reset  ;;
+            8) do_reconfig_kvrocks ;;
             0) info "再见！"; exit 0 ;;
-            *) error "无效选择" ;;
+            *) warn "无效选择" ;;
         esac
         echo ""
         read -rp "按回车键继续..."
