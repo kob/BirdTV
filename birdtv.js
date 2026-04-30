@@ -625,14 +625,9 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     }
 
     // 检测是否为 segment URL
-    // Segment URL（.cmfa, .cmfv, .cmft, .stpp 等）应该直接访问，不走任何代理
+    // 所有 URL（包括 segment）都走代理，因为上游 CDN 缺少 CORS 头
+    // 直接访问 segment 会被浏览器 CORS 策略拦截
     function isSegmentUrl(url) {
-      if (!url) return false;
-      const lower = String(url).toLowerCase();
-      // 检测 segment 扩展名（DASH/HLS 媒体片段，应直接访问 CDN 不走代理）
-      if (/\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4[a-z]|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i.test(lower)) {
-        return true;
-      }
       return false;
     }
 

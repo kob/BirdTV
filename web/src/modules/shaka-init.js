@@ -1088,15 +1088,9 @@ function rewriteShakaProxyRelativeUri(uri) {
             }
         } catch {}
 
-        // 关键修复：segment URL（媒体片段）不代理，直接访问 CDN
-        // 只有 manifest 需要通过代理解决 WAF，segment 直接访问 CDN
-        const segmentPatterns = /\.(cmfa|cmfv|cmft|stpp|_stpp\.|m4[a-z]|mp4|ts|aac|ac3|ec3|webm|mkv|ogg|opus)\b/i;
-        if (segmentPatterns.test(absoluteTarget)) {
-            // HTTP→HTTPS 升级：避免 Mixed Content 阻断
-            const upgraded = absoluteTarget.replace(/^http:/i, 'https:');
-            console.log('[Shaka] Segment URL 不代理，直接访问:', upgraded.substring(0, 100) + '...');
-            return upgraded;
-        }
+        // 所有 URL（包括 segment）都走代理，因为上游 CDN 缺少 CORS 头
+        // 直接访问 segment 会被浏览器 CORS 策略拦截（如 TVB CDN edgeware-live.edgeware.tvb.com）
+        // 代理服务器已正确设置 Access-Control-Allow-Origin: *
 
         return toSameOriginM3UProxyUrl(absoluteTarget) || absoluteTarget;
     } catch { return raw; }
