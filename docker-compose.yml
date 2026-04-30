@@ -1,9 +1,6 @@
 services:
   birdtv:
-    image: ${DOCKER_IMAGE:-birdtv/birdtv}:latest
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${DOCKER_IMAGE:-kob521/birdtv}:latest
     container_name: birdtv
     restart: unless-stopped
     ports:

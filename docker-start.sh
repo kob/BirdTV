@@ -99,11 +99,6 @@ show_menu() {
 do_start() {
     info "正在启动 BirdTV 服务..."
     cd "$SCRIPT_DIR"
-    # 如果镜像不存在则先构建
-    if ! docker image inspect "${DOCKER_IMAGE:-birdtv/birdtv}:latest" &>/dev/null; then
-        info "未检测到本地镜像，正在构建（首次构建可能需要几分钟）..."
-        $COMPOSE_CMD --env-file "$ENV_FILE" build
-    fi
     $COMPOSE_CMD --env-file "$ENV_FILE" up -d
 
     echo ""
@@ -164,9 +159,9 @@ do_logs() {
 
 # ==================== 更新镜像 ====================
 do_update() {
-    info "正在重新构建镜像..."
+    info "正在拉取最新镜像..."
     cd "$SCRIPT_DIR"
-    $COMPOSE_CMD --env-file "$ENV_FILE" build --no-cache
+    $COMPOSE_CMD --env-file "$ENV_FILE" pull
 
     info "正在重启服务..."
     $COMPOSE_CMD --env-file "$ENV_FILE" up -d
