@@ -46,9 +46,10 @@ export const state = {
     },
 
     // ─── 连接/代理模式 ───
-    connectionMode: localStorage.getItem('tvplayer.connectionMode') || 'auto',
-    tempProxyMode: localStorage.getItem('tvplayer.tempProxyMode') || 'auto',
-    proxyMode: localStorage.getItem('tvplayer.proxyMode') || 'auto',
+    // 全代理版本：默认使用 m3u-proxy 模式，所有流量都通过服务端转发
+    connectionMode: localStorage.getItem('tvplayer.connectionMode') || 'server',
+    tempProxyMode: 'm3u-proxy',  // 全代理版本：强制使用代理
+    proxyMode: 'm3u-proxy',      // 全代理版本：强制使用代理
 
     // ─── 重定向缓存 ───
     redirectCache: new Map(),

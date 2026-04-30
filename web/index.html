@@ -977,13 +977,11 @@
                                 <option value="native">原生</option>
                             </select>
                         </label>
-                        <!-- 连接模式选择器已隐藏 - 完全服务端模式 -->
+                        <!-- 全代理版本：强制使用代理，隐藏模式选择器 -->
                         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">
                             代理模式
-                            <select id="tempProxyModeSelect" style="width:auto;min-width:140px;padding:6px 30px 6px 10px;font-size:12px;">
-                                <option value="auto">自动（智能选择）</option>
-                                <option value="m3u-proxy">m3u-proxy（通用）</option>
-                                <option value="direct">本地直连（无代理）</option>
+                            <select id="tempProxyModeSelect" style="width:auto;min-width:140px;padding:6px 30px 6px 10px;font-size:12px;" disabled>
+                                <option value="m3u-proxy">全代理模式（服务端转发）</option>
                             </select>
                         </label>
                         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;font-weight:600;">

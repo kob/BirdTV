@@ -1,6 +1,9 @@
 services:
   birdtv:
-    image: ghcr.io/kob/birdtv:latest
+    image: ${DOCKER_IMAGE:-birdtv/birdtv}:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: birdtv
     restart: unless-stopped
     ports:

@@ -1,5 +1,6 @@
 /**
  * proxy.js - 代理与网络模块
+ * 全代理版本：所有流量都通过服务端转发
  */
 
 import { state } from './state.js';
@@ -9,6 +10,9 @@ import {
     DEFAULT_PROXY_UA
 } from './constants.js';
 import { getHeaderCaseInsensitive } from './utils.js';
+
+// ─── 全代理模式常量 ───
+export const FORCE_PROXY_MODE = true;  // 全局开关：强制使用代理
 
 // ─── 代理模式管理 ───
 
@@ -26,10 +30,16 @@ export function setConnectionMode(mode) {
 }
 
 export function getTempProxyMode() {
-    return state.tempProxyMode;
+    // 全代理版本：始终返回 'm3u-proxy'
+    return FORCE_PROXY_MODE ? 'm3u-proxy' : state.tempProxyMode;
 }
 
 export function setTempProxyMode(mode) {
+    // 全代理版本：忽略直连模式设置
+    if (FORCE_PROXY_MODE) {
+        state.tempProxyMode = 'm3u-proxy';
+        return true;
+    }
     if (['auto', 'm3u-proxy', 'direct'].includes(mode)) {
         state.tempProxyMode = mode;
         localStorage.setItem('tvplayer.tempProxyMode', mode);
@@ -39,10 +49,16 @@ export function setTempProxyMode(mode) {
 }
 
 export function getProxyMode() {
-    return state.proxyMode;
+    // 全代理版本：始终返回 'm3u-proxy'
+    return FORCE_PROXY_MODE ? 'm3u-proxy' : state.proxyMode;
 }
 
 export function setProxyMode(mode) {
+    // 全代理版本：忽略直连模式设置
+    if (FORCE_PROXY_MODE) {
+        state.proxyMode = 'm3u-proxy';
+        return true;
+    }
     if (['auto', 'm3u-proxy', 'direct'].includes(mode)) {
         state.proxyMode = mode;
         localStorage.setItem('tvplayer.proxyMode', mode);
@@ -77,19 +93,22 @@ export function isLikelyHlsStreamUrl(urlLower) {
 }
 
 export function shouldUseProxy(url, preferDirectLan = false, source = null) {
-    // 全局代理模式（用户通过顶栏选择器显式设置）优先于源级配置
+    // 全代理版本：始终返回 true，所有流量都走代理
+    if (FORCE_PROXY_MODE) {
+        return true;
+    }
+
+    // 以下是原有的智能判断逻辑（保留用于参考）
     const currentMode = getTempProxyMode();
     if (currentMode === 'direct') return false;
     if (currentMode === 'm3u-proxy') return true;
 
-    // auto 模式下，回退到源级代理模式配置
     if (source && source.sourceProxyMode) {
         const sourceProxyMode = String(source.sourceProxyMode).trim().toLowerCase();
         if (sourceProxyMode === 'direct') return false;
         if (sourceProxyMode === 'proxy') return true;
     }
 
-    // auto 模式下，DASH/MPD 保持直连优先，避免自动切换到代理。
     if (isLikelyDashUrl(url)) return false;
 
     if (window.location.protocol === 'https:' && url.startsWith('http://')) {
@@ -101,13 +120,19 @@ export function shouldUseProxy(url, preferDirectLan = false, source = null) {
 /**
  * 获取当前频道实际生效的代理模式描述
  * 返回: 'proxy' | 'direct' | 'auto'
+ * 全代理版本：始终返回 'proxy'
  */
 export function getEffectiveProxyMode(url, source = null) {
+    // 全代理版本：始终返回 'proxy'
+    if (FORCE_PROXY_MODE) {
+        return 'proxy';
+    }
+
+    // 以下是原有的智能判断逻辑（保留用于参考）
     const currentMode = getTempProxyMode();
     if (currentMode === 'direct') return 'direct';
     if (currentMode === 'm3u-proxy') return 'proxy';
 
-    // auto 模式下判断实际行为
     if (source && source.sourceProxyMode) {
         const sourceProxyMode = String(source.sourceProxyMode).trim().toLowerCase();
         if (sourceProxyMode === 'direct') return 'direct';
