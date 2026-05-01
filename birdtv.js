@@ -2287,12 +2287,20 @@ async function handleProxyRequest(req, res, url, config) {
   if (isRedirectCheck) {
     let info;
     try {
-      info = await proxyRequestToRemote(sourceUrl, req, res, {
+      // 直接调用 requestRemotePayload 而非 proxyRequestToRemote
+      // 避免后者将响应写入 clientRes 导致双重写入
+      const payload = await requestRemotePayload(sourceUrl, {
         userAgent,
         method: 'HEAD',
         maxRedirects,
         config
       });
+      info = {
+        status: payload.statusCode,
+        finalUrl: payload.finalUrl || sourceUrl,
+        redirected: payload.redirected,
+        redirectCount: payload.redirectCount || 0
+      };
     } catch (err) {
       if (!res.headersSent) {
         res.writeHead(502, {
