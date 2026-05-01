@@ -98,9 +98,7 @@ export function applyShakaDrmConfigForSource(source) {
     state.shakaLicenseHeaders = runtime.licenseHeaders;
 
     const drmConfig = { retryParameters: SHAKA_RETRY };
-    if (runtime.clearKeys && Object.keys(runtime.clearKeys).length > 0) {
-        drmConfig.clearKeys = runtime.clearKeys;
-    }
+    if (runtime.clearKeys && Object.keys(runtime.clearKeys).length > 0) drmConfig.clearKeys = runtime.clearKeys;
     if (runtime.servers && Object.keys(runtime.servers).length > 0) drmConfig.servers = runtime.servers;
 
     state.player.configure({ drm: drmConfig });

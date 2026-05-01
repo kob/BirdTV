@@ -442,9 +442,8 @@ function rewriteShakaProxyRelativeUri(uri) {
             }
         } catch {}
 
-        // 所有 URL（包括 segment）都走代理，因为上游 CDN 缺少 CORS 头
-        // 直接访问 segment 会被浏览器 CORS 策略拦截（如 TVB CDN edgeware-live.edgeware.tvb.com）
-        // 代理服务器已正确设置 Access-Control-Allow-Origin: *
+        // 全代理模式：segment URL 也走代理
+        // HTTPS 部署环境下 EME/DRM 正常工作，代理解决 CORS 问题
 
         return toSameOriginM3UProxyUrl(absoluteTarget) || absoluteTarget;
     } catch { return raw; }

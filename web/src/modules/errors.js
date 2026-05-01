@@ -19,7 +19,7 @@ export function explainPlaybackError(error) {
     const codeHints = {
         1001: "网络请求超时，建议检查代理和链路延迟。",
         1002: "请求被中断，可能是源站不稳定或连接被重置。",
-        6001: "DRM 初始化失败。常见原因包括浏览器密钥系统能力不足、HEVC+CENC 组合不兼容、或密钥/许可证参数不匹配。",
+        6001: "DRM 密钥系统不可用。请确保页面使用 HTTPS 访问（安全上下文），且浏览器支持对应的加密方案。",
         6601: "检测到 CENC MPD 但未配置 DRM 参数，请填写 Widevine/PlayReady 许可证 URL 或 KID/KEY。",
         6602: "检测到 cenc_m MPD。此类流通常必须使用 Widevine/PlayReady 许可证 URL，KID/KEY 往往不足以播放。",
         6007: "许可证/密钥解析失败，请核对 KID 与 KEY。",

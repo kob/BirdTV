@@ -625,8 +625,7 @@ function rewriteMpdText(inputText, baseUrl, userAgent, authToken = null, linkId 
     }
 
     // 检测是否为 segment URL
-    // 所有 URL（包括 segment）都走代理，因为上游 CDN 缺少 CORS 头
-    // 直接访问 segment 会被浏览器 CORS 策略拦截
+    // 全代理模式：所有 URL 都走代理，HTTPS 部署环境下 EME/DRM 可正常工作
     function isSegmentUrl(url) {
       return false;
     }
