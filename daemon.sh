@@ -33,13 +33,8 @@ log() {
 
 # 检查服务是否运行
 check_service() {
-    local port=8771
-    [ -f ".env" ] && port=$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2)
-    port=${port:-8771}
-
-    # 检查进程和端口
-    if pgrep -f "node.*${SERVICE_NAME}\.js" >/dev/null 2>&1 && \
-       ss -tlnp 2>/dev/null | grep -q ":${port} "; then
+    # 检查进程是否存在
+    if pgrep -f "node.*${SERVICE_NAME}\.js" >/dev/null 2>&1; then
         return 0  # 运行中
     else
         return 1  # 未运行
@@ -168,14 +163,9 @@ daemon_loop() {
 
 # 显示状态
 show_status() {
-    local port=8771
-    [ -f ".env" ] && port=$(grep '^PORT=' .env 2>/dev/null | cut -d= -f2)
-    port=${port:-8771}
-
     echo "=== BirdTV 服务状态 ==="
     echo ""
     echo "服务名称: ${SERVICE_NAME}"
-    echo "监听端口: ${port}"
 
     if check_service; then
         echo -e "运行状态: ${GREEN}运行中${NC}"
@@ -212,7 +202,7 @@ clean_logs() {
     find . -name "birdtv.log.*" -mtime +7 -delete 2>/dev/null
 
     # 压缩当前日志
-    if [ -f "birdtv.log" ] && [ $(stat -f%z birdtv.log 2>/dev/null || stat -c%s birdtv.log) -gt 10485760 ]; then
+    if [ -f "birdtv.log" ] && [ $(stat -c%s birdtv.log 2>/dev/null || stat -f%z birdtv.log) -gt 10485760 ]; then
         local archive_name="birdtv.log.$(date +%Y%m%d_%H%M%S).gz"
         gzip -c birdtv.log > "${archive_name}"
         echo "" > birdtv.log
