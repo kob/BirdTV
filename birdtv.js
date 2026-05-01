@@ -1136,8 +1136,11 @@ function streamProxyToRemote(remoteUrl, clientReq, clientRes, options = {}) {
             const workerFinalUrl = resp.headers['x-worker-final-url'] || resp.headers['X-Worker-Final-Url'];
             if (workerFinalUrl) finalUrl = workerFinalUrl;
           }
+          // 删除可能导致客户端 Content-Length 不匹配的 header
+          // 上游可能发送 Content-Length，但 pipe 模式下 Node.js 用 chunked 传输
+          const { 'content-length': _cl, 'transfer-encoding': _te, ...forwardHeaders } = resp.headers || {};
           const headers = {
-            ...resp.headers,
+            ...forwardHeaders,
             'Access-Control-Allow-Origin': '*',
             'Access-Control-Expose-Headers': 'X-Final-Url, X-Redirected, X-Redirect-Count, X-Cache',
             'X-Cache': 'MISS',
