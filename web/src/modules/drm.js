@@ -101,7 +101,17 @@ export function applyShakaDrmConfigForSource(source) {
     if (runtime.clearKeys && Object.keys(runtime.clearKeys).length > 0) drmConfig.clearKeys = runtime.clearKeys;
     if (runtime.servers && Object.keys(runtime.servers).length > 0) drmConfig.servers = runtime.servers;
 
+    // HEVC + ClearKey 修复：Chrome 的 org.w3.clearkey 在 videoCapabilities 中
+    // 指定 encryptionScheme 时可能不支持 HEVC codec。通过 drm.advanced 为
+    // org.w3.clearkey 设置 sessionType 触发 Hh() 合并逻辑，同时 patch
+    // Shaka 的 sc() 函数使其不默认设置 encryptionScheme。
+    // 使用 Shaka 的 preferredKeySystems 配置确保 clearkey 优先。
+    if (runtime.clearKeys && Object.keys(runtime.clearKeys).length > 0 && !runtime.servers?.['com.widevine.alpha']) {
+        drmConfig.advanced = { 'org.w3.clearkey': { sessionType: 'temporary' } };
+    }
+
     state.player.configure({ drm: drmConfig });
+    applyClearKeyEncryptionSchemePatch();
 }
 
 export function isCencDashUrl(url) {
@@ -162,4 +172,52 @@ export function isLikelyHevcSource(source, url = '') {
     const targetUrl = String(url || source?.url || '');
     return codecHint === 'hevc-risk' || codecHint === 'hevc-unsupported' ||
         HEVC_HINT_PATTERN.test(sourceName) || HEVC_HINT_PATTERN.test(tvgName) || HEVC_HINT_PATTERN.test(targetUrl);
+}
+
+// ─── ClearKey encryptionScheme Patch ───
+// Shaka Player 的 sc() 函数为 ClearKey 默认设置 encryptionScheme: "cenc"，
+// 导致 Chrome 在 requestMediaKeySystemAccess 中为 videoCapabilities 指定
+// encryptionScheme: "cenc"，而 Chrome 的 org.w3.clearkey 不支持此组合下的
+// HEVC codec。此 patch 让 sc() 不设置 encryptionScheme，使 Chrome 接受请求。
+let _clearKeyPatchApplied = false;
+
+function applyClearKeyEncryptionSchemePatch() {
+    if (_clearKeyPatchApplied) return;
+    if (typeof window === 'undefined' || !window.shaka) return;
+    _clearKeyPatchApplied = true;
+
+    try {
+        // Patch navigator.requestMediaKeySystemAccess，在 org.w3.clearkey 的配置中
+        // 移除 videoCapabilities/audioCapabilities 的 encryptionScheme 字段
+        const originalRequestMKSA = navigator.requestMediaKeySystemAccess.bind(navigator);
+        if (navigator._birdtvClearKeyPatched) return;
+        navigator._birdtvClearKeyPatched = true;
+
+        navigator.requestMediaKeySystemAccess = function(keySystem, configs) {
+            if (keySystem === 'org.w3.clearkey' && Array.isArray(configs)) {
+                // 移除 encryptionScheme，让 Chrome 用默认行为
+                configs = configs.map(cfg => {
+                    const newCfg = { ...cfg };
+                    if (newCfg.videoCapabilities) {
+                        newCfg.videoCapabilities = newCfg.videoCapabilities.map(cap => {
+                            const { encryptionScheme: _es, ...rest } = cap;
+                            return rest;
+                        });
+                    }
+                    if (newCfg.audioCapabilities) {
+                        newCfg.audioCapabilities = newCfg.audioCapabilities.map(cap => {
+                            const { encryptionScheme: _es, ...rest } = cap;
+                            return rest;
+                        });
+                    }
+                    return newCfg;
+                });
+                console.log('[DRM] ClearKey patch: 已移除 encryptionScheme，尝试无 encryptionScheme 模式');
+            }
+            return originalRequestMKSA(keySystem, configs);
+        };
+        console.log('[DRM] ClearKey encryptionScheme patch 已安装');
+    } catch (e) {
+        console.warn('[DRM] ClearKey encryptionScheme patch 安装失败:', e);
+    }
 }

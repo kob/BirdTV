@@ -19,7 +19,7 @@ export function explainPlaybackError(error) {
     const codeHints = {
         1001: "网络请求超时，建议检查代理和链路延迟。",
         1002: "请求被中断，可能是源站不稳定或连接被重置。",
-        6001: "DRM 密钥系统不可用。请确保页面使用 HTTPS 访问（安全上下文），且浏览器支持对应的加密方案。",
+        6001: "DRM 密钥系统不可用(6001)。已尝试移除 encryptionScheme 兼容 HEVC，如果仍失败请确认浏览器支持 HEVC 解码，或为该频道配置 Widevine 许可证服务器。",
         6601: "检测到 CENC MPD 但未配置 DRM 参数，请填写 Widevine/PlayReady 许可证 URL 或 KID/KEY。",
         6602: "检测到 cenc_m MPD。此类流通常必须使用 Widevine/PlayReady 许可证 URL，KID/KEY 往往不足以播放。",
         6007: "许可证/密钥解析失败，请核对 KID 与 KEY。",
