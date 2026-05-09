@@ -149,7 +149,46 @@ init_env() {
 
     echo ""
 
-    # ========== 6. 代理配置（可选） ==========
+    # ========== 6. SSL/HTTPS 证书配置 ==========
+    echo -e "${YELLOW}━━━ SSL/HTTPS 证书 ━━━${NC}"
+    echo ""
+    echo -e "  ${YELLOW}1)${NC} 使用自签名证书（默认，浏览器会提示不安全）"
+    echo -e "  ${YELLOW}2)${NC} 使用 Let's Encrypt 免费证书"
+    echo -e "  ${YELLOW}3)${NC} 使用已有证书（手动填写路径）"
+    echo ""
+
+    read -rp "请选择证书类型 [1/2/3，默认 1]: " cert_choice
+    cert_choice="${cert_choice:-1}"
+
+    local SSL_KEY="" SSL_CERT=""
+
+    if [[ "$cert_choice" == "2" ]]; then
+        echo ""
+        echo -e "${CYAN}提示：Let's Encrypt 证书需要域名和 80/443 端口开放${NC}"
+        echo -e "${CYAN}请先准备好域名，再手动配置 Nginx/Caddy 进行反代${NC}"
+        echo ""
+        read -rp "是否需要生成占位配置以便后续配置？(y/N): " gen_placeholder
+        if [[ "${gen_placeholder}" =~ ^[Yy]$ ]]; then
+            SSL_KEY="/etc/letsencrypt/live/your-domain/privkey.pem"
+            SSL_CERT="/etc/letsencrypt/live/your-domain/fullchain.pem"
+        fi
+    elif [[ "$cert_choice" == "3" ]]; then
+        echo ""
+        read -rp "SSL 私钥路径: " SSL_KEY
+        while [[ "$cert_choice" == "3" && -z "$SSL_KEY" ]]; do
+            echo -e "${RED}私钥路径不能为空${NC}"
+            read -rp "SSL 私钥路径: " SSL_KEY
+        done
+        read -rp "SSL 证书路径: " SSL_CERT
+        while [[ "$cert_choice" == "3" && -z "$SSL_CERT" ]]; do
+            echo -e "${RED}证书路径不能为空${NC}"
+            read -rp "SSL 证书路径: " SSL_CERT
+        done
+    fi
+
+    echo ""
+
+    # ========== 7. 代理配置（可选） ==========
     echo -e "${YELLOW}━━━ 代理配置（可选，跳过直接回车） ━━━${NC}"
     echo ""
 
@@ -199,6 +238,17 @@ M3U_PROXY_DEFAULT_UA=okhttp/4.3
 
 # ==================== SSL/HTTPS 配置 ====================
 BIRDTV_SSL_PORT=${HTTPS_PORT}
+EOF
+
+    # SSL 证书配置
+    if [[ -n "${SSL_KEY}" && -n "${SSL_CERT}" ]]; then
+        cat >> "$ENV_FILE" <<EOF
+BIRDTV_SSL_KEY=${SSL_KEY}
+BIRDTV_SSL_CERT=${SSL_CERT}
+EOF
+    fi
+
+    cat >> "$ENV_FILE" <<EOF
 
 # ==================== 代理配置 ====================
 EOF
@@ -228,6 +278,17 @@ EOF
     info "配置摘要："
     echo "  - HTTP 端口: ${HTTP_PORT}"
     echo "  - HTTPS 端口: ${HTTPS_PORT}"
+    local cert_type
+    if [[ "$cert_choice" == "1" ]]; then
+        cert_type="自签名证书"
+    elif [[ "$cert_choice" == "2" ]]; then
+        cert_type="Let's Encrypt"
+    else
+        cert_type="自定义证书"
+    fi
+    echo "  - 证书类型: ${cert_type}"
+    [[ -n "${SSL_KEY}" ]] && echo "  - SSL 私钥: ${SSL_KEY}"
+    [[ -n "${SSL_CERT}" ]] && echo "  - SSL 证书: ${SSL_CERT}"
     echo "  - 管理员账号: ${ADMIN_USER}"
     echo "  - Token 有效期: ${TOKEN_EXPIRE} 天"
     echo "  - KVRocks: ${KV_HOST}:${KV_PORT}"
