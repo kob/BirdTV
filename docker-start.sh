@@ -463,7 +463,7 @@ do_reconfig_kvrocks() {
 
 # ==================== 重新部署 ====================
 do_redeploy() {
-    echo -e "${YELLOW}⚠️  重新部署将删除所有容器，重新拉取镜像并启动${NC}"
+    echo -e "${YELLOW}⚠️  重新部署将删除所有容器和配置，重新生成并启动${NC}"
     echo -e "${YELLOW}⚠️  数据卷将被保留，不会删除${NC}"
     read -rp "确认要重新部署吗？输入 YES 继续: " confirm
     if [[ "$confirm" != "YES" ]]; then
@@ -474,19 +474,26 @@ do_redeploy() {
     cd "$SCRIPT_DIR"
 
     info "正在停止容器..."
-    $COMPOSE_CMD --env-file "$ENV_FILE" stop
+    $COMPOSE_CMD --env-file "$ENV_FILE" stop 2>/dev/null || true
 
     info "正在删除容器..."
-    $COMPOSE_CMD --env-file "$ENV_FILE" rm -f
+    docker rm -f birdtv birdtv-kvrocks 2>/dev/null || true
+
+    info "正在删除旧配置文件..."
+    rm -f "$ENV_FILE" "$KVROCKS_FLAG"
+
+    echo ""
+    info "请重新配置服务参数..."
+    echo ""
+
+    # 重新运行交互式配置
+    init_env
 
     info "正在拉取最新镜像..."
     $COMPOSE_CMD --env-file "$ENV_FILE" pull
 
     info "正在启动服务..."
     source "$KVROCKS_FLAG"
-
-    # 清理可能的孤立容器
-    docker rm -f birdtv birdtv-kvrocks 2>/dev/null || true
 
     if [[ "${USE_KVROCKS:-yes}" == "yes" ]]; then
         $COMPOSE_CMD --env-file "$ENV_FILE" up -d
