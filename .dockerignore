@@ -32,4 +32,10 @@ eslintignore
 auth-admin.sh
 cloudbaserc.json
 cloudflare-worker.js
+cloudflare-worker-unified.js
+deno-proxy.js
+esa-proxy.js
+docker-start.sh
+.kvrocks_choice
 BirdTV111/
+.github/

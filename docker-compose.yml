@@ -5,6 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "${PORT:-8771}:8771"
+      - "${BIRDTV_SSL_PORT:-8772}:8772"
     environment:
       - HOST=0.0.0.0
       - PORT=8771
@@ -29,6 +30,17 @@ services:
       - M3U_PROXY_DEFAULT_UA=${M3U_PROXY_DEFAULT_UA:-okhttp/4.3}
       # Cloudflare Worker
       - CLOUDFLARE_WORKER_URL=${CLOUDFLARE_WORKER_URL:-}
+      - CLOUDFLARE_WORKER_DOMAINS=${CLOUDFLARE_WORKER_DOMAINS:-}
+      # Deno Deploy 代理
+      - DENO_PROXY_URL=${DENO_PROXY_URL:-}
+      - DENO_PROXY_DOMAINS=${DENO_PROXY_DOMAINS:-}
+      # ESA 代理
+      - ESA_PROXY_URL=${ESA_PROXY_URL:-}
+      - ESA_PROXY_DOMAINS=${ESA_PROXY_DOMAINS:-}
+      # SSL/HTTPS
+      - BIRDTV_SSL_KEY=${BIRDTV_SSL_KEY:-}
+      - BIRDTV_SSL_CERT=${BIRDTV_SSL_CERT:-}
+      - BIRDTV_SSL_PORT=${BIRDTV_SSL_PORT:-8772}
     volumes:
       - birdtv-data:/app/data
     depends_on:

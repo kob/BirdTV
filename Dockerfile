@@ -17,7 +17,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 # ==================== Stage 2: Production ====================
 FROM node:20-alpine AS production
 
-RUN apk add --no-cache curl dumb-init && rm -rf /var/cache/apk/*
+RUN apk add --no-cache curl dumb-init openssl && rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
@@ -28,9 +28,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY birdtv.js ./
 COPY backend/ ./backend/
 COPY web/ ./web/
+COPY scripts/ ./scripts/
 
-# 创建数据目录（运行时挂载）
-RUN mkdir -p /app/data /app/files/cache
+# 创建数据目录和 SSL 目录（运行时挂载）
+RUN mkdir -p /app/data /app/files/cache /app/ssl
 
 # 环境变量默认值
 ENV HOST=0.0.0.0 \
@@ -45,12 +46,19 @@ ENV HOST=0.0.0.0 \
     AUTH_DEFAULT_PASSWORD=admin123 \
     AUTH_REDIS_HOST= \
     AUTH_REDIS_PORT=6666 \
+    AUTH_REDIS_PASSWORD= \
+    BIRDTV_SYSTEM_ID=default \
+    REDIS_DATA_PREFIX=birdtv:storage: \
+    REDIS_PREFIX=birdtv \
+    SERVER_ID=default \
     M3U_PROXY_TIMEOUT_MS=40000 \
     M3U_PROXY_REDIRECT_LIMIT=3 \
     M3U_PROXY_DEFAULT_UA=okhttp/4.3 \
-    CLOUDFLARE_WORKER_URL=
+    CLOUDFLARE_WORKER_URL= \
+    DENO_PROXY_URL= \
+    ESA_PROXY_URL=
 
-EXPOSE 8771
+EXPOSE 8771 8772
 
 # 数据持久化
 VOLUME ["/app/data"]

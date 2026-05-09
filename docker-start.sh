@@ -73,6 +73,7 @@ init_env() {
     warn "  - AUTH_DEFAULT_PASSWORD  （默认 admin123，请修改）"
     warn "  - AUTH_DEFAULT_ADMIN     （默认 admin）"
     warn "  - M3U_PROXY_TIMEOUT_MS   （默认 40000ms）"
+    warn "  - BIRDTV_SSL_PORT        （默认 8772，HTTPS 端口）"
     echo ""
 }
 
@@ -130,6 +131,8 @@ EOF
         read -rp "  请输入 KVRocks 端口 [默认 6666]: " kv_port
         kv_port="${kv_port:-6666}"
 
+        read -rp "  请输入 KVRocks 密码（无密码则留空）: " kv_password
+
         cat > "$KVROCKS_FLAG" <<EOF
 USE_KVROCKS=no
 KVROCKS_HOST=${kv_host}
@@ -139,6 +142,9 @@ EOF
         # 更新 .env 中的 KVRocks 配置
         ensure_env_var "AUTH_REDIS_HOST" "$kv_host"
         ensure_env_var "AUTH_REDIS_PORT" "$kv_port"
+        if [[ -n "$kv_password" ]]; then
+            ensure_env_var "AUTH_REDIS_PASSWORD" "$kv_password"
+        fi
         info "已选择：使用外部 KVRocks (${kv_host}:${kv_port})"
     fi
 
@@ -220,12 +226,14 @@ do_start() {
     fi
 
     # 获取映射端口
-    local port
+    local port ssl_port
     port=$(docker port birdtv 8771/tcp 2>/dev/null | head -1 | cut -d: -f2 || echo "8771")
+    ssl_port=$(docker port birdtv 8772/tcp 2>/dev/null | head -1 | cut -d: -f2 || echo "8772")
 
     echo ""
     info "BirdTV 已启动！"
-    info "访问地址: http://localhost:${port}"
+    info "HTTP  访问地址: http://localhost:${port}"
+    info "HTTPS 访问地址: https://localhost:${ssl_port}（自签名证书，浏览器会提示不安全）"
     info "默认账号: admin / admin123"
     info "请登录后立即修改密码！"
 }
