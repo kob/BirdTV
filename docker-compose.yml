@@ -44,10 +44,10 @@ services:
     volumes:
       - birdtv-data:/app/data
     depends_on:
-      kvrocks:
+      birdtv-kvrocks:
         condition: service_healthy
 
-  kvrocks:
+  birdtv-kvrocks:
     image: apache/kvrocks:2.11.0
     container_name: birdtv-kvrocks
     restart: unless-stopped

@@ -50,30 +50,188 @@ init_env() {
         return
     fi
 
-    if [[ ! -f "$ENV_EXAMPLE" ]]; then
-        error "未找到 .env.example 文件"
-    fi
-
-    warn ".env 文件不存在，正在从 .env.example 创建..."
+    echo ""
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  BirdTV 交互式配置向导${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
 
     # 生成随机 JWT 密钥
     JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | head -c 64)
 
-    cp "$ENV_EXAMPLE" "$ENV_FILE"
+    # 创建空 .env 文件
+    > "$ENV_FILE"
 
-    # 替换 JWT 密钥
-    if [[ -n "$JWT_SECRET" ]]; then
-        sed -i "s|^AUTH_JWT_SECRET=.*|AUTH_JWT_SECRET=${JWT_SECRET}|" "$ENV_FILE"
-        info "已自动生成 JWT 密钥"
+    # ========== 1. 基础配置 ==========
+    echo -e "${YELLOW}━━━ 基础配置 ━━━${NC}"
+    echo ""
+
+    read -rp "HTTP 端口 [默认 8771]: " val
+    local HTTP_PORT="${val:-8771}"
+
+    read -rp "HTTPS 端口 [默认 8772]: " val
+    local HTTPS_PORT="${val:-8772}"
+
+    echo ""
+
+    # ========== 2. 管理员账号配置 ==========
+    echo -e "${YELLOW}━━━ 管理员账号 ━━━${NC}"
+    echo ""
+
+    read -rp "管理员用户名 [默认 admin]: " val
+    local ADMIN_USER="${val:-admin}"
+
+    read -rp "管理员密码 (建议使用强密码): " -s val
+    echo ""
+    while [[ -z "$val" ]]; do
+        echo -e "${RED}密码不能为空，请重新输入:${NC}"
+        read -rp "管理员密码: " -s val
+        echo ""
+    done
+    local ADMIN_PASS="$val"
+
+    read -rp "Token 有效期（天）[默认 7]: " val
+    local TOKEN_EXPIRE="${val:-7}"
+
+    echo ""
+
+    # ========== 3. KVRocks 配置 ==========
+    echo -e "${YELLOW}━━━ KVRocks 数据库 ━━━${NC}"
+    echo ""
+    echo -e "  KVRocks 用于存储所有业务数据（频道、认证、设置等）"
+    echo ""
+    echo -e "  ${YELLOW}1)${NC} 使用内置 KVRocks（推荐，自动创建容器）"
+    echo -e "  ${YELLOW}2)${NC} 使用已有的 KVRocks（手动填写地址）"
+    echo ""
+
+    read -rp "请选择 [1/2，默认 1]: " kv_choice
+    kv_choice="${kv_choice:-1}"
+
+    local KV_HOST="" KV_PORT="6666" KV_PASS=""
+
+    if [[ "$kv_choice" == "1" ]]; then
+        KV_HOST="birdtv-kvrocks"
+        echo -e "${GREEN}✓ 将使用内置 KVRocks${NC}"
+    else
+        echo ""
+        echo -e "  ${CYAN}提示：${NC}"
+        echo -e "    - 如果 KVRocks 在同一台机器上，可填写 ${YELLOW}host.docker.internal${NC}（macOS/Windows）"
+        echo -e "    - 如果 KVRocks 在同一台 Linux 机器上，可填写宿主机 IP（如 ${YELLOW}172.17.0.1${NC}）"
+        echo -e "    - 如果 KVRocks 在其他服务器上，填写对应 IP 即可"
+        echo ""
+        read -rp "  请输入 KVRocks IP 地址: " KV_HOST
+        while [[ -z "$KV_HOST" ]]; do
+            read -rp "  IP 地址不能为空，请重新输入: " KV_HOST
+        done
+
+        read -rp "  KVRocks 端口 [默认 6666]: " val
+        KV_PORT="${val:-6666}"
+
+        read -rp "  KVRocks 密码（无密码则留空）: " KV_PASS
     fi
 
-    info ".env 文件已创建，JWT 密钥已自动生成"
     echo ""
-    warn "请检查 .env 中的以下配置："
-    warn "  - AUTH_DEFAULT_PASSWORD  （默认 admin123，请修改）"
-    warn "  - AUTH_DEFAULT_ADMIN     （默认 admin）"
-    warn "  - M3U_PROXY_TIMEOUT_MS   （默认 40000ms）"
-    warn "  - BIRDTV_SSL_PORT        （默认 8772，HTTPS 端口）"
+
+    # ========== 4. 多实例配置 ==========
+    echo -e "${YELLOW}━━━ 多实例隔离（可选） ━━━${NC}"
+    echo ""
+    echo -e "  如果部署多个 BirdTV 实例，请设置不同的 ID 进行隔离"
+    read -rp "系统标识 ID [默认 default]: " val
+    local SYSTEM_ID="${val:-default}"
+
+    echo ""
+
+    # ========== 5. M3U 代理配置（可选） ==========
+    echo -e "${YELLOW}━━━ M3U 代理配置（可选） ━━━${NC}"
+    echo ""
+    read -rp "M3U 请求超时（毫秒）[默认 40000]: " val
+    local M3U_TIMEOUT="${val:-40000}"
+
+    echo ""
+
+    # ========== 6. 代理配置（可选） ==========
+    echo -e "${YELLOW}━━━ 代理配置（可选，跳过直接回车） ━━━${NC}"
+    echo ""
+
+    read -rp "Cloudflare Worker URL（用于绕过 WAF 拦截）: " CF_WORKER_URL
+    read -rp "Deno Deploy URL: " DENO_URL
+    read -rp "ESA 代理 URL: " ESA_URL
+
+    echo ""
+
+    # ========== 生成 .env 文件 ==========
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  正在生成配置文件...${NC}"
+    echo ""
+
+    cat > "$ENV_FILE" <<EOF
+# ============================================================
+# BirdTV 环境变量配置
+# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
+# ============================================================
+
+# ==================== 服务器配置 ====================
+BIRDTV_HOST=0.0.0.0
+BIRDTV_PORT=${HTTP_PORT}
+
+# ==================== 认证配置 ====================
+AUTH_ENABLED=true
+AUTH_JWT_SECRET=${JWT_SECRET}
+AUTH_TOKEN_EXPIRE_DAYS=${TOKEN_EXPIRE}
+AUTH_DEFAULT_ADMIN=${ADMIN_USER}
+AUTH_DEFAULT_PASSWORD=${ADMIN_PASS}
+
+# ==================== KVRocks 配置 ====================
+AUTH_REDIS_HOST=${KV_HOST}
+AUTH_REDIS_PORT=${KV_PORT}
+AUTH_REDIS_PASSWORD=${KV_PASS}
+
+# ==================== 多实例隔离 ====================
+BIRDTV_SYSTEM_ID=${SYSTEM_ID}
+REDIS_DATA_PREFIX=birdtv:storage:
+REDIS_PREFIX=birdtv
+SERVER_ID=${SYSTEM_ID}
+
+# ==================== M3U 代理配置 ====================
+M3U_PROXY_TIMEOUT_MS=${M3U_TIMEOUT}
+M3U_PROXY_REDIRECT_LIMIT=3
+M3U_PROXY_DEFAULT_UA=okhttp/4.3
+
+# ==================== SSL/HTTPS 配置 ====================
+BIRDTV_SSL_PORT=${HTTPS_PORT}
+
+# ==================== 代理配置 ====================
+EOF
+
+    # 可选配置（仅在有值时才写入）
+    [[ -n "${CF_WORKER_URL}" ]] && echo "CLOUDFLARE_WORKER_URL=${CF_WORKER_URL}" >> "$ENV_FILE"
+    [[ -n "${DENO_URL}" ]] && echo "DENO_PROXY_URL=${DENO_URL}" >> "$ENV_FILE"
+    [[ -n "${ESA_URL}" ]] && echo "ESA_PROXY_URL=${ESA_URL}" >> "$ENV_FILE"
+
+    # 记录 KVRocks 选择
+    if [[ "$kv_choice" == "1" ]]; then
+        cat > "$KVROCKS_FLAG" <<EOF
+USE_KVROCKS=yes
+KVROCKS_HOST=birdtv-kvrocks
+KVROCKS_PORT=6666
+EOF
+    else
+        cat > "$KVROCKS_FLAG" <<EOF
+USE_KVROCKS=no
+KVROCKS_HOST=${KV_HOST}
+KVROCKS_PORT=${KV_PORT}
+EOF
+    fi
+
+    echo -e "${GREEN}✓ 配置文件已生成: $ENV_FILE${NC}"
+    echo ""
+    info "配置摘要："
+    echo "  - HTTP 端口: ${HTTP_PORT}"
+    echo "  - HTTPS 端口: ${HTTPS_PORT}"
+    echo "  - 管理员账号: ${ADMIN_USER}"
+    echo "  - Token 有效期: ${TOKEN_EXPIRE} 天"
+    echo "  - KVRocks: ${KV_HOST}:${KV_PORT}"
+    echo "  - 系统标识: ${SYSTEM_ID}"
     echo ""
 }
 
@@ -108,12 +266,9 @@ ask_kvrocks() {
         # 选择内置 KVRocks
         cat > "$KVROCKS_FLAG" <<EOF
 USE_KVROCKS=yes
-KVROCKS_HOST=kvrocks
+KVROCKS_HOST=birdtv-kvrocks
 KVROCKS_PORT=6666
 EOF
-        # 更新 .env 中的 KVRocks 配置
-        ensure_env_var "AUTH_REDIS_HOST" "kvrocks"
-        ensure_env_var "AUTH_REDIS_PORT" "6666"
         info "已选择：使用内置 KVRocks"
     else
         # 选择外部 KVRocks
@@ -142,9 +297,7 @@ EOF
         # 更新 .env 中的 KVRocks 配置
         ensure_env_var "AUTH_REDIS_HOST" "$kv_host"
         ensure_env_var "AUTH_REDIS_PORT" "$kv_port"
-        if [[ -n "$kv_password" ]]; then
-            ensure_env_var "AUTH_REDIS_PASSWORD" "$kv_password"
-        fi
+        ensure_env_var "AUTH_REDIS_PASSWORD" "${kv_password:-}"
         info "已选择：使用外部 KVRocks (${kv_host}:${kv_port})"
     fi
 
@@ -208,7 +361,7 @@ do_start() {
         info "等待 KVRocks 启动..."
         local retry=0
         while [[ $retry -lt 30 ]]; do
-            if docker exec birdtv-kvrocks redis-cli -h localhost -p 6666 PING 2>/dev/null | grep -q PONG; then
+            if docker exec birdtv-kvrocks redis-cli -p 6666 PING 2>/dev/null | grep -q PONG; then
                 break
             fi
             retry=$((retry + 1))
