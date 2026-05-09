@@ -485,6 +485,9 @@ do_redeploy() {
     info "正在启动服务..."
     source "$KVROCKS_FLAG"
 
+    # 清理可能的孤立容器
+    docker rm -f birdtv birdtv-kvrocks 2>/dev/null || true
+
     if [[ "${USE_KVROCKS:-yes}" == "yes" ]]; then
         $COMPOSE_CMD --env-file "$ENV_FILE" up -d
 
