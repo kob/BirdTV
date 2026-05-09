@@ -54,12 +54,16 @@ class ExportController {
       
       // 获取当前服务器地址
       const reqHeaders = req.headers || {};
-      const protocol = reqHeaders['x-forwarded-proto'] || req.protocol || 'http';
+      // 优先使用 x-forwarded-proto，其次使用请求协议
+      let protocol = reqHeaders['x-forwarded-proto'] || req.protocol || 'http';
+      // 如果请求来自 8772（HTTPS 端口），强制使用 https
       const host = reqHeaders['x-forwarded-host'] || (req.get ? req.get('host') : '') || '';
+      if (host && host.includes(':8772')) {
+        protocol = 'https';
+      }
       let baseUrl = host ? `${protocol}://${host}` : '';
       // 如果请求头中无法获取域名，从设置中读取
       if (!baseUrl) {
-        const settings = await this.storage.getSettings();
         baseUrl = (settings && settings.m3uRemoteBaseUrl) ? settings.m3uRemoteBaseUrl.replace(/\/+$/, '') : 'http://localhost:8771';
       }
 
