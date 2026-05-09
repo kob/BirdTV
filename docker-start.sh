@@ -337,12 +337,13 @@ show_menu() {
     echo -e "${CYAN}║${NC}  6. 更新镜像并重启                   ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  7. 重置数据（危险）                  ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  8. 重新配置 KVRocks                 ${CYAN}║${NC}"
+    echo -e "${CYAN}║${NC}  9. 重新部署（删除容器+拉取镜像+重启） ${CYAN}║${NC}"
     echo -e "${CYAN}║${NC}  0. 退出                             ${CYAN}║${NC}"
     echo -e "${CYAN}╠══════════════════════════════════════╣${NC}"
     echo -e "${CYAN}║${NC}  KVRocks: ${kv_info}"
     echo -e "${CYAN}╚══════════════════════════════════════╝${NC}"
     echo ""
-    read -rp "请选择操作 [0-8]: " choice
+    read -rp "请选择操作 [0-9]: " choice
 }
 
 # ==================== 启动服务 ====================
@@ -460,6 +461,62 @@ do_reconfig_kvrocks() {
     info "KVRocks 配置已更新，请选择 1 启动服务"
 }
 
+# ==================== 重新部署 ====================
+do_redeploy() {
+    echo -e "${YELLOW}⚠️  重新部署将删除所有容器，重新拉取镜像并启动${NC}"
+    echo -e "${YELLOW}⚠️  数据卷将被保留，不会删除${NC}"
+    read -rp "确认要重新部署吗？输入 YES 继续: " confirm
+    if [[ "$confirm" != "YES" ]]; then
+        info "已取消"
+        return
+    fi
+
+    cd "$SCRIPT_DIR"
+
+    info "正在停止并删除容器..."
+    $COMPOSE_CMD --env-file "$ENV_FILE" down
+
+    info "正在拉取最新镜像..."
+    $COMPOSE_CMD --env-file "$ENV_FILE" pull
+
+    info "正在启动服务..."
+    source "$KVROCKS_FLAG"
+
+    if [[ "${USE_KVROCKS:-yes}" == "yes" ]]; then
+        $COMPOSE_CMD --env-file "$ENV_FILE" up -d
+
+        # 等待 KVRocks 就绪
+        echo ""
+        info "等待 KVRocks 启动..."
+        local retry=0
+        while [[ $retry -lt 30 ]]; do
+            if docker exec birdtv-kvrocks redis-cli -p 6666 PING 2>/dev/null | grep -q PONG; then
+                break
+            fi
+            retry=$((retry + 1))
+            sleep 2
+        done
+
+        if [[ $retry -eq 30 ]]; then
+            warn "KVRocks 启动超时，请手动确认状态"
+        else
+            info "KVRocks 已就绪"
+        fi
+    else
+        $COMPOSE_CMD --env-file "$ENV_FILE" up -d --no-deps birdtv
+    fi
+
+    # 获取映射端口
+    local port ssl_port
+    port=$(docker port birdtv 8771/tcp 2>/dev/null | head -1 | cut -d: -f2 || echo "8771")
+    ssl_port=$(docker port birdtv 8772/tcp 2>/dev/null | head -1 | cut -d: -f2 || echo "8772")
+
+    echo ""
+    info "重新部署完成！"
+    info "HTTP  访问地址: http://localhost:${port}"
+    info "HTTPS 访问地址: https://localhost:${ssl_port}（自签名证书）"
+}
+
 # ==================== 主流程 ====================
 main() {
     check_docker
@@ -489,6 +546,7 @@ main() {
             6) do_update ;;
             7) do_reset  ;;
             8) do_reconfig_kvrocks ;;
+            9) do_redeploy ;;
             0) info "再见！"; exit 0 ;;
             *) warn "无效选择" ;;
         esac
