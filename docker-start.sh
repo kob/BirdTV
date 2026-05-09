@@ -473,8 +473,11 @@ do_redeploy() {
 
     cd "$SCRIPT_DIR"
 
-    info "正在停止并删除容器..."
-    $COMPOSE_CMD --env-file "$ENV_FILE" down
+    info "正在停止容器..."
+    $COMPOSE_CMD --env-file "$ENV_FILE" stop
+
+    info "正在删除容器..."
+    $COMPOSE_CMD --env-file "$ENV_FILE" rm -f
 
     info "正在拉取最新镜像..."
     $COMPOSE_CMD --env-file "$ENV_FILE" pull
