@@ -375,6 +375,107 @@ function clearForm(elements) {
     if (elements.stagePlayerTypeSelect) elements.stagePlayerTypeSelect.value = "auto";
 }
 
+// ─── 播放测试区域 ───
+
+function readTestFormSource(elements) {
+    const name = elements.testNameInput ? elements.testNameInput.value.trim() : "";
+    const url = elements.testUrlInput ? elements.testUrlInput.value.trim() : "";
+    const kid = elements.testKidInput ? elements.testKidInput.value.trim() : "";
+    const key = elements.testKeyInput ? elements.testKeyInput.value.trim() : "";
+    const streamType = elements.testStreamTypeSelect ? elements.testStreamTypeSelect.value : "auto";
+
+    if (!name || !url) {
+        updateStatus(elements, "频道名称和播放地址不能为空", "参数缺失", true);
+        return null;
+    }
+
+    const source = { name, url };
+
+    if (kid && key) {
+        source.drm = source.drm || {};
+        source.drm.clearKeys = { [kid]: key };
+    }
+
+    if (streamType && streamType !== 'auto') {
+        source.streamType = streamType;
+    }
+
+    return source;
+}
+
+function clearTestForm(elements) {
+    if (elements.testNameInput) elements.testNameInput.value = "";
+    if (elements.testUrlInput) elements.testUrlInput.value = "";
+    if (elements.testKidInput) elements.testKidInput.value = "";
+    if (elements.testKeyInput) elements.testKeyInput.value = "";
+    if (elements.testStreamTypeSelect) elements.testStreamTypeSelect.value = "auto";
+    if (elements.testImportTextarea) elements.testImportTextarea.value = "";
+    updateStatus(elements, "已清空表单", "已清空");
+}
+
+function importTestText(elements) {
+    const text = elements.testImportTextarea ? elements.testImportTextarea.value.trim() : "";
+    if (!text) {
+        updateStatus(elements, "请粘贴 #EXTINF 格式文本", "参数缺失", true);
+        return;
+    }
+
+    // 解析 #EXTINF 格式：解析频道名和 URL
+    // 也支持 #KODIPROP:inputstreamaddon=... 格式
+    const lines = text.split('\n').map(l => l.trim());
+    let name = "", url = "", kid = "", key = "";
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.startsWith('#EXTINF:')) {
+            const commaIdx = line.lastIndexOf(',');
+            name = commaIdx > -1 ? line.substring(commaIdx + 1).trim() : "";
+        } else if (line.startsWith('#KODIPROP:')) {
+            // 解析 KODIPROP
+            const prop = line.replace(/^#KODIPROP:\s*/i, '');
+            const parts = prop.split('&');
+            for (const p of parts) {
+                const eqIdx = p.indexOf('=');
+                if (eqIdx > -1) {
+                    const k = p.substring(0, eqIdx).trim();
+                    const v = decodeURIComponent(p.substring(eqIdx + 1).trim());
+                    if (k === 'inputstream.licence_key') {
+                        // 可能包含 KID:KEY
+                        const kidKeyMatch = v.match(/([A-Fa-f0-9-]{36,})\/([A-Fa-f0-9]{32,})/);
+                        if (kidKeyMatch) {
+                            kid = kidKeyMatch[1];
+                            key = kidKeyMatch[2];
+                        }
+                    }
+                    if (k === 'inputstream.licence_type') {
+                        // 可能包含 kid|key 格式
+                        const drmMatch = v.match(/([A-Fa-f0-9]{32,})\|([A-Fa-f0-9]{32,})/);
+                        if (drmMatch) {
+                            kid = drmMatch[1];
+                            key = drmMatch[2];
+                        }
+                    }
+                }
+            }
+        } else if (line && !line.startsWith('#')) {
+            // 非井号开头的行就是 URL
+            url = line;
+        }
+    }
+
+    if (!name && !url) {
+        updateStatus(elements, "未能解析出频道信息，请检查文本格式", "解析失败", true);
+        return;
+    }
+
+    if (elements.testNameInput && name) elements.testNameInput.value = name;
+    if (elements.testUrlInput && url) elements.testUrlInput.value = url;
+    if (elements.testKidInput && kid) elements.testKidInput.value = kid;
+    if (elements.testKeyInput && key) elements.testKeyInput.value = key;
+
+    updateStatus(elements, `已解析：${name || '(未命名)'}`, "导入成功");
+}
+
 function renderPlaylist(elements) {
     const keyword = (elements.searchInput?.value || '').trim().toLowerCase();
     const filtered = state.channels.map((source, index) => ({ source, index })).filter(({ source }) => source.name.toLowerCase().includes(keyword));
@@ -397,6 +498,16 @@ function bindEvents(elements) {
         const source = readFormSource(elements);
         if (source) await playSource(source, elements);
     });
+
+    // 播放测试区域
+    elements.testPlayButton?.addEventListener("click", async () => {
+        const source = readTestFormSource(elements);
+        if (source) await playSource(source, elements);
+    });
+
+    elements.testClearButton?.addEventListener("click", () => clearTestForm(elements));
+
+    elements.testImportButton?.addEventListener("click", () => importTestText(elements));
 
     elements.playVlcDirectButton?.addEventListener("click", () => playWithForcedVlcMode(elements, 'direct'));
     elements.playVlcProxyButton?.addEventListener("click", () => playWithForcedVlcMode(elements, 'proxy'));

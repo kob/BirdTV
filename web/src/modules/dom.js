@@ -97,7 +97,17 @@ export function getElements() {
         diagnosticsCount: document.getElementById("diagnosticsCount"),
         exportDiagnosticsButton: document.getElementById("exportDiagnosticsButton"),
         clearFallbackCooldownButton: document.getElementById("clearFallbackCooldownButton"),
-        clearDiagnosticsButton: document.getElementById("clearDiagnosticsButton")
+        clearDiagnosticsButton: document.getElementById("clearDiagnosticsButton"),
+        // 播放测试区域
+        testPlayButton: document.getElementById("testPlayButton"),
+        testNameInput: document.getElementById("testNameInput"),
+        testUrlInput: document.getElementById("testUrlInput"),
+        testKidInput: document.getElementById("testKidInput"),
+        testKeyInput: document.getElementById("testKeyInput"),
+        testStreamTypeSelect: document.getElementById("testStreamTypeSelect"),
+        testImportTextarea: document.getElementById("testImportTextarea"),
+        testImportButton: document.getElementById("testImportButton"),
+        testClearButton: document.getElementById("testClearButton")
     };
 }
 
