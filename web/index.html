@@ -113,12 +113,21 @@
       transition: opacity var(--t), transform var(--t), padding var(--t), border-color var(--t);
       min-width: 0;
       overflow: visible;
+      max-height: calc(100vh - 32px);
+    }
+
+    /* 频道列表卡片：占据剩余空间，内部滚动 */
+    .sidebar .channel-list-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
     }
 
     @media (max-width: 1080px) {
       .sidebar {
         max-height: 70vh;
-        overflow-y: auto;
+        overflow-y: visible;
         -webkit-overflow-scrolling: touch;
       }
 
@@ -131,7 +140,7 @@
         width: 308px;
         max-width: 90vw;
         z-index: 999;
-        overflow-y: auto;
+        overflow-y: visible;
         background: rgba(8, 16, 30, 0.98);
         backdrop-filter: blur(24px);
         box-shadow: 0 0 60px rgba(0, 0, 0, 0.8);
@@ -403,7 +412,8 @@
     .playlist {
       display: grid;
       gap: 4px;
-      max-height: calc(100vh - 320px);
+      flex: 1;
+      min-height: 0;
       overflow: auto;
       padding-right: 4px;
     }
@@ -942,12 +952,18 @@
                 </div>
             </details>
 
-            <section class="card grid">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <section class="card grid channel-list-card">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-shrink:0;">
                     <h2 class="section-title" style="margin:0;">频道列表</h2>
                     <span class="muted" id="channelCount">0 个</span>
                 </div>
-                <label>
+                <label style="flex-shrink:0;">
+                    分组
+                    <select id="groupSelect" style="width:100%;">
+                        <option value="">全部</option>
+                    </select>
+                </label>
+                <label style="flex-shrink:0;">
                     搜索
                     <input id="searchInput" type="text" placeholder="输入频道名过滤">
                 </label>
